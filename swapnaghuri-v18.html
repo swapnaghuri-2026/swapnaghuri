@@ -350,17 +350,6 @@ function backupData(){
     toast("✅ ব্যাকআপ ডাউনলোড হয়েছে");
   }catch(e){toast("❌ ব্যাকআপ ব্যর্থ","#dc2626");}
 }
-  try{
-    const data=JSON.stringify(D,null,2);
-    const blob=new Blob([data],{type:"application/json"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    const date=new Date().toISOString().split("T")[0];
-    a.href=url;a.download=`swapnaghuri_backup_${date}.json`;
-    a.click();URL.revokeObjectURL(url);
-    toast("✅ ব্যাকআপ ডাউনলোড হয়েছে");
-  }catch(e){toast("❌ ব্যাকআপ ব্যর্থ","#dc2626");}
-}
 
 function restoreData(event){
   const file=event.target.files[0];
