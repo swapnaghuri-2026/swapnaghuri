@@ -185,7 +185,7 @@ const firebaseConfig = {
       <div id="sb-fund" style="color:#fff;font-weight:800;font-size:18px;margin:2px 0 4px">৳০</div>
       <div style="color:rgba(255,255,255,.4);font-size:10px">মোট বকেয়া</div>
       <div id="sb-due" style="color:#f87171;font-weight:700;font-size:15px;margin:2px 0 10px">৳০</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <div id="sb-backup-restore" style="display:none;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
         <button onclick="backupData()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 4px;cursor:pointer;font-family:inherit;font-size:11px;color:#fff;font-weight:600">⬇️ ব্যাকআপ</button>
         <label style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 4px;cursor:pointer;font-size:11px;color:#fff;font-weight:600;text-align:center;display:block">
           ⬆️ রিস্টোর
@@ -350,17 +350,6 @@ function backupData(){
     toast("✅ ব্যাকআপ ডাউনলোড হয়েছে");
   }catch(e){toast("❌ ব্যাকআপ ব্যর্থ","#dc2626");}
 }
-  try{
-    const data=JSON.stringify(D,null,2);
-    const blob=new Blob([data],{type:"application/json"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    const date=new Date().toISOString().split("T")[0];
-    a.href=url;a.download=`swapnaghuri_backup_${date}.json`;
-    a.click();URL.revokeObjectURL(url);
-    toast("✅ ব্যাকআপ ডাউনলোড হয়েছে");
-  }catch(e){toast("❌ ব্যাকআপ ব্যর্থ","#dc2626");}
-}
 
 function restoreData(event){
   const file=event.target.files[0];
@@ -397,6 +386,8 @@ function buildNav(){
   document.getElementById("mn").innerHTML=mnItems.map(t=>`<button class="mn${t.id===curTab?" on":""}" onclick="${t.id==="more"?"toggleSB()":"goTab('"+t.id+"')"}" id="mn-${t.id}"><span class="mi">${t.icon}</span><span class="ml">${t.label}</span><div class="md"></div></button>`).join("");
 
   const isAd=isA();
+  const brEl=document.getElementById("sb-backup-restore");
+  if(brEl) brEl.style.display = isAd ? "grid" : "none";
   document.getElementById("sb-badge").innerHTML=`<span class="badge" style="background:${isAd?"#fbbf24":"rgba(255,255,255,.15)"};color:${isAd?"#006400":"rgba(255,255,255,.7)"};font-size:10px">${isAd?"👑 অ্যাডমিন":"👁️ ভিউ মোড"}</span>`;
   document.getElementById("tb-badge").innerHTML=`<span class="badge" style="background:${isAd?"#fef08a":"#f0fdf4"};color:${isAd?"#006400":"#1a8a00"};font-size:10px">${isAd?"👑 অ্যাডমিন":"👁️ ভিউ মোড"}</span>`;
   updHdr();
@@ -472,7 +463,39 @@ function pgHome(){
         <div style="font-weight:600;font-size:13px">${gn(l.mid)}</div>${bdg(fmt(l.remaining),"#dc2626","#fee2e2")}
       </div>${pb(pct,pct>50?"#1a8a00":"#d97706")}
       <div style="font-size:10px;color:#94a3b8;text-align:right;margin-top:3px">${pct}% পরিশোধিত</div>
-    </div>`;}).join("")||`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো বকেয়া নেই 🎉</div>`;
+    </div>`;}).join("")||`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো বকেয়া ঋণ নেই 🎉</div>`;
+
+  // ── মোট সম্পদ, মোট দায়, মোট তহবিল (নতুন হিসাব) ──
+  const duesList=getDuesList();
+  const totalDueChada=duesList.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
+  const totalDueLoan=totalDue; // ঋণ বকেয়া (উপরে গণনা করা)
+  const grandTotalAsset=totalAsset+totalInvest+fund+totalDueChada+totalDueLoan;
+  const totalLiability=0; // ভবিষ্যতে পরিশোধযোগ্য দায় — বর্তমানে কোনো বাহ্যিক দায় নথিভুক্ত নেই
+  const grandTotalFund=grandTotalAsset-totalExp;
+
+  const chadaDueRows=duesList.filter(m=>m.totalDue>0).sort((a,b)=>b.totalDue-a.totalDue).map(m=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #f1f5f9">
+      <div style="display:flex;align-items:center;gap:9px">${av(m.name,32)}<span style="font-weight:600;font-size:13px">${m.name}</span></div>
+      ${bdg(fmt(m.totalDue),"#dc2626","#fee2e2")}
+    </div>`).join("")||`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো বকেয়া চাঁদা নেই 🎉</div>`;
+
+  // ── পাই চার্ট: সম্পদ বনাম দায় ──
+  const pieTotal=Math.max(1,grandTotalAsset+totalLiability);
+  const assetPct=Math.round((grandTotalAsset/pieTotal)*100);
+  const liabPct=100-assetPct;
+  const pieChart=`
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;padding:8px 0">
+      <div style="width:140px;height:140px;border-radius:50%;background:conic-gradient(#1a8a00 0% ${assetPct}%, #dc2626 ${assetPct}% 100%);position:relative;flex-shrink:0">
+        <div style="position:absolute;inset:14px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:11px;color:#94a3b8">মোট</div>
+          <div style="font-size:13px;font-weight:800;color:#071a07">${fmt(grandTotalAsset+totalLiability)}</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:#1a8a00;display:inline-block"></span><span style="font-size:12px;color:#475569">সম্পদের ভাগ — <b style="color:#1a8a00">${assetPct}%</b> (${fmt(grandTotalAsset)})</span></div>
+        <div style="display:flex;align-items:center;gap:7px"><span style="width:11px;height:11px;border-radius:3px;background:#dc2626;display:inline-block"></span><span style="font-size:12px;color:#475569">দায়ের ভাগ — <b style="color:#dc2626">${liabPct}%</b> (${fmt(totalLiability)})</span></div>
+      </div>
+    </div>`;
 
   return `
     <div class="hero">
@@ -487,9 +510,28 @@ function pgHome(){
     <div class="grid4" style="margin-bottom:14px">
       ${kpis.map(([i,v,l,c,bg])=>`<div class="kpi" style="background:${bg}"><div class="ki">${i}</div><div class="kv" style="color:${c}">${v}</div><div class="kl">${l}</div></div>`).join("")}
     </div>
+
+    <!-- সম্পদ ও দায়ের সারসংক্ষেপ -->
+    <div class="card" style="margin-bottom:14px">${ch("🏦","সম্পদ ও দায়ের সারসংক্ষেপ","সম্পূর্ণ হিসাব")}
+      <div class="cb">
+        <div class="grid3" style="margin-bottom:14px">
+          <div class="stat-box" style="padding:12px"><div class="sv" style="font-size:15px;color:#1a8a00">${fmt(grandTotalAsset)}</div><div class="sl">মোট সম্পদ</div></div>
+          <div class="stat-box" style="padding:12px"><div class="sv" style="font-size:15px;color:#dc2626">${fmt(totalLiability)}</div><div class="sl">মোট দায় (ভবিষ্যতে পরিশোধযোগ্য)</div></div>
+          <div class="stat-box" style="padding:12px"><div class="sv" style="font-size:15px;color:#006400">${fmt(grandTotalFund)}</div><div class="sl">মোট তহবিল</div></div>
+          <div class="stat-box" style="padding:12px"><div class="sv" style="font-size:15px;color:#d97706">${fmt(totalDueChada)}</div><div class="sl">মোট বকেয়া চাঁদা</div></div>
+          <div class="stat-box" style="padding:12px"><div class="sv" style="font-size:15px;color:#dc2626">${fmt(totalDueLoan)}</div><div class="sl">মোট বকেয়া ঋণ</div></div>
+          <div class="stat-box" style="padding:12px"><div class="sv" style="font-size:15px;color:#0d9488">${fmt(grandTotalAsset-totalLiability)}</div><div class="sl">নীট সম্পদ (সম্পদ − দায়)</div></div>
+        </div>
+        ${pieChart}
+      </div>
+    </div>
+
     <div class="card" style="margin-bottom:14px">${ch("📅",`${BNM[now.getMonth()]} ${now.getFullYear()} — চাঁদার অবস্থা`,`${paidIds.size} জন দিয়েছেন`)}<div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:7px">${memberStatus}</div></div>
     <div class="grid2">
-      <div class="card">${ch("🔴","বকেয়া ঋণ ও চাঁদা","সর্বমোট বকেয়া তালিকা","r")}${pgChadaDues()}</div>
+      <div class="card">${ch("🔴","বকেয়া ঋণ তালিকা","সদস্যভিত্তিক বকেয়া ঋণ","r")}${loanRows}</div>
+      <div class="card">${ch("🟠","বকেয়া চাঁদা তালিকা","সদস্যভিত্তিক বকেয়া চাঁদা","gold")}${chadaDueRows}</div>
+    </div>
+    <div class="grid2" style="margin-top:14px">
       <div class="card">${ch("📊","আর্থিক সংক্ষেপ")}
         ${rw("মোট আয়",fmt(totalInc),"hi")}
         ${rw("মোট ব্যয়",fmt(totalExp))}
@@ -497,6 +539,13 @@ function pgHome(){
         ${rw("মোট সম্পদ",fmt(totalAsset))}
         ${rw("মোট বিনিয়োগ",fmt(totalInvest))}
         ${rw("প্রতি সদস্যের হিস্যা",fmt(fund/Math.max(1,members.length)),"hi")}
+      </div>
+      <div class="card">${ch("🧮","দায় ও তহবিলের বিস্তারিত")}
+        ${rw("মোট সম্পদ",fmt(grandTotalAsset),"hi")}
+        ${rw("মোট দায়",fmt(totalLiability))}
+        ${rw("মোট তহবিল (সম্পদ − ব্যয়)",fmt(grandTotalFund),"hi")}
+        ${rw("মোট বকেয়া চাঁদা",fmt(totalDueChada))}
+        ${rw("মোট বকেয়া ঋণ",fmt(totalDueLoan),"hi")}
       </div>
     </div>`;
 }
@@ -1542,7 +1591,7 @@ function pgDuesSheet() {
     ${filtMonths.map(m=>`<th style="min-width:110px;text-align:center;background:#006400 !important;color:#fff !important;font-size:12px;font-weight:700;padding:10px 8px;white-space:nowrap;border-right:1px solid rgba(255,255,255,.15)">${m.label}</th>`).join("")}
     <th style="background:#006400 !important;color:#86efac !important;min-width:100px;text-align:center;padding:10px 8px;font-size:12px">মোট দেওয়া</th>
     <th style="background:#006400 !important;color:#fca5a5 !important;min-width:100px;text-align:center;padding:10px 8px;font-size:12px">এ বছর বকেয়া</th>
-    <th style="background:#7f1d1d !important;color:#fca5a5 !important;min-width:130px;text-align:center;padding:10px 8px;font-size:12px;white-space:nowrap">সর্বমোট বকেয়া</th>
+    <th style="background:#7f1d1d !important;color:#fca5a5 !important;min-width:170px;text-align:center;padding:10px 8px;font-size:12px;white-space:nowrap">সর্বমোট বকেয়া (শুরু থেকে এখন)</th>
   </tr>`;
 
   const tableRows = members.map(m => {
@@ -1554,17 +1603,13 @@ function pgDuesSheet() {
 
     // শুরু থেকে বর্তমান পর্যন্ত সর্বমোট বকেয়া হিসাব
     let allExp = 0, allPaid = 0;
-    // নভেম্বর ২০২১ থেকে বর্তমান পর্যন্ত সব মাস
-    var _td=new Date(2021,10,1),_tn=new Date();
-    while(_td<=_tn){
-      var _mk=_td.getFullYear()+"-"+String(_td.getMonth()+1).padStart(2,"0");
-      var _sp=spMonths.find(function(s){return s.month===_mk;});
-      allExp+=_sp?_sp.amount:rate;
-      var _p=memberPayments.find(function(p){return p.month===_mk;});
-      if(_p) allPaid+=_p.amount;
-      _td=new Date(_td.getFullYear(),_td.getMonth()+1,1);
-    }
-    var totalAllDue=allExp-allPaid;
+    months.forEach(mon => {
+      const sp = spMonths.find(s=>s.month===mon.key);
+      allExp += sp ? sp.amount : rate;
+      const p = memberPayments.find(p=>p.month===mon.key);
+      if(p) allPaid += p.amount;
+    });
+    const totalAllDue = allExp - allPaid;
 
     const cells = filtMonths.map(mon => {
       const spM = spMonths.find(s=>s.mid==m.id && s.month===mon.key);
@@ -1676,7 +1721,7 @@ function pgDuesSheet() {
     <div class="card">
       ${ch("📋","মাসওয়ারি চাঁদার টেবিল",`${selYear} — ${filtMonths.length} মাস · ${members.length} জন সদস্য`)}
       <div style="overflow-x:auto;padding:0">
-        <table class="tbl" style="min-width:${85*filtMonths.length+380}px">
+        <table class="tbl" style="min-width:${85*filtMonths.length+420}px">
           <thead>${tableHeader}</thead>
           <tbody>${tableRows}</tbody>
           <tfoot>
@@ -2512,18 +2557,26 @@ function pgHealth(){
       <button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="pdfDownload('health')">📄 PDF রিপোর্ট</button>
     </div>
 
-    <!-- বড় স্কোর কার্ড -->
-    <div class="card" style="margin-bottom:14px;text-align:center;padding:30px 20px;background:linear-gradient(135deg,#f0fdf4,#dcfce7)">
-      <div style="font-size:48px;font-weight:900;color:${scoreColor}">${score}</div>
-      <div style="font-size:18px;font-weight:700;margin:6px 0">${scoreLabel}</div>
-      <div style="font-size:13px;color:#64748b">স্বপ্নঘুড়ি সমিতির সামগ্রিক স্বাস্থ্য স্কোর</div>
-      <div style="background:#e2e8f0;border-radius:99px;height:12px;margin:14px auto;max-width:300px;overflow:hidden">
-        <div style="background:${scoreColor};height:100%;width:${score}%;transition:.5s;border-radius:99px"></div>
+    <!-- বড় স্কোর কার্ড — গোলাকার রিং চার্ট -->
+    <div class="card" style="margin-bottom:14px;text-align:center;padding:26px 20px;background:linear-gradient(135deg,#f0fdf4,#dcfce7)">
+      <div style="position:relative;width:160px;height:160px;margin:0 auto">
+        <svg width="160" height="160" viewBox="0 0 160 160" style="transform:rotate(-90deg)">
+          <circle cx="80" cy="80" r="68" fill="none" stroke="#e2e8f0" stroke-width="14"></circle>
+          <circle cx="80" cy="80" r="68" fill="none" stroke="${scoreColor}" stroke-width="14" stroke-linecap="round"
+            stroke-dasharray="${2*Math.PI*68}" stroke-dashoffset="${2*Math.PI*68*(1-score/100)}"
+            style="transition:stroke-dashoffset .6s ease"></circle>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:40px;font-weight:900;color:${scoreColor}">${score}</div>
+          <div style="font-size:11px;color:#64748b">/ ১০০</div>
+        </div>
       </div>
+      <div style="font-size:18px;font-weight:700;margin:10px 0 2px">${scoreLabel}</div>
+      <div style="font-size:13px;color:#64748b">স্বপ্নঘুড়ি সমিতির সামগ্রিক স্বাস্থ্য স্কোর</div>
     </div>
 
-    <!-- সূচকসমূহ -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:14px">
+    <!-- সূচকসমূহ — ৪টি কার্ড ২×২ গ্রিডে -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
       ${indicators.map(ind=>`
         <div class="card" style="padding:16px;text-align:center">
           <div style="font-weight:800;font-size:22px;color:${ind.color}">${ind.value}</div>
@@ -2540,11 +2593,11 @@ function pgHealth(){
       <div style="overflow-x:auto">
         <table class="tbl">
           <thead><tr style="background:#006400">
-            <th style="color:#fff">সদস্য</th>
-            <th style="color:#fff;text-align:right">চাঁদা দিয়েছেন</th>
-            <th style="color:#fff;text-align:right">চাঁদা বকেয়া</th>
-            <th style="color:#fff;text-align:right">ঋণ বকেয়া</th>
-            <th style="color:#fff;text-align:center">স্কোর</th>
+            <th style="color:#fff;white-space:nowrap">সদস্য</th>
+            <th style="color:#fff;text-align:right;white-space:nowrap">চাঁদা দিয়েছেন</th>
+            <th style="color:#fff;text-align:right;white-space:nowrap">চাঁদা বকেয়া</th>
+            <th style="color:#fff;text-align:right;white-space:nowrap">ঋণ বকেয়া</th>
+            <th style="color:#fff;text-align:center;white-space:nowrap">স্কোর</th>
           </thead></tr>
           <tbody>
             ${members.map(m=>{
@@ -2557,11 +2610,11 @@ function pgHealth(){
               const mScore=Math.max(0,Math.round(100-(mDue/mExp*50)-(mLoan>0?20:0)));
               const sc=mScore>=80?"#16a34a":mScore>=60?"#d97706":"#dc2626";
               return `<tr>
-                <td style="font-weight:600">${m.name}</td>
-                <td style="text-align:right;color:#16a34a">${fmt(mPaid)}</td>
-                <td style="text-align:right;color:${mDue>0?"#dc2626":"#16a34a"}">${mDue>0?fmt(mDue):"✅"}</td>
-                <td style="text-align:right;color:${mLoan>0?"#dc2626":"#16a34a"}">${mLoan>0?fmt(mLoan):"✅"}</td>
-                <td style="text-align:center">
+                <td style="font-weight:600;white-space:nowrap">${m.name}</td>
+                <td style="text-align:right;color:#16a34a;white-space:nowrap">${fmt(mPaid)}</td>
+                <td style="text-align:right;color:${mDue>0?"#dc2626":"#16a34a"};white-space:nowrap">${mDue>0?fmt(mDue):"✅"}</td>
+                <td style="text-align:right;color:${mLoan>0?"#dc2626":"#16a34a"};white-space:nowrap">${mLoan>0?fmt(mLoan):"✅"}</td>
+                <td style="text-align:center;white-space:nowrap">
                   <span style="background:${sc};color:#fff;border-radius:6px;padding:3px 10px;font-weight:800;font-size:12px">${mScore}</span>
                 </td>
               </tr>`;
