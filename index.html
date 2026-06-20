@@ -787,8 +787,37 @@ function pgInvest(){
       <div class="stat-box"><div class="sv" style="color:#1a8a00">${fmt(Math.round(i.amount*i.returnRate/100))}</div><div class="sl">প্রত্যাশিত আয় (${i.returnRate}%)</div></div>
     </div>
     ${i.note?`<div style="font-size:12px;color:#64748b;background:#f8fafc;border-radius:8px;padding:8px 10px">${i.note}</div>`:""}
-    ${isA()?`<button onclick="delInvest(${i.id})" style="width:100%;background:none;border:none;color:#94a3b8;font-size:11px;cursor:pointer;margin-top:10px;font-family:inherit">🗑 মুছুন</button>`:""}
+    ${isA()?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="editInvest(${i.id})" style="flex:1;background:#eff6ff;border:none;border-radius:8px;color:#2563eb;font-size:12px;cursor:pointer;padding:7px;font-family:inherit">✏️ সম্পাদনা</button><button onclick="delInvest(${i.id})" style="flex:1;background:#fff1f2;border:none;border-radius:8px;color:#dc2626;font-size:12px;cursor:pointer;padding:7px;font-family:inherit">🗑 মুছুন</button></div>`:""}
   </div></div>`).join("");
+
+  const editModal=`
+    <div id="invest-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center">
+      <div style="background:#fff;border-radius:16px;padding:22px;width:92%;max-width:400px;max-height:90vh;overflow-y:auto">
+        <div style="font-weight:800;font-size:17px;margin-bottom:16px">✏️ বিনিয়োগ সম্পাদনা</div>
+        <input type="hidden" id="ei-id">
+        <div class="field"><label>বিনিয়োগের বিবরণ</label><input type="text" id="ei-title"></div>
+        <div class="field"><label>ধরন</label>
+          <select id="ei-type" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+            ${types.map(t=>`<option>${t}</option>`).join("")}
+          </select>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>পরিমাণ (৳)</label><input type="number" id="ei-amt"></div>
+          <div class="field"><label>প্রত্যাশিত রিটার্ন %</label><input type="number" id="ei-ret"></div>
+        </div>
+        <div class="field"><label>তারিখ</label><input type="date" id="ei-date"></div>
+        <div class="field"><label>অবস্থা</label>
+          <select id="ei-status" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+            <option>সক্রিয়</option><option>মেয়াদোত্তীর্ণ</option><option>সম্পন্ন</option>
+          </select>
+        </div>
+        <div class="field"><label>বিস্তারিত নোট</label><input type="text" id="ei-note"></div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button class="btn btn-g" onclick="saveInvestEdit()" style="flex:1">✅ সেভ করুন</button>
+          <button class="btn btn-outline" onclick="document.getElementById('invest-edit-modal').style.display='none'">বাতিল</button>
+        </div>
+      </div>
+    </div>`;
 
   return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
@@ -801,7 +830,8 @@ function pgInvest(){
     <div class="grid3" style="margin-bottom:14px">
       ${[["📈","মোট বিনিয়োগ",fmt(total),"#d97706","#fffbeb"],["💵","প্রত্যাশিত আয়",fmt(expectedReturn),"#1a8a00","#f0fdf4"],["🏦","বিনিয়োগ সংখ্যা",invs.length+" টি","#1a8a00","#f0fdf4"]].map(([i,l,v,c,bg])=>`<div class="kpi" style="background:${bg};text-align:center"><div class="ki">${i}</div><div class="kv" style="color:${c};font-size:18px">${v}</div><div class="kl">${l}</div></div>`).join("")}
     </div>
-    ${form}<div class="gauto">${cards||`<div style="text-align:center;padding:40px;color:#94a3b8">📈 কোনো বিনিয়োগ নেই</div>`}</div>`;
+    ${form}<div class="gauto">${cards||`<div style="text-align:center;padding:40px;color:#94a3b8">📈 কোনো বিনিয়োগ নেই</div>`}</div>
+    ${editModal}`;
 }
 function addInvest(){
   const t=document.getElementById("iTitle").value,a=Number(document.getElementById("iAmt").value);
@@ -810,6 +840,34 @@ function addInvest(){
   sv();toast("✅ বিনিয়োগ যোগ হয়েছে");goTab("invest");
 }
 function delInvest(id){D.investments=(D.investments||[]).filter(i=>i.id!==id);sv();toast("🗑","#dc2626");goTab("invest");}
+function editInvest(id){
+  const i=(D.investments||[]).find(x=>x.id==id);if(!i)return;
+  document.getElementById("ei-id").value=i.id;
+  document.getElementById("ei-title").value=i.title||"";
+  document.getElementById("ei-type").value=i.type||"জমি";
+  document.getElementById("ei-amt").value=i.amount||0;
+  document.getElementById("ei-ret").value=i.returnRate||0;
+  document.getElementById("ei-date").value=i.date||"";
+  document.getElementById("ei-status").value=i.status||"সক্রিয়";
+  document.getElementById("ei-note").value=i.note||"";
+  document.getElementById("invest-edit-modal").style.display="flex";
+}
+function saveInvestEdit(){
+  const id=Number(document.getElementById("ei-id").value);
+  const t=document.getElementById("ei-title").value.trim();
+  const a=Number(document.getElementById("ei-amt").value);
+  if(!t||!a){toast("⚠️ সব তথ্য দিন","#d97706");return;}
+  D.investments=(D.investments||[]).map(i=>i.id===id?{...i,
+    title:t,
+    type:document.getElementById("ei-type").value,
+    amount:a,
+    returnRate:Number(document.getElementById("ei-ret").value||0),
+    date:document.getElementById("ei-date").value,
+    status:document.getElementById("ei-status").value,
+    note:document.getElementById("ei-note").value
+  }:i);
+  sv();toast("✅ আপডেট হয়েছে");document.getElementById("invest-edit-modal").style.display="none";goTab("invest");
+}
 
 // ══════════════════
 // ASSETS (সম্পদের হিসাব)
