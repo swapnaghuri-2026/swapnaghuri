@@ -659,12 +659,13 @@ function pgHome(){
   const totalInvest=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
   // মোট দায় (বাহ্যিক)
   const totalLiability=(D.liabilities||[]).reduce((s,l)=>s+l.amount,0);
-  // মোট সম্পদ = assets + investments + বিতরণকৃত ঋণ (দায় বাদ)
-  const totalNetAsset=totalAsset+totalInvest+totalDue;
 
   const pinned=(D.notices||[]).find(n=>n.pinned);
   const duesList=getDuesList();
   const totalDueChada=duesList.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
+
+  // মোট সম্পদ = সম্পদ + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা (সব আদায়যোগ্য পাওনা সহ)
+  const totalNetAsset=totalAsset+totalInvest+totalDue+totalDueChada;
 
   const kpis=[
     ["👥",members.length,"মোট সদস্য","#1a8a00","#f0fdf4",""],
@@ -695,9 +696,6 @@ function pgHome(){
       <div style="font-size:10px;color:#94a3b8;text-align:right;margin-top:3px">${pct}% পরিশোধিত</div>
     </div>`;}).join("")||`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো বকেয়া ঋণ নেই 🎉</div>`;
 
-  // ── মোট সম্পদ ও বকেয়ার হিসাব ──
-  const totalDueLoan=totalDue;
-  const grandTotalAsset=totalAsset+totalInvest+Math.max(0,fund)+totalDueChada+totalDueLoan;
 
   const chadaDueRows=duesList.filter(m=>m.totalDue>0).sort((a,b)=>b.totalDue-a.totalDue).map(m=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #f1f5f9">
@@ -712,12 +710,12 @@ function pgHome(){
     {label:"নগদ/ব্যাংক ব্যালেন্স",value:Math.max(0,fund),color:"#1a8a00"},
     {label:"বিনিয়োগ",value:totalInvest,color:"#0d9488"},
     {label:"বকেয়া চাঁদা",value:totalDueChada,color:"#d97706"},
-    {label:"বকেয়া ঋণ",value:totalDueLoan,color:"#dc2626"},
+    {label:"বকেয়া ঋণ",value:totalDue,color:"#dc2626"},
     {label:"স্থাবর সম্পদ",value:fixedAsset,color:"#7c3aed"},
     {label:"অন্যান্য সম্পদ",value:otherAsset,color:"#2563eb"},
     {label:"মোট দায় (−)",value:totalLiability,color:"#be123c"},
   ];
-  const pieGrand=Math.max(1,pieSlices.reduce((s,x)=>s+x.value,0));
+  const pieGrand=Math.max(1,totalNetAsset);
   let cum=0;
   const gradParts=pieSlices.map(s=>{
     const from=cum, pct=(s.value/pieGrand)*100; cum+=pct;
@@ -727,8 +725,8 @@ function pgHome(){
     <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;padding:8px 0">
       <div style="width:150px;height:150px;border-radius:50%;background:conic-gradient(${gradParts});position:relative;flex-shrink:0">
         <div style="position:absolute;inset:16px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <div style="font-size:10px;color:#94a3b8">সর্বমোট</div>
-          <div style="font-size:12px;font-weight:800;color:#071a07">${fmt(pieGrand)}</div>
+          <div style="font-size:10px;color:#94a3b8">মোট সম্পদ</div>
+          <div style="font-size:12px;font-weight:800;color:#071a07">${fmt(totalNetAsset)}</div>
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
@@ -1354,8 +1352,10 @@ function pgBalance(){
   const totalLiability=liabilities.reduce((s,l)=>s+l.amount,0);
   const members=D.members||[];
   const perMember=members.length?fund/members.length:0;
-  // মোট সম্পদ = সব ধরনের সম্পদ (দায় বাদ)
-  const totalNetAsset=totalAsset+totalLoanOut+totalInvest;
+  const duesListB=getDuesList();
+  const totalDueChadaB=duesListB.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
+  // মোট সম্পদ = সম্পদ + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা
+  const totalNetAsset=totalAsset+totalLoanOut+totalInvest+totalDueChadaB;
 
   const liabForm=isA()?`
     <div class="card" style="margin-bottom:12px">${ch("➕","নতুন দায় যোগ করুন","বাহ্যিক দেনা — ব্যক্তি বা প্রতিষ্ঠান","r")}
