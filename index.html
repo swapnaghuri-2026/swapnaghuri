@@ -664,8 +664,8 @@ function pgHome(){
   const duesList=getDuesList();
   const totalDueChada=duesList.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
 
-  // মোট সম্পদ = সম্পদ + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা (সব আদায়যোগ্য পাওনা সহ)
-  const totalNetAsset=totalAsset+totalInvest+totalDue+totalDueChada;
+  // মোট সম্পদ = সম্পদ + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা + নিট তহবিল
+  const totalNetAsset=totalAsset+totalInvest+totalDue+totalDueChada+Math.max(0,fund);
 
   const kpis=[
     ["👥",members.length,"মোট সদস্য","#1a8a00","#f0fdf4",""],
@@ -1388,6 +1388,23 @@ function pgBalance(){
       </div>
     </div>`).join(""):`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো বাহ্যিক দায় নেই ✅</div>`;
 
+  // ── হিসাব ──
+  // মোট আয় (চাঁদা + অন্যান্য আয়)
+  const totalChada=payments.reduce((s,p)=>s+p.amount,0);
+  const totalOtherInc=income.reduce((s,i)=>s+i.amount,0);
+  // সম্পদের উপমোট
+  const fixedAssetTotal=assets.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0);
+  const currentAssetTotal=assets.filter(a=>a.category==="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+  const otherAssetTotal=assets.filter(a=>a.category!=="স্থাবর সম্পদ"&&a.category!=="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+  // মোট সম্পদ = স্থাবর + চলতি + অন্যান্য সম্পদ + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা + সকল আয়
+  // কিন্তু আয় ইতিমধ্যে fund-এ আছে, তাই:
+  // মোট সম্পদ = সম্পদ (সব ক্যাটাগরি) + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা + নিট তহবিল (fund)
+  const totalGrossAsset = totalAsset + totalInvest + totalLoanOut + totalDueChadaB + Math.max(0,fund);
+  // নিট সম্পদ = মোট সম্পদ − বাহ্যিক দায়
+  const netAsset = totalGrossAsset - totalLiability;
+  // প্রতি সদস্যের অংশীদারিত্ব
+  const perMemberShare = members.length ? netAsset/members.length : 0;
+
   return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div><div class="section-title">⚖️ ব্যালেন্স শিট</div></div>
@@ -1396,78 +1413,84 @@ function pgBalance(){
         <button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="pdfDownload('balance')">📄 PDF</button>
       </div>
     </div>
+
     ${liabForm}
-    <div class="card">${ch("🔴","বাহ্যিক দায় (Liabilities)","সংগঠন যাদের কাছে দেনায় আছে","r")}
-      ${liabRows}
-      <div style="background:#fff1f2;border-radius:0 0 14px 14px;padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-weight:800;font-size:14px;color:#dc2626">মোট দায়</span>
-        <span style="font-weight:800;font-size:16px;color:#dc2626">${fmt(totalLiability)}</span>
+
+    <div class="card" style="margin-bottom:14px">
+      ${ch("⚖️","ব্যালেন্স শিট","স্বপ্নঘুড়ি — "+new Date().getFullYear(),"b")}
+      <div class="cb">
+
+        <!-- ১. সম্পদ -->
+        <div style="font-weight:800;font-size:14px;color:#1a8a00;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #dcfce7">📋 সম্পদ (Assets)</div>
+
+        <div style="margin-bottom:10px">
+          <div style="font-weight:700;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">স্থাবর সম্পদ</div>
+          ${assets.filter(a=>a.category==="স্থাবর সম্পদ").map(a=>rw(a.name,fmt(a.value))).join("")||rw("কোনো স্থাবর সম্পদ নেই","৳ ০")}
+          ${rw("উপমোট",fmt(fixedAssetTotal),"hi")}
+        </div>
+
+        <div style="margin-bottom:10px">
+          <div style="font-weight:700;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">চলতি সম্পদ</div>
+          ${assets.filter(a=>a.category==="চলতি সম্পদ").map(a=>rw(a.name,fmt(a.value))).join("")||rw("কোনো চলতি সম্পদ নেই","৳ ০")}
+          ${rw("বিতরণকৃত ঋণ (আদায়যোগ্য)",fmt(totalLoanOut))}
+          ${rw("বকেয়া চাঁদা (আদায়যোগ্য)",fmt(totalDueChadaB))}
+          ${rw("উপমোট",fmt(currentAssetTotal+totalLoanOut+totalDueChadaB),"hi")}
+        </div>
+
+        <div style="margin-bottom:10px">
+          <div style="font-weight:700;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">বিনিয়োগ সম্পদ</div>
+          ${investments.map(i=>rw(i.title,fmt(i.amount))).join("")||rw("কোনো বিনিয়োগ নেই","৳ ০")}
+          ${rw("উপমোট",fmt(totalInvest),"hi")}
+        </div>
+
+        <div style="margin-bottom:10px">
+          <div style="font-weight:700;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">মূলধন ও আয়</div>
+          ${rw("সদস্যদের মোট চাঁদা",fmt(totalChada))}
+          ${rw("অন্যান্য আয়",fmt(totalOtherInc))}
+          ${rw("মোট ব্যয় (বিয়োগ)","-"+fmt(totalExp),"rd-row")}
+          ${rw("নিট তহবিল (ব্যাংক/নগদ)",fmt(Math.max(0,fund)),"hi")}
+        </div>
+
+        <div style="background:#1a8a00;border-radius:9px;padding:12px 16px;margin-bottom:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:800;font-size:15px;color:#fff">সর্বমোট সম্পদ</span>
+            <span style="font-weight:800;font-size:18px;color:#fff">${fmt(totalGrossAsset)}</span>
+          </div>
+        </div>
+
+        <!-- ২. বাহ্যিক দায় -->
+        <div style="font-weight:800;font-size:14px;color:#dc2626;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #fee2e2">🔴 বাহ্যিক দায় (Liabilities)</div>
+        ${liabilities.length?liabilities.map(l=>rw(l.name+" ("+l.type+")",fmt(l.amount))).join(""):rw("কোনো বাহ্যিক দায় নেই","৳ ০")}
+        ${rw("মোট বাহ্যিক দায়",fmt(totalLiability),"rd-row")}
+
+        <div style="background:#dc2626;border-radius:9px;padding:12px 16px;margin-bottom:18px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:800;font-size:15px;color:#fff">নিট সম্পদ (সম্পদ − দায়)</span>
+            <span style="font-weight:800;font-size:18px;color:#fff">${fmt(netAsset)}</span>
+          </div>
+        </div>
+
+        <!-- ৩. সদস্যভিত্তিক অংশীদারিত্ব -->
+        <div style="font-weight:800;font-size:14px;color:#7c3aed;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #ede9fe">👥 সদস্যভিত্তিক অংশীদারিত্ব</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">নিট সম্পদ (${fmt(netAsset)}) ÷ ${members.length} জন সদস্য</div>
+        ${members.map(m=>rw(m.name,fmt(perMemberShare))).join("")||rw("কোনো সদস্য নেই","৳ ০")}
+        <div style="background:linear-gradient(135deg,#5b21b6,#7c3aed);border-radius:9px;padding:12px 16px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:800;font-size:14px;color:#fff">প্রতি সদস্যের অংশ</span>
+            <span style="font-weight:800;font-size:18px;color:#fff">${fmt(perMemberShare)}</span>
+          </div>
+        </div>
+
       </div>
     </div>
-    <div class="card">${ch("⚖️","ব্যালেন্স শিট","স্বপ্নঘুড়ি — "+new Date().getFullYear(),"b")}
-    <div class="cb">
-      <div class="grid2">
-        <!-- ASSETS -->
-        <div>
-          <div style="font-weight:800;font-size:15px;color:#1a8a00;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #dcfce7">📋 সম্পদ (Assets)</div>
-          <div style="margin-bottom:8px">
-            <div style="font-weight:700;font-size:12px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">স্থাবর সম্পদ</div>
-            ${assets.filter(a=>a.category==="স্থাবর সম্পদ").map(a=>`${rw(a.name,fmt(a.value))}`).join("")}
-            ${rw("উপমোট",fmt(assets.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0)),"hi")}
-          </div>
-          <div style="margin-bottom:8px">
-            <div style="font-weight:700;font-size:12px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">চলতি সম্পদ</div>
-            ${assets.filter(a=>a.category==="চলতি সম্পদ").map(a=>`${rw(a.name,fmt(a.value))}`).join("")}
-            ${rw("বিতরণকৃত ঋণ (আদায়যোগ্য)",fmt(totalLoanOut))}
-            ${rw("উপমোট",fmt(assets.filter(a=>a.category==="চলতি সম্পদ").reduce((s,a)=>s+a.value,0)+totalLoanOut),"hi")}
-          </div>
-          <div style="margin-bottom:8px">
-            <div style="font-weight:700;font-size:12px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">বিনিয়োগ সম্পদ</div>
-            ${investments.map(i=>`${rw(i.title,fmt(i.amount))}`).join("")}
-            ${rw("উপমোট",fmt(totalInvest),"hi")}
-          </div>
-          <div style="background:#f0fdf4;border-radius:9px;padding:10px 16px;margin-top:8px">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-weight:800;font-size:14px;color:#006400">সর্বমোট সম্পদ</span>
-              <span style="font-weight:800;font-size:16px;color:#006400">${fmt(totalNetAsset)}</span>
-            </div>
-          </div>
-        </div>
-        <!-- LIABILITIES + EQUITY -->
-        <div>
-          <div style="font-weight:800;font-size:15px;color:#dc2626;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #fee2e2">📋 দায় ও মূলধন</div>
-          <div style="margin-bottom:8px">
-            <div style="font-weight:700;font-size:12px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">বাহ্যিক দায় (Liabilities)</div>
-            ${liabilities.length?liabilities.map(l=>`${rw(l.name+" ("+l.type+")",fmt(l.amount))}`).join(""):rw("কোনো দায় নেই","৳ ০")}
-            ${rw("মোট বাহ্যিক দায়",fmt(totalLiability),"rd-row")}
-          </div>
-          <div style="margin-bottom:8px">
-            <div style="font-weight:700;font-size:12px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">সদস্যদের মূলধন (Equity)</div>
-            ${rw("সদস্যদের মোট চাঁদা",fmt(payments.reduce((s,p)=>s+p.amount,0)))}
-            ${rw("অন্যান্য আয়",fmt(income.reduce((s,i)=>s+i.amount,0)))}
-            ${rw("বিনিয়োগ মূলধন",fmt(totalInvest))}
-            ${rw("মোট ব্যয় (বিয়োগ)","-"+fmt(totalExp),"rd-row")}
-            ${rw("নিট তহবিল",fmt(fund),"hi")}
-          </div>
-          <div style="margin-bottom:8px">
-            <div style="font-weight:700;font-size:12px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">প্রতি সদস্যের হিসাব</div>
-            ${members.map(m=>`${rw(m.name,fmt(perMember))}`).join("")}
-          </div>
-          <div style="background:#f0fdf4;border-radius:9px;padding:10px 16px;margin-top:8px">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-weight:800;font-size:14px;color:#1a8a00">মোট দায় + মূলধন</span>
-              <span style="font-weight:800;font-size:16px;color:#1a8a00">${fmt(totalLiability+totalInvest+fund)}</span>
-            </div>
-          </div>
-        </div>
+
+    <!-- সারসংক্ষেপ -->
+    <div style="background:linear-gradient(135deg,#006400,#1a8a00);border-radius:13px;padding:16px 18px">
+      <div style="color:rgba(255,255,255,.7);font-size:12px;margin-bottom:10px;font-weight:700">📊 সারসংক্ষেপ</div>
+      <div class="grid3">
+        ${[["সর্বমোট সম্পদ",fmt(totalGrossAsset),"#fff"],["মোট দায় (−)",fmt(totalLiability),"#fca5a5"],["নিট সম্পদ",fmt(netAsset),"#bbf7d0"]].map(([l,v,c])=>`<div><div style="color:rgba(255,255,255,.6);font-size:10px;margin-bottom:3px">${l}</div><div style="color:${c};font-weight:800;font-size:15px">${v}</div></div>`).join("")}
       </div>
-      <div style="background:linear-gradient(135deg,#006400,#1a8a00);border-radius:11px;padding:14px 18px;margin-top:14px">
-        <div style="color:rgba(255,255,255,.7);font-size:12px;margin-bottom:6px">সারসংক্ষেপ</div>
-        <div class="grid3">
-          ${[["সর্বমোট সম্পদ",fmt(totalNetAsset)],["মোট দায়",fmt(totalLiability)],["নিট মূল্য (সম্পদ − দায়)",fmt(totalNetAsset-totalLiability)]].map(([l,v],i)=>`<div><div style="color:rgba(255,255,255,.6);font-size:11px">${l}</div><div style="color:${i===1?"#fca5a5":"#fff"};font-weight:800;font-size:16px">${v}</div></div>`).join("")}
-        </div>
-      </div>
-    </div></div>`;
+    </div>`;
 }
 
 function addLiability(){
