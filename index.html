@@ -2105,6 +2105,26 @@ function pgDuesSheet() {
             </div>
             <button class="btn btn-g btn-sm" onclick="addSpecialMonth()">যোগ</button>
           </div>
+          <!-- বিশেষ চাঁদার তালিকা -->
+          ${(D.specialMonths||[]).length?`
+          <div style="margin-top:12px">
+            <div style="font-weight:700;font-size:12px;color:#64748b;margin-bottom:6px">📋 সকল বিশেষ চাঁদার তালিকা</div>
+            <div style="overflow-x:auto"><table class="tbl">
+              <thead><tr><th>সদস্য</th><th>মাস</th><th>পরিমাণ</th><th></th></tr></thead>
+              <tbody>
+                ${(D.specialMonths||[]).slice().sort((a,b)=>b.month.localeCompare(a.month)).map(s=>`
+                <tr>
+                  <td style="font-weight:600">${gn(s.mid)}</td>
+                  <td>${s.month}</td>
+                  <td style="font-weight:700;color:#1a8a00">${fmt(s.amount)}</td>
+                  <td style="display:flex;gap:4px">
+                    <button class="btn btn-sm" style="padding:3px 8px;background:#dbeafe;color:#1d4ed8" onclick="editSpecialMonth(${s.id})">✏️</button>
+                    <button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delSpecialMonth(${s.id})">🗑</button>
+                  </td>
+                </tr>`).join("")}
+              </tbody>
+            </table></div>
+          </div>`:""}
         </div>
       </div>
     </div>` : "";
@@ -2333,12 +2353,33 @@ function addSpecialMonth() {
   const amt = Number(document.getElementById("sp-amt").value);
   if(!mid||!month||!amt) { toast("⚠️ সব তথ্য দিন","#d97706"); return; }
   D.specialMonths = [...(D.specialMonths||[])];
-  // Remove existing if any
   D.specialMonths = D.specialMonths.filter(s=>!(s.mid==mid&&s.month===month));
   D.specialMonths.push({id:Date.now(), mid:Number(mid), month, amount:amt});
   logActivity("rate", `${gn(mid)}-এর জন্য ${month} মাসে বিশেষ চাঁদা ${fmt(amt)} নির্ধারণ করা হয়েছে`);
   sv(); toast("✅ বিশেষ মাস যোগ হয়েছে"); goTab("duessheet");
 }
+
+function editSpecialMonth(id){
+  const s=(D.specialMonths||[]).find(x=>x.id===id);
+  if(!s)return;
+  const newAmt=prompt(`${gn(s.mid)} — ${s.month}\nবর্তমান: ${fmt(s.amount)}\n\nনতুন পরিমাণ লিখুন:`,s.amount);
+  if(newAmt===null)return;
+  const amt=Number(newAmt);
+  if(!amt||amt<0){toast("⚠️ সঠিক পরিমাণ দিন","#d97706");return;}
+  s.amount=amt;
+  logActivity("rate",`${gn(s.mid)}-এর ${s.month} বিশেষ চাঁদা ${fmt(amt)}-তে আপডেট হয়েছে`);
+  sv();toast("✅ আপডেট হয়েছে");goTab("duessheet");
+}
+
+function delSpecialMonth(id){
+  const s=(D.specialMonths||[]).find(x=>x.id===id);
+  if(!s)return;
+  if(!confirm(`${gn(s.mid)}-এর ${s.month} মাসের বিশেষ চাঁদা (${fmt(s.amount)}) মুছবেন?`))return;
+  D.specialMonths=(D.specialMonths||[]).filter(x=>x.id!==id);
+  logActivity("rate",`${gn(s.mid)}-এর ${s.month} বিশেষ চাঁদা মুছে ফেলা হয়েছে`);
+  sv();toast("🗑 মুছে গেছে","#dc2626");goTab("duessheet");
+}
+
 
 function addDue(mid, month, defaultAmt) {
   document.getElementById("dm-title").textContent = "চাঁদা যোগ করুন";
