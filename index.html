@@ -314,7 +314,7 @@ const SEED = {
 // ══════════════════
 // STATE
 // ══════════════════
-let role=null, curTab="home", D=null;
+let role=sessionStorage.getItem("sg_role")||null, curTab="home", D=null;
 const LS={get:k=>{try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
 const fmt=n=>"৳"+Number(n||0).toLocaleString("bn-BD");
 const now=new Date();
@@ -383,6 +383,7 @@ function login(r){
       }
     }
     role=r;
+    sessionStorage.setItem("sg_role",r);
     try{ D=LS.get(SK)||JSON.parse(JSON.stringify(SEED)); }catch(e){ D=JSON.parse(JSON.stringify(SEED)); }
     if(!D.rateHistory) D.rateHistory=[];if(!D.liabilities) D.liabilities=[];
     if(!D.activityLog) D.activityLog=[];
@@ -419,7 +420,7 @@ function login(r){
     alert("Error: "+err.message);
   }
 }
-function logout(){role=null;document.getElementById("ls").style.display="flex";document.getElementById("app").style.display="none";document.getElementById("vbar").style.display="none";document.getElementById("pw").value="";document.getElementById("pwerr").style.display="none";document.getElementById("fab-btn").classList.remove("show");closeFab();}
+function logout(){role=null;sessionStorage.removeItem("sg_role");document.getElementById("ls").style.display="flex";document.getElementById("app").style.display="none";document.getElementById("vbar").style.display="none";document.getElementById("pw").value="";document.getElementById("pwerr").style.display="none";document.getElementById("fab-btn").classList.remove("show");closeFab();}
 
 function backupData(){
   try{
@@ -3413,6 +3414,27 @@ pdfDownload=function(type){
   };
   document.head.appendChild(s1);
 })();
+// ── Auto-login on reload ──
+window.addEventListener("DOMContentLoaded",function(){
+  const savedRole=sessionStorage.getItem("sg_role");
+  if(savedRole){
+    try{
+      role=savedRole;
+      D=LS.get(SK)||JSON.parse(JSON.stringify(SEED));
+      if(!D.rateHistory)D.rateHistory=[];
+      if(!D.activityLog)D.activityLog=[];
+      if(!D.liabilities)D.liabilities=[];
+      document.getElementById("ls").style.display="none";
+      document.getElementById("app").style.display="flex";
+      document.getElementById("fab-btn").classList.add("show");
+      if(savedRole!=="admin") document.getElementById("vbar").style.display="block";
+      buildNav();
+      goTab("home");
+    }catch(e){
+      sessionStorage.removeItem("sg_role");
+    }
+  }
+});
 </script>
 </body>
 </html>
