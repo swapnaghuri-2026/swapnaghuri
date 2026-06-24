@@ -297,6 +297,7 @@ const TABS = [
     {id:"news",icon:"📰",label:"নিউজ ফিড"},
     {id:"meeting",icon:"📅",label:"মিটিং"},
     {id:"report",icon:"📊",label:"রিপোর্ট সেন্টার"},
+    {id:"history",icon:"🕘",label:"কার্যক্রম ইতিহাস"},
     {id:"rules",icon:"📜",label:"নিয়মকানুন"},
     {id:"gallery",icon:"🖼️",label:"গ্যালারি"},
     {id:"opinion",icon:"💬",label:"মতামত"},
@@ -306,7 +307,8 @@ const TABS = [
 const SEED = {
   members:[],payments:[],loans:[],investments:[],assets:[],
   expenses:[],income:[],notices:[],news:[],goals:[],
-  opinions:[],gallery:[],votes:[],meetings:[],specialMonths:[]
+  opinions:[],gallery:[],votes:[],meetings:[],specialMonths:[],
+  rateHistory:[],activityLog:[]
 };
 
 // ══════════════════
@@ -338,6 +340,36 @@ const GR={g:"linear-gradient(135deg,#006400,#1a8a00)",r:"linear-gradient(135deg,
 const ch=(ic,ti,su="",g="g")=>`<div class="ch" style="background:${GR[g]}"><span class="ci">${ic}</span><div><div class="ct">${ti}</div>${su?`<div class="cs">${su}</div>`:""}</div></div>`;
 const rw=(l,v,cls="")=>`<div class="row ${cls}"><span class="rl">${l}</span><span class="rv">${v}</span></div>`;
 
+// ══════════════════════════════════════════
+// কার্যক্রম লগ (Activity / Audit Log)
+// ══════════════════════════════════════════
+function logActivity(type, text){
+  D.activityLog = [...(D.activityLog||[]), {
+    id: Date.now()+"_"+Math.random().toString(36).slice(2,7),
+    type: type,
+    text: text,
+    by: isA() ? "অ্যাডমিন" : "ভিউয়ার",
+    at: new Date().toISOString()
+  }];
+}
+
+// ══════════════════════════════════════════
+// চাঁদার হার ব্যবস্থাপনা (Rate History System)
+// সবসময় একটা current active rate থাকবে; নতুন হার effective date
+// থেকে কার্যকর হয়, আগের হিসাব পুরাতন হারেই থাকে।
+// সদস্য-নির্দিষ্ট হার থাকলে তা গ্লোবাল হারের চেয়ে অগ্রাধিকার পায়।
+// ══════════════════════════════════════════
+function getApplicableRate(mid, monthKey){
+  const hist = (D.rateHistory||[]).filter(r => r.effectiveFrom <= monthKey);
+  const memberEntries = hist.filter(r => r.mid != null && r.mid == mid).sort((a,b)=>a.effectiveFrom.localeCompare(b.effectiveFrom));
+  if(memberEntries.length) return memberEntries[memberEntries.length-1].rate;
+  const globalEntries = hist.filter(r => r.mid == null).sort((a,b)=>a.effectiveFrom.localeCompare(b.effectiveFrom));
+  if(globalEntries.length) return globalEntries[globalEntries.length-1].rate;
+  const m = (D.members||[]).find(x=>x.id==mid);
+  return m ? (m.monthlyRate||2000) : 2000;
+}
+
+
 // ══════════════════
 // AUTH
 // ══════════════════
@@ -352,6 +384,8 @@ function login(r){
     }
     role=r;
     try{ D=LS.get(SK)||JSON.parse(JSON.stringify(SEED)); }catch(e){ D=JSON.parse(JSON.stringify(SEED)); }
+    if(!D.rateHistory) D.rateHistory=[];
+    if(!D.activityLog) D.activityLog=[];
     document.getElementById("ls").style.display="none";
     document.getElementById("app").style.display="flex";
     document.getElementById("fab-btn").classList.add("show");
@@ -366,7 +400,7 @@ function login(r){
             try{
               if(snap.exists()){
                 var fd=JSON.parse(snap.val());
-                if(fd&&fd.members){D=fd;LS.set(SK,D);if(curTab)goTab(curTab);}
+                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];LS.set(SK,D);if(curTab)goTab(curTab);}
               }
             }catch(e){}
           });
@@ -374,7 +408,7 @@ function login(r){
             try{
               if(snap.exists()&&role){
                 var fd=JSON.parse(snap.val());
-                if(fd&&fd.members){D=fd;LS.set(SK,D);if(curTab)goTab(curTab);}
+                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];LS.set(SK,D);if(curTab)goTab(curTab);}
               }
             }catch(e){}
           });
@@ -409,6 +443,8 @@ function restoreData(event){
     try{
       const data=JSON.parse(e.target.result);
       if(!data.members){toast("❌ ভুল ফাইল! সঠিক backup ফাইল দিন","#dc2626");return;}
+      if(!data.rateHistory) data.rateHistory=[];
+      if(!data.activityLog) data.activityLog=[];
       D=data;
       sv();
       toast("✅ ডেটা রিস্টোর হয়েছে");
@@ -456,11 +492,15 @@ function calcFund(){
 }
 function calcHealthScore(){
   const members=D.members||[], payments=D.payments||[], loans=D.loans||[], goals=D.goals||[];
-  const totalExp2=(()=>{
-    const allMonths=[];let d=new Date(2021,10,1);const now2=new Date();
-    while(d<=now2){allMonths.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d=new Date(d.getFullYear(),d.getMonth()+1,1);}
-    return members.reduce((s,m)=>s+allMonths.length*(m.monthlyRate||2000),0);
-  })();
+  const allMonthsH=[];let dh=new Date(2021,10,1);const nowH=new Date();
+  while(dh<=nowH){allMonthsH.push(`${dh.getFullYear()}-${String(dh.getMonth()+1).padStart(2,"0")}`);dh=new Date(dh.getFullYear(),dh.getMonth()+1,1);}
+  const totalExp2=members.reduce((s,m)=>{
+    const spM=(D.specialMonths||[]).filter(x=>x.mid==m.id);
+    return s+allMonthsH.reduce((s2,mon)=>{
+      const sp=spM.find(x=>x.month===mon);
+      return s2+(sp?sp.amount:getApplicableRate(m.id,mon));
+    },0);
+  },0);
   const totalPaid2=payments.reduce((s,p)=>s+p.amount,0);
   const collectionRate=totalExp2?Math.round(totalPaid2/totalExp2*100):0;
   const loanDueTotal=loans.reduce((s,l)=>s+l.remaining,0);
@@ -484,7 +524,7 @@ function goTab(id){
   closeSB();
   const c=document.getElementById("content");
   c.className="content pa";c.innerHTML="";
-  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport};
+  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory};
   if(pages[id])c.innerHTML=pages[id]();
   updHdr();
 }
@@ -829,10 +869,17 @@ function pgSavings(){
 function addPayment(){
   const mid=document.getElementById("pMem").value,amt=Number(document.getElementById("pAmt").value);
   if(!mid||!amt)return;
-  D.payments=[...(D.payments||[]),{id:Date.now(),mid:Number(mid),amount:amt,month:document.getElementById("pMon").value,note:document.getElementById("pNote").value}];
+  const mon=document.getElementById("pMon").value;
+  D.payments=[...(D.payments||[]),{id:Date.now(),mid:Number(mid),amount:amt,month:mon,note:document.getElementById("pNote").value}];
+  logActivity("payment",`${gn(mid)} — ${mon} মাসের চাঁদা ${fmt(amt)} জমা দিয়েছেন`);
   sv();toast("✅ চাঁদা সেভ হয়েছে");goTab("savings");
 }
-function delPay(id){D.payments=(D.payments||[]).filter(p=>p.id!==id);sv();toast("🗑","#dc2626");goTab("savings");}
+function delPay(id){
+  const p=(D.payments||[]).find(x=>x.id===id);
+  D.payments=(D.payments||[]).filter(p=>p.id!==id);
+  if(p) logActivity("payment",`${gn(p.mid)} — ${p.month} মাসের চাঁদা ${fmt(p.amount)} মুছে ফেলা হয়েছে`);
+  sv();toast("🗑","#dc2626");goTab("savings");
+}
 
 // ══════════════════
 // LOANS
@@ -936,12 +983,21 @@ function addLoan(){
   const mid=document.getElementById("lMem").value,amt=Number(document.getElementById("lAmt").value);
   if(!mid||!amt)return;
   D.loans=[...(D.loans||[]),{id:Date.now(),mid:Number(mid),principal:amt,remaining:amt,rate:Number(document.getElementById("lRate").value),installment:Number(document.getElementById("lInst").value||0),date:document.getElementById("lDate").value,note:document.getElementById("lNote").value}];
+  logActivity("loan",`${gn(mid)} — নতুন ঋণ ${fmt(amt)} টাকা বিতরণ করা হয়েছে`);
   sv();toast("✅ ঋণ যোগ হয়েছে");goTab("loans");
 }
-function delLoan(id){if(!confirm("এই ঋণ মুছবেন?"))return;D.loans=(D.loans||[]).filter(l=>l.id!==id);sv();toast("🗑 ঋণ মুছে গেছে","#dc2626");goTab("loans");}
+function delLoan(id){
+  if(!confirm("এই ঋণ মুছবেন?"))return;
+  const l=(D.loans||[]).find(x=>x.id===id);
+  D.loans=(D.loans||[]).filter(l=>l.id!==id);
+  if(l) logActivity("loan",`${gn(l.mid)} — ${fmt(l.principal)} টাকার ঋণ রেকর্ড মুছে ফেলা হয়েছে`);
+  sv();toast("🗑 ঋণ মুছে গেছে","#dc2626");goTab("loans");
+}
 function repay(id){
   const amt=Number(document.getElementById("rp"+id).value);if(!amt)return;
+  const l=(D.loans||[]).find(x=>x.id===id);
   D.loans=(D.loans||[]).map(l=>l.id===id?{...l,remaining:Math.max(0,l.remaining-amt)}:l);
+  if(l) logActivity("loan",`${gn(l.mid)} — ঋণের কিস্তি ${fmt(amt)} পরিশোধ করেছেন`);
   sv();toast("✅ কিস্তি পরিশোধ হয়েছে");goTab("loans");
 }
 function editLoan(id){
@@ -970,6 +1026,7 @@ function saveLoanEdit(){
     date:document.getElementById("el-date").value,
     note:document.getElementById("el-note").value
   }:l);
+  logActivity("loan",`ঋণ আইডি ${id} সম্পাদনা করা হয়েছে`);
   sv();toast("✅ ঋণ আপডেট হয়েছে");closeLoanEdit();goTab("loans");
 }
 function closeLoanEdit(){
@@ -1061,9 +1118,15 @@ function addInvest(){
   const t=document.getElementById("iTitle").value,a=Number(document.getElementById("iAmt").value);
   if(!t||!a)return;
   D.investments=[...(D.investments||[]),{id:Date.now(),title:t,amount:a,type:document.getElementById("iType").value,returnRate:Number(document.getElementById("iRet").value||0),date:document.getElementById("iDate").value,note:document.getElementById("iNote").value,status:"সক্রিয়"}];
+  logActivity("invest",`নতুন বিনিয়োগ যোগ হয়েছে: ${t} — ${fmt(a)}`);
   sv();toast("✅ বিনিয়োগ যোগ হয়েছে");goTab("invest");
 }
-function delInvest(id){D.investments=(D.investments||[]).filter(i=>i.id!==id);sv();toast("🗑","#dc2626");goTab("invest");}
+function delInvest(id){
+  const i=(D.investments||[]).find(x=>x.id===id);
+  D.investments=(D.investments||[]).filter(i=>i.id!==id);
+  if(i) logActivity("invest",`বিনিয়োগ মুছে ফেলা হয়েছে: ${i.title} — ${fmt(i.amount)}`);
+  sv();toast("🗑","#dc2626");goTab("invest");
+}
 function editInvest(id){
   const i=(D.investments||[]).find(x=>x.id==id);if(!i)return;
   document.getElementById("ei-id").value=i.id;
@@ -1090,6 +1153,7 @@ function saveInvestEdit(){
     status:document.getElementById("ei-status").value,
     note:document.getElementById("ei-note").value
   }:i);
+  logActivity("invest",`বিনিয়োগ সম্পাদনা হয়েছে: ${t}`);
   sv();toast("✅ আপডেট হয়েছে");document.getElementById("invest-edit-modal").style.display="none";goTab("invest");
 }
 
@@ -1101,6 +1165,14 @@ function pgAssets(){
   const cats=["স্থাবর সম্পদ","চলতি সম্পদ","বিনিয়োগ সম্পদ","অস্থাবর সম্পদ","অন্যান্য"];
   const catColors={"স্থাবর সম্পদ":"#1a8a00","চলতি সম্পদ":"#1a8a00","বিনিয়োগ সম্পদ":"#d97706","অস্থাবর সম্পদ":"#7c3aed","অন্যান্য":"#64748b"};
   const total=assets.reduce((s,a)=>s+a.value,0);
+
+  // ── সকল সম্পদের সমষ্টি: তালিকাভুক্ত সম্পদ + তহবিল নগদ + বিনিয়োগ + আদায়যোগ্য (ঋণ+চাঁদা বকেয়া) ──
+  const fund=calcFund();
+  const totalInvestAll=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
+  const totalLoanReceivable=(D.loans||[]).reduce((s,l)=>s+l.remaining,0);
+  const duesListAll=getDuesList();
+  const totalDueReceivable=duesListAll.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
+  const grandTotalAssets=total+Math.max(0,fund)+totalInvestAll+totalLoanReceivable+totalDueReceivable;
 
   // Group by category
   const grouped={};
@@ -1140,11 +1212,23 @@ function pgAssets(){
         <button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="pdfDownload('assets')">📄 PDF</button>
       </div>
     </div>
+
+    <!-- ── সর্বমোট সম্পদ: সব ধরনের সম্পদ একসাথে ── -->
+    <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#050d14,#006400,#006400)">
+      <div style="padding:18px 20px;color:#fff">
+        <div style="font-size:12px;opacity:.65;margin-bottom:4px">🏦 সর্বমোট সম্পদ (নগদ + সম্পদ + বিনিয়োগ + আদায়যোগ্য)</div>
+        <div style="font-size:28px;font-weight:900;margin-bottom:12px">${fmt(grandTotalAssets)}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">
+          ${[["তালিকাভুক্ত সম্পদ",fmt(total)],["তহবিল নগদ",fmt(Math.max(0,fund))],["বিনিয়োগ",fmt(totalInvestAll)],["আদায়যোগ্য ঋণ",fmt(totalLoanReceivable)],["বকেয়া চাঁদা",fmt(totalDueReceivable)]].map(([l,v])=>`<div style="background:rgba(255,255,255,.1);border-radius:9px;padding:8px 10px"><div style="font-size:10px;opacity:.6">${l}</div><div style="font-weight:800;font-size:14px">${v}</div></div>`).join("")}
+        </div>
+      </div>
+    </div>
+
     <div class="grid4" style="margin-bottom:14px">
-      ${[["🏛️","মোট সম্পদ",fmt(total),"#1a8a00","#f0fdf4"],
+      ${[["🏛️","তালিকাভুক্ত সম্পদ",fmt(total),"#1a8a00","#f0fdf4"],
         ["🏠","স্থাবর",fmt((grouped["স্থাবর সম্পদ"]||[]).reduce((s,a)=>s+a.value,0)),"#7c3aed","#f5f3ff"],
         ["💰","চলতি",fmt((grouped["চলতি সম্পদ"]||[]).reduce((s,a)=>s+a.value,0)),"#1a8a00","#f0fdf4"],
-        ["📈","বিনিয়োগ",fmt((grouped["বিনিয়োগ সম্পদ"]||[]).reduce((s,a)=>s+a.value,0)),"#d97706","#fffbeb"],
+        ["📈","বিনিয়োগ সম্পদ",fmt((grouped["বিনিয়োগ সম্পদ"]||[]).reduce((s,a)=>s+a.value,0)),"#d97706","#fffbeb"],
       ].map(([i,l,v,c,bg])=>`<div class="kpi" style="background:${bg};text-align:center"><div class="ki">${i}</div><div class="kv" style="color:${c};font-size:17px">${v}</div><div class="kl">${l}</div></div>`).join("")}
     </div>
     ${form}${catSummary}`;
@@ -1153,9 +1237,15 @@ function addAsset(){
   const n=document.getElementById("aName").value,v=Number(document.getElementById("aVal").value);
   if(!n||!v)return;
   D.assets=[...(D.assets||[]),{id:Date.now(),name:n,category:document.getElementById("aCat").value,value:v,date:document.getElementById("aDate").value,note:document.getElementById("aNote").value}];
+  logActivity("asset",`নতুন সম্পদ যোগ হয়েছে: ${n} — ${fmt(v)}`);
   sv();toast("✅ সম্পদ যোগ হয়েছে");goTab("assets");
 }
-function delAsset(id){D.assets=(D.assets||[]).filter(a=>a.id!==id);sv();toast("🗑","#dc2626");goTab("assets");}
+function delAsset(id){
+  const a=(D.assets||[]).find(x=>x.id===id);
+  D.assets=(D.assets||[]).filter(a=>a.id!==id);
+  if(a) logActivity("asset",`সম্পদ মুছে ফেলা হয়েছে: ${a.name} — ${fmt(a.value)}`);
+  sv();toast("🗑","#dc2626");goTab("assets");
+}
 
 // ══════════════════
 // INCOME & EXPENSE
@@ -1219,16 +1309,28 @@ function addIncome(){
   const t=document.getElementById("iDesc").value,a=Number(document.getElementById("iAmt2").value);
   if(!t||!a)return;
   D.income=[...(D.income||[]),{id:Date.now(),title:t,amount:a,category:document.getElementById("iCat").value,date:document.getElementById("iDate2").value,note:document.getElementById("iNote2").value}];
+  logActivity("income",`নতুন আয় যোগ হয়েছে: ${t} — ${fmt(a)}`);
   sv();toast("✅ আয় যোগ হয়েছে");goTab("expenses");
 }
 function addExpense(){
   const t=document.getElementById("eDesc").value,a=Number(document.getElementById("eAmt2").value);
   if(!t||!a)return;
   D.expenses=[...(D.expenses||[]),{id:Date.now(),title:t,amount:a,category:document.getElementById("eCat").value,date:document.getElementById("eDate2").value,note:document.getElementById("eNote2").value}];
+  logActivity("expense",`নতুন ব্যয় যোগ হয়েছে: ${t} — ${fmt(a)}`);
   sv();toast("✅ ব্যয় যোগ হয়েছে");goTab("expenses");
 }
-function delIncome(id){D.income=(D.income||[]).filter(i=>i.id!==id);sv();toast("🗑","#dc2626");goTab("expenses");}
-function delExp(id){D.expenses=(D.expenses||[]).filter(e=>e.id!==id);sv();toast("🗑","#dc2626");goTab("expenses");}
+function delIncome(id){
+  const i=(D.income||[]).find(x=>x.id===id);
+  D.income=(D.income||[]).filter(i=>i.id!==id);
+  if(i) logActivity("income",`আয় মুছে ফেলা হয়েছে: ${i.title} — ${fmt(i.amount)}`);
+  sv();toast("🗑","#dc2626");goTab("expenses");
+}
+function delExp(id){
+  const e=(D.expenses||[]).find(x=>x.id===id);
+  D.expenses=(D.expenses||[]).filter(e=>e.id!==id);
+  if(e) logActivity("expense",`ব্যয় মুছে ফেলা হয়েছে: ${e.title} — ${fmt(e.amount)}`);
+  sv();toast("🗑","#dc2626");goTab("expenses");
+}
 
 // ══════════════════
 // BALANCE SHEET
@@ -1336,7 +1438,7 @@ function pgNotice(){
     <button type="button" onclick="fmtText('ol')" style="background:#fff;border:1px solid #ddd;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px">১. তালিকা</button>
     <button type="button" onclick="fmtText('hr')" style="background:#fff;border:1px solid #ddd;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px">─────</button>
   </div>
-  <textarea id="ntB" placeholder="বিস্তারিত লিখুন...&#10;&#10;**굵은** লেখার জন্য ** দিয়ে ঘিরুন&#10;• বুলেটের জন্য • দিয়ে শুরু করুন" style="width:100%;min-height:120px;padding:10px 13px;border:none;font-size:14px;font-family:inherit;outline:none;resize:vertical"></textarea>
+  <textarea id="ntB" placeholder="বিস্তারিত লিখুন...&#10;&#10;**গাঢ়** লেখার জন্য ** দিয়ে ঘিরুন&#10;• বুলেটের জন্য • দিয়ে শুরু করুন" style="width:100%;min-height:120px;padding:10px 13px;border:none;font-size:14px;font-family:inherit;outline:none;resize:vertical"></textarea>
 </div></div>
     <div class="grid3">
       <div class="field"><label>ধরন</label><select id="ntTy"><option value="info">ℹ️ তথ্য</option><option value="warning">⚠️ সতর্কতা</option><option value="success">✅ সাফল্য</option><option value="urgent">🔴 জরুরি</option></select></div>
@@ -1348,8 +1450,18 @@ function pgNotice(){
   const list=notices.slice().sort((a,b)=>b.pinned-a.pinned).map(n=>{const t=tM[n.type]||tM.info;return `<div class="notice-card" style="background:${t.bg};border-color:${t.c}44">${n.pinned?`<div style="position:absolute;top:12px;right:${isA()?"44px":"14px"};font-size:14px">📌</div>`:""}<span style="font-size:24px;flex-shrink:0">${t.icon}</span><div style="flex:1"><div style="font-weight:700;font-size:15px;margin-bottom:4px;padding-right:30px">${n.title}</div><div style="font-size:13px;color:var(--muted);line-height:1.85;margin-bottom:5px" id="nb-${n.id}">${renderNoticeBody(n.body)}</div><div style="font-size:11px;color:#94a3b8">${ds(n.date)}</div></div>${isA()?`<button class="btn btn-sm" style="background:rgba(0,0,0,.06);border:none;flex-shrink:0;align-self:flex-start" onclick="delNotice(${n.id})">🗑</button>`:""}</div>`;}).join("")||`<div style="text-align:center;padding:40px;color:#94a3b8">কোনো নোটিশ নেই</div>`;
   return form+list;
 }
-function addNotice(){const t=document.getElementById("ntT").value,b=document.getElementById("ntB").value;if(!t||!b)return;D.notices=[...(D.notices||[]),{id:Date.now(),title:t,body:b,type:document.getElementById("ntTy").value,date:document.getElementById("ntD").value,pinned:document.getElementById("ntP").checked}];sv();toast("✅ নোটিশ প্রকাশিত");goTab("notice");}
-function delNotice(id){D.notices=(D.notices||[]).filter(n=>n.id!==id);sv();toast("🗑","#dc2626");goTab("notice");}
+function addNotice(){
+  const t=document.getElementById("ntT").value,b=document.getElementById("ntB").value;if(!t||!b)return;
+  D.notices=[...(D.notices||[]),{id:Date.now(),title:t,body:b,type:document.getElementById("ntTy").value,date:document.getElementById("ntD").value,pinned:document.getElementById("ntP").checked}];
+  logActivity("notice",`নতুন নোটিশ প্রকাশিত হয়েছে: ${t}`);
+  sv();toast("✅ নোটিশ প্রকাশিত");goTab("notice");
+}
+function delNotice(id){
+  const n=(D.notices||[]).find(x=>x.id===id);
+  D.notices=(D.notices||[]).filter(n=>n.id!==id);
+  if(n) logActivity("notice",`নোটিশ মুছে ফেলা হয়েছে: ${n.title}`);
+  sv();toast("🗑","#dc2626");goTab("notice");
+}
 
 function pgNews(){
   const news=D.news||[];
@@ -1410,7 +1522,7 @@ function pgMembers(){
       <div class="field"><label>পদবি</label><select id="mRl">${roles.map(r=>`<option>${r}</option>`).join("")}</select></div>
       <div class="field"><label>যোগদানের মাস</label><input type="month" id="mJn" value="${new Date().toISOString().slice(0,7)}"></div>
     </div>
-    <div class="field"><label>মাসিক চাঁদার হার (৳)</label><input type="number" id="mRt" value="2000" placeholder="2000"></div>
+    <div class="field"><label>মাসিক চাঁদার হার (৳) — প্রাথমিক/ডিফল্ট হার</label><input type="number" id="mRt" value="2000" placeholder="2000"></div>
     <button class="btn btn-g" onclick="addMember()">✅ যোগ করুন</button>
   </div></div>`:"";
 
@@ -1426,13 +1538,13 @@ function pgMembers(){
     const attPct=allMeetings.length?Math.round(attCount/allMeetings.length*100):0;
     const fundShare=totalFundAll/Math.max(1,members.length);
     const g=rG[m.role]||GR.g;
-    return `<div data-name="${m.name}" style="background:#fff;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden">
+    return `<div data-name="${m.name}" style="background:var(--white);border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden">
       <div style="height:5px;background:${g}"></div>
       <div style="padding:14px">
         <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
           ${av(m.name,44,g)}
           <div style="flex:1">
-            <div style="font-weight:700;font-size:15px">${m.name}</div>
+            <div style="font-weight:700;font-size:15px;color:var(--ink)">${m.name}</div>
             <span style="font-size:10px;background:#dcfce7;color:#1a8a00;border-radius:5px;padding:2px 7px;font-weight:700">${m.role||"সদস্য"}</span>
           </div>
           ${isA()?`<div style="display:flex;gap:5px">
@@ -1464,6 +1576,7 @@ function pgMembers(){
         ${m.phone?`<div style="font-size:12px;color:#64748b;margin-top:9px">📞 ${m.phone}</div>`:""}
         ${m.join?`<div style="font-size:11px;color:#94a3b8;margin-top:3px">যোগদান: ${m.join}</div>`:""}
         <div style="font-size:11px;color:#94a3b8;margin-top:3px">💼 তহবিলে অংশ: ${fmt(fundShare)}</div>
+        <div style="font-size:11px;color:#1a8a00;margin-top:3px;font-weight:700">📌 বর্তমান কার্যকর চাঁদার হার: ${fmt(getApplicableRate(m.id,curMon))}</div>
         ${isA()?`<div style="margin-top:10px;display:flex;gap:6px">
           <button onclick="memberStatPDF(${m.id})" style="font-size:11px;background:#fee2e2;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#dc2626">📄 PDF</button>
           <button onclick="memberStatXL(${m.id})" style="font-size:11px;background:#dcfce7;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#16a34a">📊 Excel</button>
@@ -1481,12 +1594,12 @@ function pgMembers(){
     </div>
     ${form}
     <div class="field" style="margin-bottom:10px"><input type="text" placeholder="🔎 সদস্য খুঁজুন..." oninput="filterCardsByName(this.value,'members-grid')"></div>
-    <div class="gauto" id="members-grid">${cards}</div>
+    <div class="gauto" id="members-grid">${cards||`<div style="text-align:center;padding:40px;color:#94a3b8">👥 কোনো সদস্য নেই</div>`}</div>
 
     <!-- সদস্য সম্পাদনা Modal -->
     <div id="member-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center">
       <div style="background:#fff;border-radius:16px;padding:22px;width:92%;max-width:400px;max-height:90vh;overflow-y:auto">
-        <div style="font-weight:800;font-size:17px;margin-bottom:16px">✏️ সদস্য সম্পাদনা</div>
+        <div style="font-weight:800;font-size:17px;margin-bottom:16px;color:#071a07">✏️ সদস্য সম্পাদনা</div>
         <input type="hidden" id="em-id">
         <div class="field"><label>পূর্ণ নাম</label><input type="text" id="em-name"></div>
         <div class="field"><label>মোবাইল</label><input type="tel" id="em-phone" placeholder="01XXXXXXXXX"></div>
@@ -1496,7 +1609,8 @@ function pgMembers(){
           </select>
         </div>
         <div class="field"><label>যোগদানের মাস</label><input type="month" id="em-join"></div>
-        <div class="field"><label>মাসিক চাঁদার হার (৳)</label><input type="number" id="em-rate" placeholder="2000"></div>
+        <div class="field"><label>মাসিক চাঁদার প্রাথমিক/ডিফল্ট হার (৳)</label><input type="number" id="em-rate" placeholder="2000"></div>
+        <div style="font-size:11px;color:#94a3b8;margin:-6px 0 10px">নতুন হার নির্দিষ্ট তারিখ থেকে কার্যকর করতে "চাঁদার শিট" পেজে রেট ম্যানেজমেন্ট ব্যবহার করুন</div>
         <div class="field"><label>নোমিনি</label><input type="text" id="em-nominee" placeholder="নোমিনির নাম"></div>
         <div class="field"><label>ঠিকানা</label><input type="text" id="em-address" placeholder="গ্রাম/শহর"></div>
         <div style="display:flex;gap:8px;margin-top:4px">
@@ -1517,6 +1631,7 @@ function addMember(){
     join:document.getElementById("mJn").value,
     monthlyRate:Number(document.getElementById("mRt").value||2000)
   }];
+  logActivity("member",`নতুন সদস্য যোগ হয়েছে: ${n} (${document.getElementById("mRl").value})`);
   sv();toast("✅ সদস্য যোগ হয়েছে");goTab("members");
 }
 
@@ -1546,12 +1661,19 @@ function saveMemberEdit(){
     nominee:document.getElementById("em-nominee").value,
     address:document.getElementById("em-address").value
   }:m);
+  logActivity("member",`সদস্যের তথ্য সম্পাদনা হয়েছে: ${name}`);
   sv();toast("✅ সদস্য আপডেট হয়েছে");
   document.getElementById("member-edit-modal").style.display="none";
   goTab("members");
 }
 
-function delMember(id){if(!confirm("এই সদস্য মুছবেন?"))return;D.members=(D.members||[]).filter(m=>m.id!==id);sv();toast("🗑","#dc2626");goTab("members");}
+function delMember(id){
+  if(!confirm("এই সদস্য মুছবেন?"))return;
+  const m=(D.members||[]).find(x=>x.id===id);
+  D.members=(D.members||[]).filter(m=>m.id!==id);
+  if(m) logActivity("member",`সদস্য মুছে ফেলা হয়েছে: ${m.name}`);
+  sv();toast("🗑","#dc2626");goTab("members");
+}
 
 
 
@@ -1611,7 +1733,7 @@ function fmtText(type) {
   const start = ta.selectionStart, end = ta.selectionEnd;
   const sel = ta.value.substring(start, end);
   let ins = "";
-  if(type==="bold") ins = `**${sel||"굵은 লেখা"}**`;
+  if(type==="bold") ins = `**${sel||"গাঢ় লেখা"}**`;
   else if(type==="italic") ins = `_${sel||"বাঁকা লেখা"}_`;
   else if(type==="ul") ins = `\n• ${sel||"আইটেম"}`;
   else if(type==="ol") ins = `\n১. ${sel||"আইটেম"}`;
@@ -1631,8 +1753,6 @@ function renderNoticeBody(text) {
     .replace(/\n/g, "<br>");
   return t;
 }
-
-
 
 // ══════════════════════════════════════════
 // EXCEL ও PDF ডাউনলোড ফাংশন
@@ -1792,7 +1912,8 @@ function pdfDownload(type){
   toast("✅ PDF প্রিন্ট ডায়ালগ খুলছে...");
 }
 
-
+// ══════════════════════════════════════════
+// চাঁদার শিট (নভেম্বর ২০২১ থেকে বর্তমান)
 // ══════════════════════════════════════════
 function pgDuesSheet() {
   const members = D.members||[];
@@ -1824,25 +1945,57 @@ function pgDuesSheet() {
       font-weight:${y==selYear?700:400};cursor:pointer;font-family:inherit;font-size:12px">${y}</button>
   `).join("");
 
-  // Admin settings card
+  // ── অ্যাডমিন প্যানেল: রেট ম্যানেজমেন্ট + বিশেষ মাস ──
+  const rateHistory = (D.rateHistory||[]).slice().sort((a,b)=> b.effectiveFrom.localeCompare(a.effectiveFrom) || (b.createdAt||"").localeCompare(a.createdAt||""));
+  const rateHistoryRows = rateHistory.map(r=>`
+    <tr>
+      <td>${r.mid!=null ? gn(r.mid) : `<b style="color:#7c3aed">সবার জন্য (গ্লোবাল)</b>`}</td>
+      <td style="font-weight:700;color:#1a8a00">${fmt(r.rate)}</td>
+      <td>${r.effectiveFrom}</td>
+      <td style="font-size:11px;color:#94a3b8">${r.createdBy||"-"}</td>
+      <td style="font-size:11px;color:#94a3b8">${r.createdAt?ds(r.createdAt):"-"}</td>
+      ${isA()?`<td><button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delRateChange('${r.id}')">🗑</button></td>`:""}
+    </tr>`).join("") || `<tr><td colspan="6" style="text-align:center;color:#94a3b8">কোনো হার পরিবর্তনের ইতিহাস নেই — ডিফল্ট হার (প্রতি সদস্যের প্রাথমিক হার) প্রযোজ্য</td></tr>`;
+
   const adminForm = isA() ? `
     <div class="card" style="margin-bottom:12px">
-      ${ch("⚙️","চাঁদার হার ও বিশেষ মাস সেটিং")}
+      ${ch("⚙️","চাঁদার হার ব্যবস্থাপনা (Rate Management)","সবসময় একটা current active rate থাকে; নতুন হার effective date থেকে কার্যকর হয়")}
       <div class="cb">
-        <div style="font-weight:700;font-size:13px;margin-bottom:8px">মাসিক চাঁদার হার (৳)</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:16px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">📌 এই মাসের (${curMon}) কার্যকর হার</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:16px">
           ${members.map(m=>`
-            <div style="background:#f8fafc;border-radius:9px;padding:10px">
-              <div style="font-weight:600;font-size:12px;margin-bottom:5px">${m.name.split(" ")[0]}</div>
-              <div style="display:flex;gap:5px">
-                <input type="number" id="rt${m.id}" value="${m.monthlyRate||2000}"
-                  style="flex:1;padding:6px 8px;border-radius:7px;border:1.5px solid var(--border);font-size:12px;font-family:inherit;outline:none">
-                <button class="btn btn-g btn-sm" onclick="updRate(${m.id})">✓</button>
-              </div>
+            <div style="background:#f0fdf4;border-radius:9px;padding:10px;text-align:center">
+              <div style="font-weight:600;font-size:12px">${m.name.split(" ")[0]}</div>
+              <div style="font-weight:800;color:#1a8a00;font-size:15px">${fmt(getApplicableRate(m.id,curMon))}</div>
             </div>`).join("")}
         </div>
+
+        <div style="border-top:1px solid #f1f5f9;padding-top:12px;margin-bottom:14px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">💱 নতুন হার নির্ধারণ করুন</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;align-items:end">
+            <div class="field" style="margin:0"><label>প্রযোজ্য হবে</label>
+              <select id="rh-scope" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:12px;font-family:inherit">
+                <option value="">-- সবার জন্য (গ্লোবাল) --</option>
+                ${members.map(m=>`<option value="${m.id}">শুধু ${m.name.split(" ")[0]}</option>`).join("")}
+              </select>
+            </div>
+            <div class="field" style="margin:0"><label>নতুন হার (৳)</label><input type="number" id="rh-rate" placeholder="2000" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:12px;font-family:inherit"></div>
+            <div class="field" style="margin:0"><label>কার্যকর তারিখ (মাস থেকে)</label><input type="month" id="rh-eff" value="${curMon}" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:12px;font-family:inherit"></div>
+            <button class="btn btn-g btn-sm" onclick="addRateChange()">✅ হার সেট করুন</button>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:6px">নির্বাচিত তারিখ থেকে আগের সব মাসের হিসাব পুরাতন হারেই থাকবে, পরের মাসগুলো নতুন হারে হিসাব হবে।</div>
+        </div>
+
+        <div style="border-top:1px solid #f1f5f9;padding-top:12px;margin-bottom:14px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">📜 হারের সম্পূর্ণ ইতিহাস (Audit)</div>
+          <div style="overflow-x:auto"><table class="tbl">
+            <thead><tr><th>সদস্য / স্কোপ</th><th>হার</th><th>কার্যকর তারিখ</th><th>সেট করেছেন</th><th>সময়</th>${isA()?"<th></th>":""}</tr></thead>
+            <tbody>${rateHistoryRows}</tbody>
+          </table></div>
+        </div>
+
         <div style="border-top:1px solid #f1f5f9;padding-top:12px">
-          <div style="font-weight:700;font-size:13px;margin-bottom:8px">➕ বিশেষ মাসের চাঁদা</div>
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">➕ বিশেষ মাসের চাঁদা (এক-মাসের ব্যতিক্রম)</div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">
             <div class="field" style="margin:0"><label>সদস্য</label>
               <select id="sp-mid" style="width:100%;padding:8px;border-radius:7px;border:1.5px solid var(--border);font-size:12px;font-family:inherit">
@@ -1862,24 +2015,24 @@ function pgDuesSheet() {
       </div>
     </div>` : "";
 
-  // ফর্মুলা summary per member for selected year
+  // ফর্মুলা summary per member for selected year (getApplicableRate ব্যবহার করে প্রতি মাসের সঠিক হার বের করা হয়)
   const memberSummary = members.map(m => {
-    const rate = m.monthlyRate||2000;
     const spMonths = specialMonths.filter(s=>s.mid==m.id && s.month.startsWith(selYear));
     const spCount = spMonths.length;
     const spTotal = spMonths.reduce((s,x)=>s+x.amount,0);
-    const regularCount = filtMonths.length - spCount;
-    const totalExpected = (regularCount * rate) + spTotal;
+    const regularMonths = filtMonths.filter(mon => !spMonths.find(s=>s.month===mon.key));
+    const regularTotal = regularMonths.reduce((s,mon)=>s+getApplicableRate(m.id, mon.key),0);
+    const totalExpected = regularTotal + spTotal;
     const totalPaid = payments.filter(p=>p.mid==m.id && p.month.startsWith(selYear)).reduce((s,p)=>s+p.amount,0);
     const totalDue = totalExpected - totalPaid;
-    return { m, rate, spCount, spTotal, regularCount, totalExpected, totalPaid, totalDue };
+    return { m, spCount, spTotal, regularCount: regularMonths.length, totalExpected, totalPaid, totalDue };
   });
 
-  const summaryCards = memberSummary.map(({m, rate, spCount, spTotal, regularCount, totalExpected, totalPaid, totalDue}) => `
+  const summaryCards = memberSummary.map(({m, spCount, spTotal, regularCount, totalExpected, totalPaid, totalDue}) => `
     <div style="background:${totalDue>0?"#fff1f2":"#f0fdf4"};border-radius:11px;padding:12px 14px;border:1.5px solid ${totalDue>0?"#fecaca":"#bbf7d0"}">
       <div style="font-weight:700;font-size:13px;margin-bottom:6px">${m.name}</div>
       <div style="font-size:11px;color:#64748b;margin-bottom:5px;line-height:1.8">
-        ফর্মুলা: (${filtMonths.length} - ${spCount}) × ${fmt(rate)}${spCount>0?" + বিশেষ "+fmt(spTotal):""} = ${fmt(totalExpected)}
+        ফর্মুলা: ${regularCount} মাস (পরিবর্তনশীল হার অনুযায়ী)${spCount>0?" + বিশেষ "+fmt(spTotal):""} = ${fmt(totalExpected)}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <span style="font-size:11px;background:#dcfce7;color:#15803d;border-radius:5px;padding:2px 7px;font-weight:700">পরিশোধ ${fmt(totalPaid)}</span>
@@ -1897,17 +2050,16 @@ function pgDuesSheet() {
   </tr>`;
 
   const tableRows = members.map(m => {
-    const rate = m.monthlyRate||2000;
     const memberPayments = payments.filter(p=>p.mid==m.id);
     const spMonths = specialMonths.filter(s=>s.mid==m.id);
 
     let yearPaid = 0, yearExpected = 0;
 
-    // শুরু থেকে বর্তমান পর্যন্ত সর্বমোট বকেয়া হিসাব
+    // শুরু থেকে বর্তমান পর্যন্ত সর্বমোট বকেয়া হিসাব (প্রতিটি মাসের জন্য তখনকার কার্যকর হার)
     let allExp = 0, allPaid = 0;
     months.forEach(mon => {
       const sp = spMonths.find(s=>s.month===mon.key);
-      allExp += sp ? sp.amount : rate;
+      allExp += sp ? sp.amount : getApplicableRate(m.id, mon.key);
       const p = memberPayments.find(p=>p.month===mon.key);
       if(p) allPaid += p.amount;
     });
@@ -1915,7 +2067,7 @@ function pgDuesSheet() {
 
     const cells = filtMonths.map(mon => {
       const spM = spMonths.find(s=>s.mid==m.id && s.month===mon.key);
-      const cellRate = spM ? spM.amount : rate;
+      const cellRate = spM ? spM.amount : getApplicableRate(m.id, mon.key);
       yearExpected += cellRate;
       const paid = memberPayments.find(p=>p.month===mon.key);
       if(paid) yearPaid += paid.amount;
@@ -1948,27 +2100,18 @@ function pgDuesSheet() {
   }).join("");
 
   // Total row
-  const totals = members.map(m => {
-    const rate = m.monthlyRate||2000;
-    const spM = specialMonths.filter(s=>s.mid==m.id);
-    const sp = spM.filter(s=>s.month.startsWith(selYear));
-    const reg = filtMonths.length - sp.length;
-    const exp = (reg*rate) + sp.reduce((s,x)=>s+x.amount,0);
-    const paid = payments.filter(p=>p.mid==m.id&&p.month.startsWith(selYear)).reduce((s,p)=>s+p.amount,0);
-    return {exp, paid, due: exp-paid};
-  });
+  const totals = memberSummary.map(s=>({exp:s.totalExpected, paid:s.totalPaid, due:s.totalDue}));
   const grandExp = totals.reduce((s,t)=>s+t.exp,0);
   const grandPaid = totals.reduce((s,t)=>s+t.paid,0);
   const grandDue = totals.reduce((s,t)=>s+t.due,0);
 
   // শুরু থেকে বর্তমান পর্যন্ত সর্বমোট বকেয়া
   const grandTotalAllDue = members.reduce((s,m)=>{
-    const rate=m.monthlyRate||2000;
     const spM=specialMonths.filter(x=>x.mid==m.id);
     let allExp=0,allPd=0;
     months.forEach(mon=>{
       const sp=spM.find(x=>x.month===mon.key);
-      allExp+=sp?sp.amount:rate;
+      allExp+=sp?sp.amount:getApplicableRate(m.id,mon.key);
       const p=(payments||[]).find(p=>p.mid==m.id&&p.month===mon.key);
       if(p)allPd+=p.amount;
     });
@@ -2009,7 +2152,7 @@ function pgDuesSheet() {
 
     <!-- ফর্মুলা summary -->
     <div class="card" style="margin-bottom:12px">
-      ${ch("📐","ফর্মুলা: (মোট মাস − বিশেষ মাস) × হার + বিশেষ চাঁদা = সর্বমোট")}
+      ${ch("📐","ফর্মুলা: নিয়মিত মাস (পরিবর্তনশীল হার) + বিশেষ চাঁদা = সর্বমোট")}
       <div class="cb">
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
           ${summaryCards}
@@ -2061,10 +2204,32 @@ function pgDuesSheet() {
 // ══════════════════════════════════════════
 // চাঁদার শিট helper functions
 // ══════════════════════════════════════════
-function updRate(mid) {
-  const r = Number(document.getElementById("rt"+mid).value);
-  D.members = (D.members||[]).map(m => m.id==mid ? {...m, monthlyRate:r} : m);
-  sv(); toast("✅ চাঁদার হার আপডেট"); goTab("duessheet");
+function addRateChange(){
+  const scope = document.getElementById("rh-scope").value;
+  const rate = Number(document.getElementById("rh-rate").value);
+  const eff = document.getElementById("rh-eff").value;
+  if(!rate || !eff){ toast("⚠️ হার ও কার্যকর তারিখ দিন","#d97706"); return; }
+  const mid = scope ? Number(scope) : null;
+  D.rateHistory = [...(D.rateHistory||[]), {
+    id: Date.now()+"_"+Math.random().toString(36).slice(2,7),
+    mid: mid,
+    rate: rate,
+    effectiveFrom: eff,
+    createdBy: isA() ? "অ্যাডমিন" : "ভিউয়ার",
+    createdAt: new Date().toISOString()
+  }];
+  logActivity("rate", mid!=null ? `${gn(mid)}-এর জন্য নতুন চাঁদার হার ${fmt(rate)} সেট করা হয়েছে (কার্যকর ${eff} থেকে)` : `সবার জন্য নতুন গ্লোবাল চাঁদার হার ${fmt(rate)} সেট করা হয়েছে (কার্যকর ${eff} থেকে)`);
+  sv();
+  toast("✅ নতুন হার সেট হয়েছে");
+  goTab("duessheet");
+}
+
+function delRateChange(id){
+  if(!confirm("এই হার পরিবর্তনের রেকর্ড মুছবেন? (এটি অডিট ইতিহাসের অংশ, মুছলে হিসাব পরিবর্তন হতে পারে)"))return;
+  const r=(D.rateHistory||[]).find(x=>x.id==id);
+  D.rateHistory=(D.rateHistory||[]).filter(x=>x.id!=id);
+  if(r) logActivity("rate", `হার পরিবর্তনের রেকর্ড মুছে ফেলা হয়েছে: ${r.mid!=null?gn(r.mid):"গ্লোবাল"} — ${fmt(r.rate)} (কার্যকর ${r.effectiveFrom})`);
+  sv(); toast("🗑 মুছে গেছে","#dc2626"); goTab("duessheet");
 }
 
 function addSpecialMonth() {
@@ -2076,6 +2241,7 @@ function addSpecialMonth() {
   // Remove existing if any
   D.specialMonths = D.specialMonths.filter(s=>!(s.mid==mid&&s.month===month));
   D.specialMonths.push({id:Date.now(), mid:Number(mid), month, amount:amt});
+  logActivity("rate", `${gn(mid)}-এর জন্য ${month} মাসে বিশেষ চাঁদা ${fmt(amt)} নির্ধারণ করা হয়েছে`);
   sv(); toast("✅ বিশেষ মাস যোগ হয়েছে"); goTab("duessheet");
 }
 
@@ -2107,8 +2273,10 @@ function saveDueModal() {
   if(!amt) { toast("⚠️ পরিমাণ দিন","#d97706"); return; }
   if(pid) {
     D.payments = (D.payments||[]).map(p => p.id==pid ? {...p, amount:amt} : p);
+    logActivity("payment", `${gn(mid)} — ${month} মাসের চাঁদা সম্পাদনা করে ${fmt(amt)} করা হয়েছে`);
   } else {
     D.payments = [...(D.payments||[]), {id:Date.now(), mid, month, amount:amt, note:""}];
+    logActivity("payment", `${gn(mid)} — ${month} মাসের চাঁদা ${fmt(amt)} যোগ করা হয়েছে`);
   }
   sv(); toast("✅ সেভ হয়েছে"); closeDueModal(); goTab("duessheet");
 }
@@ -2117,7 +2285,9 @@ function deleteDueModal() {
   const pid = document.getElementById("dm-pid").value;
   if(!pid) return;
   if(!confirm("এই রেকর্ড মুছবেন?")) return;
+  const p=(D.payments||[]).find(x=>x.id==pid);
   D.payments = (D.payments||[]).filter(p=>p.id!=pid);
+  if(p) logActivity("payment", `${gn(p.mid)} — ${p.month} মাসের চাঁদা ${fmt(p.amount)} মুছে ফেলা হয়েছে`);
   sv(); toast("🗑 মুছে গেছে","#dc2626"); closeDueModal(); goTab("duessheet");
 }
 
@@ -2126,7 +2296,7 @@ function closeDueModal() {
 }
 
 // ══════════════════════════════════════════
-// ১. বকেয়া চাঁদার তালিকা — ঋণের মতো
+// বকেয়া চাঁদার তালিকা — getApplicableRate ভিত্তিক
 // ══════════════════════════════════════════
 function getDuesList() {
   const members = D.members||[];
@@ -2141,12 +2311,11 @@ function getDuesList() {
   }
 
   return members.map(m => {
-    const rate = m.monthlyRate||2000;
     const specialMonths = (D.specialMonths||[]).filter(s=>s.mid==m.id);
     let totalExpected = 0;
     months.forEach(mon => {
       const sp = specialMonths.find(s=>s.month===mon);
-      totalExpected += sp ? sp.amount : rate;
+      totalExpected += sp ? sp.amount : getApplicableRate(m.id, mon);
     });
     const totalPaid = payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
     const totalDue = totalExpected - totalPaid;
@@ -2171,7 +2340,7 @@ function renderChadaDues(){
 }
 
 // ══════════════════════════════════════════
-// ২. WhatsApp নোটিফিকেশন
+// WhatsApp নোটিফিকেশন
 // ══════════════════════════════════════════
 function sendDueNotif(mid){
   const m = (D.members||[]).find(x=>x.id==mid);
@@ -2220,7 +2389,7 @@ function sendAllDueNotif(){
 }
 
 // ══════════════════════════════════════════
-// ৫. আয়-ব্যয় CSV ডাউনলোড
+// আয়-ব্যয় / চাঁদা CSV ডাউনলোড
 // ══════════════════════════════════════════
 function downloadReport(type, year){
   const members = D.members||[];
@@ -2244,11 +2413,10 @@ function downloadReport(type, year){
     csv += `স্বপ্নঘুড়ি — চাঁদার রিপোর্ট ${year||"সব বছর"}\n\n`;
     csv += "সদস্য," + allMonths.map(m=>m.label).join(",") + ",মোট প্রত্যাশিত,মোট পরিশোধ,মোট বকেয়া\n";
     members.forEach(m=>{
-      const rate = m.monthlyRate||2000;
       let totalExp=0, totalPaid=0;
       const row = allMonths.map(mon=>{
         const sp = specialMonths.find(s=>s.mid==m.id&&s.month===mon.key);
-        const cellRate = sp?sp.amount:rate;
+        const cellRate = sp?sp.amount:getApplicableRate(m.id, mon.key);
         totalExp += cellRate;
         const paid = payments.find(p=>p.month===mon.key&&p.mid==m.id);
         if(paid) totalPaid += paid.amount;
@@ -2326,9 +2494,8 @@ function pgChadaDues(){
     </div>`).join("");
 }
 
-
 // ══════════════════════════════════════════
-// ১. সদস্য স্টেটমেন্ট (PDF + Excel)
+// সদস্য স্টেটমেন্ট (PDF + Excel)
 // ══════════════════════════════════════════
 function pgMemberStat(){
   const members=D.members||[];
@@ -2339,7 +2506,6 @@ function pgMemberStat(){
   const payments=(D.payments||[]).filter(p=>p.mid==m.id);
   const loans=(D.loans||[]).filter(l=>l.mid==m.id);
   const specialMonths=(D.specialMonths||[]).filter(s=>s.mid==m.id);
-  const rate=m.monthlyRate||2000;
 
   const allMonths=[];
   let d=new Date(2021,10,1);
@@ -2352,7 +2518,7 @@ function pgMemberStat(){
   let totalExp=0;
   allMonths.forEach(mon=>{
     const sp=specialMonths.find(s=>s.month===mon);
-    totalExp+=sp?sp.amount:rate;
+    totalExp+=sp?sp.amount:getApplicableRate(m.id,mon);
   });
   const totalPaid=payments.reduce((s,p)=>s+p.amount,0);
   const totalDue=totalExp-totalPaid;
@@ -2369,7 +2535,7 @@ function pgMemberStat(){
 
   const monthRows=allMonths.slice(-24).map(mon=>{
     const sp=specialMonths.find(s=>s.month===mon);
-    const cellRate=sp?sp.amount:rate;
+    const cellRate=sp?sp.amount:getApplicableRate(m.id,mon);
     const paid=payments.find(p=>p.month===mon);
     return `<tr>
       <td>${mon}</td>
@@ -2479,7 +2645,6 @@ function memberStatPDF(mid){
   const payments=(D.payments||[]).filter(p=>p.mid==mid);
   const loans=(D.loans||[]).filter(l=>l.mid==mid);
   const specialMonths=(D.specialMonths||[]).filter(s=>s.mid==mid);
-  const rate=m.monthlyRate||2000;
   const allMonths=[];
   let d=new Date(2021,10,1);
   while(d<=new Date()){
@@ -2487,7 +2652,7 @@ function memberStatPDF(mid){
     d=new Date(d.getFullYear(),d.getMonth()+1,1);
   }
   let totalExp=0;
-  allMonths.forEach(mon=>{const sp=specialMonths.find(s=>s.month===mon);totalExp+=sp?sp.amount:rate;});
+  allMonths.forEach(mon=>{const sp=specialMonths.find(s=>s.month===mon);totalExp+=sp?sp.amount:getApplicableRate(mid,mon);});
   const totalPaid=payments.reduce((s,p)=>s+p.amount,0);
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
   <style>body{font-family:Arial,sans-serif;padding:30px;color:#111;font-size:13px}
@@ -2510,7 +2675,7 @@ function memberStatPDF(mid){
   <table><thead><tr><th>মাস</th><th>নির্ধারিত</th><th>পরিশোধ</th><th>অবস্থা</th></tr></thead><tbody>
   ${allMonths.map(mon=>{
     const sp=specialMonths.find(s=>s.month===mon);
-    const cr=sp?sp.amount:rate;
+    const cr=sp?sp.amount:getApplicableRate(mid,mon);
     const paid=payments.find(p=>p.month===mon);
     return `<tr><td>${mon}</td><td style="text-align:right">৳${cr.toLocaleString()}</td><td style="text-align:right">${paid?"৳"+paid.amount.toLocaleString():"—"}</td><td>${paid?"✅":"❌"}</td></tr>`;
   }).join("")}
@@ -2530,7 +2695,6 @@ function memberStatXL(mid){
   const payments=(D.payments||[]).filter(p=>p.mid==mid);
   const loans=(D.loans||[]).filter(l=>l.mid==mid);
   const specialMonths=(D.specialMonths||[]).filter(s=>s.mid==mid);
-  const rate=m.monthlyRate||2000;
   const allMonths=[];
   let d=new Date(2021,10,1);
   while(d<=new Date()){allMonths.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d=new Date(d.getFullYear(),d.getMonth()+1,1);}
@@ -2539,11 +2703,11 @@ function memberStatXL(mid){
   csv+="চাঁদার ইতিহাস\nমাস,নির্ধারিত,পরিশোধ,অবস্থা\n";
   allMonths.forEach(mon=>{
     const sp=specialMonths.find(s=>s.month===mon);
-    const cr=sp?sp.amount:rate;
+    const cr=sp?sp.amount:getApplicableRate(mid,mon);
     const paid=payments.find(p=>p.month===mon);
     csv+=`${mon},${cr},${paid?paid.amount:0},${paid?"পরিশোধ":"বকেয়া"}\n`;
   });
-  const totExp=allMonths.reduce((s,mon)=>{const sp=specialMonths.find(x=>x.month===mon);return s+(sp?sp.amount:rate);},0);
+  const totExp=allMonths.reduce((s,mon)=>{const sp=specialMonths.find(x=>x.month===mon);return s+(sp?sp.amount:getApplicableRate(mid,mon));},0);
   const totPaid=payments.reduce((s,p)=>s+p.amount,0);
   csv+=`\nসর্বমোট,${totExp},${totPaid},${totExp-totPaid>0?"বকেয়া "+(totExp-totPaid):"পরিশোধিত"}\n`;
   if(loans.length){
@@ -2558,7 +2722,7 @@ function memberStatXL(mid){
 }
 
 // ══════════════════════════════════════════
-// ২. ভোটিং সিস্টেম
+// ভোটিং সিস্টেম
 // ══════════════════════════════════════════
 function pgVoting(){
   const votes=D.votes||[];
@@ -2646,6 +2810,7 @@ function addVote(){
   const endDate=document.getElementById("vt-end").value;
   if(!title){toast("⚠️ বিষয় লিখুন","#d97706");return;}
   D.votes=[...(D.votes||[]),{id:Date.now(),title,desc,endDate,votes:{},createdAt:new Date().toISOString().split("T")[0]}];
+  logActivity("vote",`নতুন ভোট তৈরি হয়েছে: ${title}`);
   sv();toast("✅ ভোট তৈরি হয়েছে");goTab("voting");
 }
 
@@ -2658,12 +2823,14 @@ function castVote(vid,val){
 
 function delVote(id){
   if(!confirm("এই ভোট মুছবেন?"))return;
+  const v=(D.votes||[]).find(x=>x.id===id);
   D.votes=(D.votes||[]).filter(v=>v.id!==id);
+  if(v) logActivity("vote",`ভোট মুছে ফেলা হয়েছে: ${v.title}`);
   sv();toast("🗑 মুছে গেছে","#dc2626");goTab("voting");
 }
 
 // ══════════════════════════════════════════
-// ৩. মিটিং ব্যবস্থাপনা
+// মিটিং ব্যবস্থাপনা
 // ══════════════════════════════════════════
 function pgMeeting(){
   const meetings=D.meetings||[];
@@ -2764,6 +2931,7 @@ function addMeeting(){
   const date=document.getElementById("mt-date").value;
   if(!title){toast("⚠️ বিষয় লিখুন","#d97706");return;}
   D.meetings=[...(D.meetings||[]),{id:Date.now(),title,date,place:document.getElementById("mt-place").value,type:document.getElementById("mt-type").value,agenda:document.getElementById("mt-agenda").value,attendance:{},minutes:""}];
+  logActivity("meeting",`নতুন মিটিং যোগ হয়েছে: ${title}`);
   sv();toast("✅ মিটিং যোগ হয়েছে");goTab("meeting");
 }
 
@@ -2790,7 +2958,9 @@ function saveMinutes(){
 
 function delMeeting(id){
   if(!confirm("এই মিটিং মুছবেন?"))return;
+  const mt=(D.meetings||[]).find(x=>x.id===id);
   D.meetings=(D.meetings||[]).filter(m=>m.id!==id);
+  if(mt) logActivity("meeting",`মিটিং মুছে ফেলা হয়েছে: ${mt.title}`);
   sv();toast("🗑 মুছে গেছে","#dc2626");goTab("meeting");
 }
 
@@ -2816,7 +2986,7 @@ function meetingPDF(mid){
 }
 
 // ══════════════════════════════════════════
-// ৪. সমিতির স্বাস্থ্য স্কোর
+// সমিতির স্বাস্থ্য স্কোর
 // ══════════════════════════════════════════
 function pgHealth(){
   const members=D.members||[];
@@ -2831,6 +3001,9 @@ function pgHealth(){
     {label:"লক্ষ্য পূরণ",value:goalProgress+"%",score:Math.min(goalProgress,100),color:"#d97706"},
     {label:"মোট সদস্য",value:members.length+" জন",score:100,color:"#7c3aed"},
   ];
+
+  const allMonths2=[];let d2=new Date(2021,10,1);const now3=new Date();
+  while(d2<=now3){allMonths2.push(`${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,"0")}`);d2=new Date(d2.getFullYear(),d2.getMonth()+1,1);}
 
   return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
@@ -2884,12 +3057,11 @@ function pgHealth(){
           <tbody>
             ${members.map(m=>{
               const mPaid=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
-              const allMonths2=[];let d2=new Date(2021,10,1);const now3=new Date();
-              while(d2<=now3){allMonths2.push(`${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,"0")}`);d2=new Date(d2.getFullYear(),d2.getMonth()+1,1);}
-              const mExp=allMonths2.length*(m.monthlyRate||2000);
+              const spM=(D.specialMonths||[]).filter(x=>x.mid==m.id);
+              const mExp=allMonths2.reduce((s,mon)=>{const sp=spM.find(x=>x.month===mon);return s+(sp?sp.amount:getApplicableRate(m.id,mon));},0);
               const mDue=mExp-mPaid;
               const mLoan=loans.filter(l=>l.mid==m.id).reduce((s,l)=>s+l.remaining,0);
-              const mScore=Math.max(0,Math.round(100-(mDue/mExp*50)-(mLoan>0?20:0)));
+              const mScore=Math.max(0,Math.round(100-(mDue/Math.max(1,mExp)*50)-(mLoan>0?20:0)));
               const sc=mScore>=80?"#16a34a":mScore>=60?"#d97706":"#dc2626";
               return `<tr>
                 <td style="font-weight:600;white-space:nowrap">${m.name}</td>
@@ -2908,7 +3080,7 @@ function pgHealth(){
 }
 
 // ══════════════════════════════════════════
-// ৫. রিপোর্ট সেন্টার
+// রিপোর্ট সেন্টার
 // ══════════════════════════════════════════
 function pgReport(){
   const members=D.members||[];
@@ -2974,7 +3146,61 @@ function pgReport(){
     </div>`;
 }
 
-// pdfDownload তে voting, meeting, health যোগ
+// ══════════════════════════════════════════
+// কার্যক্রম ইতিহাস (Activity / Audit Log Page)
+// ══════════════════════════════════════════
+function pgHistory(){
+  const log=(D.activityLog||[]).slice().sort((a,b)=>(b.at||"").localeCompare(a.at||""));
+  const typeMeta={
+    payment:{icon:"💰",label:"চাঁদা",color:"#1a8a00"},
+    member:{icon:"👤",label:"সদস্য",color:"#2563eb"},
+    loan:{icon:"🤝",label:"ঋণ",color:"#d97706"},
+    invest:{icon:"📈",label:"বিনিয়োগ",color:"#7c3aed"},
+    asset:{icon:"🏛️",label:"সম্পদ",color:"#0d9488"},
+    income:{icon:"📥",label:"আয়",color:"#16a34a"},
+    expense:{icon:"📤",label:"ব্যয়",color:"#dc2626"},
+    rate:{icon:"💱",label:"চাঁদার হার",color:"#92400e"},
+    notice:{icon:"📢",label:"নোটিশ",color:"#d97706"},
+    vote:{icon:"🗳️",label:"ভোটিং",color:"#7c3aed"},
+    meeting:{icon:"📅",label:"মিটিং",color:"#2563eb"},
+  };
+  const types=Object.keys(typeMeta);
+  const filterChips=`<div class="chips" style="margin-bottom:12px">
+    <button class="chip${!window._histFilter?" on":""}" onclick="window._histFilter='';goTab('history')">সব</button>
+    ${types.map(t=>`<button class="chip${window._histFilter===t?" on":""}" onclick="window._histFilter='${t}';goTab('history')">${typeMeta[t].icon} ${typeMeta[t].label}</button>`).join("")}
+  </div>`;
+
+  const filtered = window._histFilter ? log.filter(l=>l.type===window._histFilter) : log;
+
+  const rows = filtered.slice(0,300).map(l=>{
+    const meta = typeMeta[l.type]||{icon:"🕘",label:"অন্যান্য",color:"#64748b"};
+    let dt="-";
+    try{ const x=new Date(l.at); dt = `${x.getDate()} ${BNM[x.getMonth()]} ${x.getFullYear()}, ${String(x.getHours()).padStart(2,"0")}:${String(x.getMinutes()).padStart(2,"0")}`; }catch(e){}
+    return `<div style="display:flex;gap:11px;align-items:flex-start;padding:11px 16px;border-bottom:1px solid #f1f5f9">
+      <span style="font-size:18px;flex-shrink:0">${meta.icon}</span>
+      <div style="flex:1">
+        <div style="font-size:13px;line-height:1.5;color:var(--ink)">${l.text}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:3px">${dt} · ${l.by||"-"} · <span style="color:${meta.color};font-weight:600">${meta.label}</span></div>
+      </div>
+    </div>`;
+  }).join("") || `<div style="padding:40px;text-align:center;color:#94a3b8">🕘 কোনো কার্যক্রমের তথ্য নেই</div>`;
+
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div><div class="section-title">🕘 কার্যক্রম ইতিহাস</div>
+      <div class="section-sub">সকল হিসাব-নিকাশ, সদস্য যোগ-বাদ ও কার্যক্রমের সম্পূর্ণ লগ (সর্বশেষ ৩০০টি)</div></div>
+      ${isA()?`<button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="clearHistory()">🗑 ইতিহাস মুছুন</button>`:""}
+    </div>
+    ${filterChips}
+    <div class="card">${rows}</div>`;
+}
+function clearHistory(){
+  if(!confirm("সম্পূর্ণ কার্যক্রম ইতিহাস মুছে ফেলতে চান? এটি ফিরিয়ে আনা যাবে না।"))return;
+  D.activityLog=[];
+  sv();toast("🗑 ইতিহাস মুছে ফেলা হয়েছে","#dc2626");goTab("history");
+}
+
+// pdfDownload তে members, voting, meeting, health যোগ
 const _oldPdfDl=pdfDownload;
 pdfDownload=function(type){
   if(type==="members"){
@@ -2985,7 +3211,8 @@ pdfDownload=function(type){
     <table><thead><tr><th>#</th><th>নাম</th><th>পদ</th><th>মোবাইল</th><th>মোট চাঁদা</th><th>চাঁদা বকেয়া</th><th>ঋণ বকেয়া</th></tr></thead><tbody>
     ${members.map((m,i)=>{
       const mp=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
-      const me=allMonths4.length*(m.monthlyRate||2000);
+      const spM=(D.specialMonths||[]).filter(x=>x.mid==m.id);
+      const me=allMonths4.reduce((s,mon)=>{const sp=spM.find(x=>x.month===mon);return s+(sp?sp.amount:getApplicableRate(m.id,mon));},0);
       const ml=loans.filter(l=>l.mid==m.id).reduce((s,l)=>s+l.remaining,0);
       return `<tr><td>${i+1}</td><td><b>${m.name}</b></td><td>${m.role||"সদস্য"}</td><td>${m.phone||"—"}</td><td>৳${mp.toLocaleString()}</td><td style="color:${me-mp>0?"red":"green"}">৳${(me-mp).toLocaleString()}</td><td style="color:${ml>0?"red":"green"}">৳${ml.toLocaleString()}</td></tr>`;
     }).join("")}
@@ -3036,7 +3263,8 @@ pdfDownload=function(type){
     <table><thead><tr><th>সদস্য</th><th>মোট চাঁদা</th><th>চাঁদা বকেয়া</th><th>ঋণ বকেয়া</th></tr></thead><tbody>
     ${members.map(m=>{
       const mp=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
-      const me=allMonths3.length*(m.monthlyRate||2000);
+      const spM=(D.specialMonths||[]).filter(x=>x.mid==m.id);
+      const me=allMonths3.reduce((s,mon)=>{const sp=spM.find(x=>x.month===mon);return s+(sp?sp.amount:getApplicableRate(m.id,mon));},0);
       const ml=loans.filter(l=>l.mid==m.id).reduce((s,l)=>s+l.remaining,0);
       return `<tr><td>${m.name}</td><td>৳${mp.toLocaleString()}</td><td>৳${(me-mp).toLocaleString()}</td><td>৳${ml.toLocaleString()}</td></tr>`;
     }).join("")}
