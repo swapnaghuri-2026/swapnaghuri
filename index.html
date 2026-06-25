@@ -2669,18 +2669,32 @@ function pgMemberStat(){
       ${mem.name.split(" ")[0]}
     </button>`).join("");
 
-  const monthRows=allMonths.slice(-24).map(mon=>{
+  // বাংলা মাসের নাম
+  const bnMonth={"01":"জানু","02":"ফেব্রু","03":"মার্চ","04":"এপ্রিল","05":"মে","06":"জুন","07":"জুলাই","08":"আগস্ট","09":"সেপ্টে","10":"অক্টো","11":"নভে","12":"ডিসে"};
+  const fmtMon=mon=>{const [y,m]=mon.split("-");return `${bnMonth[m]||m} ${y}`;};
+
+  const monthRows=allMonths.map(mon=>{
     const sp=specialMonths.find(s=>s.month===mon);
-    const cellRate=getApplicableRate(m.id,mon)+(sp?sp.amount:0);
-    const paid=payments.find(p=>p.month===mon);
-    return `<tr>
-      <td>${mon}</td>
-      <td style="text-align:right">${fmt(cellRate)}</td>
-      <td style="text-align:right;color:${paid?"#16a34a":"#dc2626"}">${paid?fmt(paid.amount):"—"}</td>
-      <td style="text-align:center">${paid?`<span style="color:#16a34a;font-weight:700">✅</span>`:`<span style="color:#dc2626">❌</span>`}</td>
-      ${isA()?`<td style="text-align:center">
-        ${paid
-          ?`<button onclick="editDue(${m.id},'${mon}',${paid.id},${paid.amount})" style="font-size:11px;background:#eff6ff;border:none;border-radius:5px;padding:3px 7px;cursor:pointer">✏️</button>`
+    const regularRate=getApplicableRate(m.id,mon);
+    const cellRate=regularRate+(sp?sp.amount:0);
+    const paid=payments.filter(p=>p.month===mon);
+    const totalPaidMon=paid.reduce((s,p)=>s+p.amount,0);
+    const isPaid=totalPaidMon>=cellRate;
+    const isPartial=totalPaidMon>0&&totalPaidMon<cellRate;
+    return `<tr style="vertical-align:middle">
+      <td style="text-align:center;vertical-align:middle;white-space:nowrap">${fmtMon(mon)}</td>
+      <td style="text-align:center;vertical-align:middle">
+        <div style="font-weight:600">${fmt(regularRate)}</div>
+        ${sp?`<div style="font-size:10px;color:#7c3aed;font-weight:700">+${fmt(sp.amount)} বিশেষ</div>`:""}
+        ${sp?`<div style="font-size:10px;color:#64748b">= ${fmt(cellRate)}</div>`:""}
+      </td>
+      <td style="text-align:center;vertical-align:middle;color:${totalPaidMon>0?"#16a34a":"#dc2626"}">${totalPaidMon>0?fmt(totalPaidMon):"—"}</td>
+      <td style="text-align:center;vertical-align:middle">
+        ${isPaid?`<span style="color:#16a34a;font-size:16px">✅</span>`:isPartial?`<span style="color:#d97706;font-size:12px;font-weight:700">আংশিক</span>`:`<span style="color:#dc2626;font-size:16px">❌</span>`}
+      </td>
+      ${isA()?`<td style="text-align:center;vertical-align:middle">
+        ${totalPaidMon>0
+          ?paid.map(p=>`<button onclick="editDue(${m.id},'${mon}',${p.id},${p.amount})" style="font-size:11px;background:#eff6ff;border:none;border-radius:5px;padding:3px 7px;cursor:pointer;margin:1px">✏️</button>`).join("")
           :`<button onclick="addDue(${m.id},'${mon}',${cellRate})" style="font-size:11px;background:#fee2e2;border:none;border-radius:5px;padding:3px 7px;cursor:pointer;color:#dc2626">+ যোগ</button>`
         }
       </td>`:""}
@@ -2738,17 +2752,17 @@ function pgMemberStat(){
       <div style="overflow-x:auto">
         <table class="tbl">
           <thead><tr style="background:#006400">
-            <th style="color:#fff">মাস</th>
-            <th style="color:#fff;text-align:right">নির্ধারিত</th>
-            <th style="color:#fff;text-align:right">পরিশোধ</th>
+            <th style="color:#fff;text-align:center">মাস</th>
+            <th style="color:#fff;text-align:center">নির্ধারিত</th>
+            <th style="color:#fff;text-align:center">পরিশোধ</th>
             <th style="color:#fff;text-align:center">অবস্থা</th>
             ${isA()?`<th style="color:#fff;text-align:center">সম্পাদনা</th>`:""}
           </tr></thead>
           <tbody>${monthRows}</tbody>
           <tfoot><tr style="background:#f0fdf4;font-weight:800">
-            <td style="color:#071a07">সর্বমোট (${allMonths.length} মাস)</td>
-            <td style="text-align:right">${fmt(totalExp)}</td>
-            <td style="text-align:right;color:#16a34a">${fmt(totalPaid)}</td>
+            <td style="color:#071a07;text-align:center">সর্বমোট (${allMonths.length} মাস)</td>
+            <td style="text-align:center">${fmt(totalExp)}</td>
+            <td style="text-align:center;color:#16a34a">${fmt(totalPaid)}</td>
             <td style="text-align:center;color:#dc2626">${totalDue>0?"বকেয়া "+fmt(totalDue):"✅"}</td>
             ${isA()?`<td></td>`:""}
           </tr></tfoot>
