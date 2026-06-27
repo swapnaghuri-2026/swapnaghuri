@@ -244,6 +244,8 @@ const firebaseConfig = {
           <span id="bell-dot" class="bell-dot" style="display:none">0</span>
           <div class="notif-pop" id="notif-pop"></div>
         </div>
+        ${''/* মেসেজ বাটন — শুধু অ্যাডমিনের জন্য JS-এ দেখানো হবে */}
+        <button id="msg-btn" onclick="showMsgPanel()" style="display:none;background:#25D366;border:none;border-radius:9px;padding:6px 10px;cursor:pointer;font-size:16px" title="মেসেজ পাঠান">📲</button>
         <div id="tb-badge"></div>
         <div style="text-align:right">
           <div style="font-size:9px;color:var(--muted)">তহবিল</div>
@@ -351,6 +353,10 @@ function logActivity(type, text){
     by: isA() ? "অ্যাডমিন" : "ভিউয়ার",
     at: new Date().toISOString()
   }];
+}
+function delActivity(id){
+  D.activityLog=(D.activityLog||[]).filter(a=>String(a.id)!==String(id));
+  sv();toast("🗑 মুছে গেছে","#dc2626");goTab("home");
 }
 
 // ══════════════════════════════════════════
@@ -476,6 +482,8 @@ function buildNav(){
   if(brEl) brEl.style.display = isAd ? "grid" : "none";
   document.getElementById("sb-badge").innerHTML=`<span class="badge" style="background:${isAd?"#fbbf24":"rgba(255,255,255,.15)"};color:${isAd?"#006400":"rgba(255,255,255,.7)"};font-size:10px">${isAd?"👑 অ্যাডমিন":"👁️ ভিউ মোড"}</span>`;
   document.getElementById("tb-badge").innerHTML=`<span class="badge" style="background:${isAd?"#fef08a":"#f0fdf4"};color:${isAd?"#006400":"#1a8a00"};font-size:10px">${isAd?"👑 অ্যাডমিন":"👁️ ভিউ মোড"}</span>`;
+  const msgBtn=document.getElementById("msg-btn");
+  if(msgBtn) msgBtn.style.display=isAd?"block":"none";
   renderNotifBell();
   updHdr();
 }
@@ -762,15 +770,19 @@ function pgHome(){
         </div>`).join("")}
     </div>`;
 
-  // ── Recent Activities ──
+  // ── Recent Activities (activityLog থেকে + পুরনো) ──
   const activities=[];
-  payments.forEach(p=>activities.push({t:p.id,icon:"💰",text:`${gn(p.mid)} ${fmt(p.amount)} টাকা চাঁদা জমা দিয়েছেন`}));
-  loans.forEach(l=>activities.push({t:l.id,icon:"🤝",text:`${gn(l.mid)} ${fmt(l.principal)} টাকা ঋণ নিয়েছেন`}));
-  (D.investments||[]).forEach(i=>activities.push({t:i.id,icon:"📈",text:`${i.title} — ${fmt(i.amount)} টাকা বিনিয়োগ করা হয়েছে`}));
-  (D.notices||[]).forEach(n=>activities.push({t:n.id,icon:"📢",text:`নতুন নোটিশ প্রকাশিত হয়েছে: ${n.title}`}));
-  (D.meetings||[]).forEach(mt=>activities.push({t:mt.id,icon:"📅",text:`${ds(mt.date)} — মিটিং: ${mt.title}`}));
-  const recentHtml=activities.sort((a,b)=>b.t-a.t).slice(0,15).map(a=>
-    `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 16px;border-bottom:1px solid #f1f5f9"><span style="font-size:16px">${a.icon}</span><span style="font-size:12.5px;line-height:1.5">${a.text}</span></div>`
+  (D.activityLog||[]).forEach(a=>activities.push({t:new Date(a.at||0).getTime()||a.id||0,icon:"🕐",text:a.text,logId:a.id}));
+  if(!activities.length){
+    payments.forEach(p=>activities.push({t:p.id,icon:"💰",text:`${gn(p.mid)} ${fmt(p.amount)} টাকা চাঁদা জমা দিয়েছেন`}));
+    loans.forEach(l=>activities.push({t:l.id,icon:"🤝",text:`${gn(l.mid)} ${fmt(l.principal)} টাকা ঋণ নিয়েছেন`}));
+  }
+  const recentHtml=activities.sort((a,b)=>b.t-a.t).slice(0,20).map(a=>
+    `<div style="display:flex;gap:10px;align-items:center;padding:9px 16px;border-bottom:1px solid #f1f5f9">
+      <span style="font-size:16px;flex-shrink:0">${a.icon}</span>
+      <span style="font-size:12.5px;line-height:1.5;flex:1">${a.text}</span>
+      ${isA()&&a.logId?`<button onclick="delActivity(${a.logId})" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:13px;flex-shrink:0;padding:2px 4px" title="মুছুন">🗑</button>`:""}
+    </div>`
   ).join("")||`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো কার্যক্রম নেই</div>`;
 
   // ── Mini Health Score ──
@@ -1792,7 +1804,7 @@ function pgGallery(){
   const gal=D.gallery||[];
   const form=isA()?`<div class="card">${ch("📸","ছবি যোগ করুন","","p")}<div class="cb">
     <label style="display:block;border:2px dashed var(--border);border-radius:11px;padding:22px;text-align:center;cursor:pointer;margin-bottom:11px;background:#f8fafc" onmouseover="this.style.borderColor='#1a8a00'" onmouseout="this.style.borderColor='var(--border)'">
-      <div id="ipv"><div style="font-size:30px;margin-bottom:7px">📸</div><div style="font-size:13px;color:var(--muted)">ছবি বেছে নিন (≤৫০০KB)</div></div>
+      <div id="ipv"><div style="font-size:30px;margin-bottom:7px">📸</div><div style="font-size:13px;color:var(--muted)">ছবি বেছে নিন (সর্বোচ্চ ১০ MB)</div></div>
       <input type="file" accept="image/*" onchange="prevImg(this)" style="display:none">
     </label>
     <div class="field"><label>ক্যাপশন</label><input id="gcap" placeholder="ছবির বিবরণ"></div>
@@ -1802,7 +1814,7 @@ function pgGallery(){
   return form+grid;
 }
 window._gid=null;
-function prevImg(i){const f=i.files[0];if(!f)return;if(f.size>500000){toast("⚠️ ৫০০KB-র কম হতে হবে","#d97706");return;}const r=new FileReader();r.onload=e=>{window._gid=e.target.result;document.getElementById("ipv").innerHTML=`<img src="${e.target.result}" style="max-height:140px;border-radius:7px;object-fit:cover">`;};r.readAsDataURL(f);}
+function prevImg(i){const f=i.files[0];if(!f)return;if(f.size>10485760){toast("⚠️ ছবির সাইজ ১০ MB-র বেশি হবে না","#d97706");return;}const r=new FileReader();r.onload=e=>{window._gid=e.target.result;document.getElementById("ipv").innerHTML=`<img src="${e.target.result}" style="max-height:140px;border-radius:7px;object-fit:cover">`;};r.readAsDataURL(f);}
 function addGal(){if(!window._gid){toast("⚠️ ছবি বেছে নিন","#d97706");return;}D.gallery=[...(D.gallery||[]),{id:Date.now(),src:window._gid,caption:document.getElementById("gcap").value,date:new Date().toISOString().slice(0,10)}];window._gid=null;sv();toast("✅ ছবি যোগ হয়েছে");goTab("gallery");}
 function delGal(id){D.gallery=(D.gallery||[]).filter(g=>g.id!==id);sv();toast("🗑","#dc2626");goTab("gallery");}
 
@@ -2053,6 +2065,92 @@ function fullExcelDownload(){
   a.click();
   URL.revokeObjectURL(url);
   toast("✅ সম্পূর্ণ হিসাব ডাউনলোড শুরু হয়েছে");
+}
+
+function fullPDFDownload(){
+  const members=D.members||[], payments=D.payments||[], loans=D.loans||[];
+  const income=D.income||[], expenses=D.expenses||[], investments=D.investments||[];
+  const assets=D.assets||[], liabilities=D.liabilities||[];
+  const totChada=payments.reduce((s,p)=>s+p.amount,0);
+  const totOtherInc=income.reduce((s,i)=>s+i.amount,0);
+  const totInc=totChada+totOtherInc;
+  const totExp=expenses.reduce((s,e)=>s+e.amount,0);
+  const fund=totInc-totExp;
+  const totInvest=investments.reduce((s,i)=>s+i.amount,0);
+  const totAsset=assets.reduce((s,a)=>s+a.value,0);
+  const totLoanOut=loans.reduce((s,l)=>s+l.remaining,0);
+  const duesList=getDuesList();
+  const totDueChada=duesList.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
+  const totLiability=liabilities.reduce((s,l)=>s+l.amount,0);
+  const totNetAsset=totAsset+totInvest+totLoanOut+totDueChada+Math.max(0,fund);
+  const now2=new Date().toLocaleDateString("bn-BD");
+
+  const wm=`<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:80px;color:rgba(0,100,0,.06);font-weight:900;z-index:0;pointer-events:none;white-space:nowrap">স্বপ্নঘুড়ি</div>`;
+
+  const tbl=(cols,rows)=>`<table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px">
+    <thead><tr>${cols.map(c=>`<th style="background:#006400;color:#fff;padding:8px;text-align:left;border:1px solid #005000">${c}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr style="background:${i%2===0?"#f9fff9":"#fff"}">${r.map(c=>`<td style="padding:7px 8px;border:1px solid #e2e8f0">${c}</td>`).join("")}</tr>`).join("")}</tbody>
+  </table>`;
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>body{font-family:'Hind Siliguri',Arial,sans-serif;margin:0;padding:20px;color:#071a07;position:relative}
+  @media print{@page{margin:15mm}body{padding:0}.no-print{display:none}}
+  h1{color:#006400;text-align:center;margin-bottom:4px}
+  h2{color:#006400;border-bottom:2px solid #006400;padding-bottom:4px;margin-top:20px}
+  .meta{text-align:center;color:#64748b;font-size:12px;margin-bottom:20px}
+  .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+  .sbox{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;text-align:center}
+  .sbox .sv{font-size:18px;font-weight:800;color:#006400}.sbox .sl{font-size:11px;color:#64748b}
+  .wm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:100px;color:rgba(0,100,0,.05);font-weight:900;z-index:0;pointer-events:none;white-space:nowrap}
+  </style></head><body>
+  <div class="wm">স্বপ্নঘুড়ি</div>
+  <button class="no-print" onclick="window.print()" style="position:fixed;top:16px;right:16px;background:#006400;color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:14px;z-index:999">🖨️ প্রিন্ট / PDF সেভ করুন</button>
+  <h1>🪁 স্বপ্নঘুড়ি — সম্পূর্ণ আর্থিক প্রতিবেদন</h1>
+  <div class="meta">তারিখ: ${now2} | মোট সদস্য: ${members.length} জন</div>
+  <div class="summary">
+    ${[["সর্বমোট আয়",fmt(totInc)],["সর্বমোট ব্যয়",fmt(totExp)],["নিট তহবিল",fmt(fund)],["মোট সম্পদ",fmt(totNetAsset)],["মোট বিনিয়োগ",fmt(totInvest)],["মোট বাহ্যিক দায়",fmt(totLiability)]].map(([l,v])=>`<div class="sbox"><div class="sv">${v}</div><div class="sl">${l}</div></div>`).join("")}
+  </div>
+  <h2>সদস্য তালিকা</h2>
+  ${tbl(["নাম","পদ","মোট চাঁদা","বকেয়া চাঁদা","মোট ঋণ","ঋণ বকেয়া"],
+    members.map(m=>{
+      const mPay=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
+      const mDue=(duesList.find(d=>d.id==m.id)||{}).totalDue||0;
+      const mLoans=loans.filter(l=>l.mid==m.id);
+      return [m.name,m.role||"সদস্য",fmt(mPay),fmt(mDue),fmt(mLoans.reduce((s,l)=>s+l.principal,0)),fmt(mLoans.reduce((s,l)=>s+l.remaining,0))];
+    })
+  )}
+  <h2>ঋণের ইতিহাস</h2>
+  ${tbl(["সদস্য","তারিখ","মূল ঋণ","বকেয়া","পরিশোধিত","উদ্দেশ্য"],
+    loans.map(l=>{const name=(members.find(m=>m.id==l.mid)||{}).name||"";return [name,l.date,fmt(l.principal),fmt(l.remaining),fmt(l.principal-l.remaining),l.note||"—"];})
+  )}
+  <h2>বিনিয়োগ</h2>
+  ${tbl(["বিনিয়োগ","ধরন","পরিমাণ","তারিখ","অবস্থা"],
+    investments.map(i=>[i.title,i.type,fmt(i.amount),i.date,i.status||"সক্রিয়"])
+  )}
+  <h2>সম্পদ</h2>
+  ${tbl(["নাম","ক্যাটাগরি","মূল্য","তারিখ"],assets.map(a=>[a.name,a.category,fmt(a.value),a.date]))}
+  <h2>আয়-ব্যয়</h2>
+  ${tbl(["তারিখ","বিবরণ","ধরন","পরিমাণ"],[
+    ...income.map(i=>[i.date,i.title,"আয়",fmt(i.amount)]),
+    ...expenses.map(e=>[e.date,e.title,"ব্যয়",fmt(e.amount)])
+  ].sort((a,b)=>b[0].localeCompare(a[0])))}
+  <h2>বাহ্যিক দায়</h2>
+  ${tbl(["পাওনাদার","ধরন","পরিমাণ","তারিখ"],liabilities.map(l=>[l.name,l.type||"—",fmt(l.amount),l.date||"—"]))}
+  <h2>ব্যালেন্স শিট সারসংক্ষেপ</h2>
+  ${tbl(["বিবরণ","পরিমাণ"],[
+    ["সর্বমোট সম্পদ",fmt(totNetAsset)],
+    ["মোট বাহ্যিক দায়",fmt(totLiability)],
+    ["নিট সম্পদ (সম্পদ − দায়)",fmt(totNetAsset-totLiability)],
+    ["নিট তহবিল",fmt(fund)],
+    ["প্রতি সদস্যের অংশ",fmt(members.length?fund/members.length:0)],
+  ])}
+  </body></html>`;
+
+  const w=window.open("","_blank");
+  w.document.write(html);
+  w.document.close();
+  setTimeout(()=>w.print(),800);
+  toast("✅ PDF প্রস্তুত হচ্ছে — প্রিন্ট ডায়ালগে 'Save as PDF' বেছে নিন");
 }
 
 function pdfDownload(type){
@@ -2573,7 +2671,7 @@ function getDuesList() {
     const specialMonths = (D.specialMonths||[]).filter(s=>s.mid==m.id);
     let totalExpected = 0;
     months.forEach(mon => {
-      const sp = specialMonths.find(s=>s.month===mon);
+      const sp = specialMonths.find(s=>s.mid==m.id&&s.month===mon);
       totalExpected += getApplicableRate(m.id, mon) + (sp ? sp.amount : 0);
     });
     const totalPaid = payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
@@ -2599,52 +2697,87 @@ function renderChadaDues(){
 }
 
 // ══════════════════════════════════════════
-// WhatsApp নোটিফিকেশন
+// WhatsApp / SMS নোটিফিকেশন
 // ══════════════════════════════════════════
-function sendDueNotif(mid){
-  const m = (D.members||[]).find(x=>x.id==mid);
-  if(!m) { toast("সদস্য পাওয়া যায়নি","#d97706"); return; }
-  if(!m.phone) { toast("⚠️ ফোন নম্বর নেই! সদস্য সেকশনে যোগ করুন","#d97706"); return; }
-  const loanDue = (D.loans||[]).filter(l=>l.mid==mid).reduce((s,l)=>s+l.remaining,0);
-  const duesList = getDuesList();
-  const memberDues = duesList.find(x=>x.id==mid);
-  const chadaDue = memberDues ? memberDues.totalDue : 0;
-
-  if(chadaDue===0 && loanDue===0) { toast("✅ এই সদস্যের কোনো বকেয়া নেই","#1a8a00"); return; }
-
-  const msg = encodeURIComponent(
-    `আসসালামু আলাইকুম ${m.name} ভাই,
-
-` +
-    `🪁 *স্বপ্নঘুড়ি* সংগঠনে আপনার বকেয়া:
-
-` +
-    (chadaDue>0 ? `💰 মাসিক চাঁদা বকেয়া: *${fmt(chadaDue)}*
-` : "") +
-    (loanDue>0  ? `🤝 ঋণ বকেয়া: *${fmt(loanDue)}*
-` : "") +
-    `📊 সর্বমোট: *${fmt(chadaDue+loanDue)}*
-
-` +
-    `অনুগ্রহ করে দ্রুত পরিশোধ করুন।
-` +
-    `🔗 https://swapnaghuri.netlify.app`
-  );
-  window.open(`https://wa.me/88${m.phone}?text=${msg}`, "_blank");
+function buildDueMsg(m){
+  const loanDue=(D.loans||[]).filter(l=>l.mid==m.id).reduce((s,l)=>s+l.remaining,0);
+  const duesList=getDuesList();
+  const memberDues=duesList.find(x=>x.id==m.id);
+  const chadaDue=memberDues?memberDues.totalDue:0;
+  if(chadaDue===0&&loanDue===0) return null;
+  return `আসসালামু আলাইকুম ${m.name} ভাই,\n\n🪁 *স্বপ্নঘুড়ি* সংগঠনে আপনার বকেয়া:\n\n`
+    +(chadaDue>0?`💰 মাসিক চাঁদা বকেয়া: *${fmt(chadaDue)}*\n`:"")
+    +(loanDue>0?`🤝 ঋণ বকেয়া: *${fmt(loanDue)}*\n`:"")
+    +`📊 সর্বমোট: *${fmt(chadaDue+loanDue)}*\n\nঅনুগ্রহ করে দ্রুত পরিশোধ করুন।\n🔗 https://swapnaghuri-2026.github.io/swapnaghuri`;
 }
 
-function sendAllDueNotif(){
-  const duesList = getDuesList();
-  if(!duesList.length) { toast("সবার চাঁদা পরিশোধ আছে ✅","#006400"); return; }
-  let sent = 0;
-  duesList.forEach((m,i) => {
-    if(m.phone) {
-      setTimeout(() => sendDueNotif(m.id), i*2500);
-      sent++;
-    }
-  });
-  if(sent) toast(`📱 ${sent} জনকে নোটিফিকেশন পাঠানো হচ্ছে`);
-  else toast("⚠️ কারো ফোন নম্বর নেই","#d97706");
+function sendDueNotif(mid){
+  const m=(D.members||[]).find(x=>x.id==mid);
+  if(!m){toast("সদস্য পাওয়া যায়নি","#d97706");return;}
+  if(!m.phone){toast("⚠️ ফোন নম্বর নেই! সদস্য সেকশনে যোগ করুন","#d97706");return;}
+  const msg=buildDueMsg(m);
+  if(!msg){toast("✅ এই সদস্যের কোনো বকেয়া নেই","#1a8a00");return;}
+  window.open(`https://wa.me/88${m.phone}?text=${encodeURIComponent(msg)}`,"_blank");
+}
+
+function sendSMSNotif(mid){
+  const m=(D.members||[]).find(x=>x.id==mid);
+  if(!m){toast("সদস্য পাওয়া যায়নি","#d97706");return;}
+  if(!m.phone){toast("⚠️ ফোন নম্বর নেই","#d97706");return;}
+  const msg=buildDueMsg(m);
+  if(!msg){toast("✅ কোনো বকেয়া নেই","#1a8a00");return;}
+  window.open(`sms:+88${m.phone}?body=${encodeURIComponent(msg)}`,"_blank");
+}
+
+function sendAllDueNotif(via){
+  const duesList=getDuesList().filter(m=>m.totalDue>0);
+  if(!duesList.length){toast("সবার চাঁদা পরিশোধ আছে ✅","#006400");return;}
+  const withPhone=duesList.filter(m=>m.phone);
+  if(!withPhone.length){toast("⚠️ কারো ফোন নম্বর নেই","#d97706");return;}
+  if(via==="sms"){
+    withPhone.forEach((m,i)=>setTimeout(()=>sendSMSNotif(m.id),i*1500));
+    toast(`📱 ${withPhone.length} জনকে SMS পাঠানো হচ্ছে`);
+  } else {
+    withPhone.forEach((m,i)=>setTimeout(()=>sendDueNotif(m.id),i*2500));
+    toast(`📱 ${withPhone.length} জনকে WhatsApp মেসেজ পাঠানো হচ্ছে`);
+  }
+}
+
+function showMsgPanel(){
+  const duesList=getDuesList().filter(m=>m.totalDue>0);
+  const members=D.members||[];
+  const html=`<div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.remove()">
+    <div style="background:#fff;border-radius:16px;padding:20px;max-width:420px;width:100%;max-height:80vh;overflow-y:auto">
+      <div style="font-weight:800;font-size:16px;margin-bottom:14px;color:#006400">📱 মেসেজ পাঠান</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+        <button onclick="sendAllDueNotif('whatsapp');this.closest('[onclick]').remove()" style="background:#25D366;color:#fff;border:none;border-radius:10px;padding:12px;font-family:inherit;font-weight:700;cursor:pointer;font-size:13px">📲 সবাইকে WhatsApp</button>
+        <button onclick="sendAllDueNotif('sms');this.closest('[onclick]').remove()" style="background:#1a8a00;color:#fff;border:none;border-radius:10px;padding:12px;font-family:inherit;font-weight:700;cursor:pointer;font-size:13px">💬 সবাইকে SMS</button>
+      </div>
+      <div style="font-weight:700;font-size:12px;color:#64748b;margin-bottom:8px">আলাদাভাবে পাঠান (${duesList.length} জন বকেয়া):</div>
+      ${duesList.map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:9px;background:#f8fafc;margin-bottom:6px">
+        <div>
+          <div style="font-weight:600;font-size:13px">${m.name}</div>
+          <div style="font-size:11px;color:#dc2626">বকেয়া: ${fmt(m.totalDue)}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="sendDueNotif(${m.id})" style="background:#25D366;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px">📲</button>
+          <button onclick="sendSMSNotif(${m.id})" style="background:#1a8a00;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px">💬</button>
+        </div>
+      </div>`).join("")}
+      ${members.filter(m=>!duesList.find(d=>d.id==m.id)).map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:9px;background:#f0fdf4;margin-bottom:6px">
+        <div>
+          <div style="font-weight:600;font-size:13px">${m.name}</div>
+          <div style="font-size:11px;color:#16a34a">✅ বকেয়া নেই</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="sendDueNotif(${m.id})" style="background:#25D366;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px">📲</button>
+          <button onclick="sendSMSNotif(${m.id})" style="background:#1a8a00;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px">💬</button>
+        </div>
+      </div>`).join("")}
+      <button onclick="this.closest('div[style*=\"fixed\"]').remove()" style="width:100%;margin-top:10px;background:#f1f5f9;border:none;border-radius:10px;padding:10px;font-family:inherit;cursor:pointer;font-weight:600">বন্ধ করুন</button>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML("beforeend",html);
 }
 
 // ══════════════════════════════════════════
@@ -3402,7 +3535,8 @@ function pgReport(){
       <div style="font-size:28px;margin-bottom:6px">📊</div>
       <div style="color:#fff;font-weight:800;font-size:16px;margin-bottom:4px">সম্পূর্ণ সংগঠনের হিসাব</div>
       <div style="color:rgba(255,255,255,.75);font-size:12px;margin-bottom:12px">চাঁদা · ঋণ · বিনিয়োগ · সম্পদ · আয়-ব্যয় · দায় · ব্যালেন্স শিট — সব একসাথে ১০টি শিটে</div>
-      <button onclick="fullExcelDownload()" style="background:#fff;color:#006400;border:none;border-radius:10px;padding:12px 28px;font-weight:800;font-size:15px;cursor:pointer;font-family:inherit">⬇️ সম্পূর্ণ Excel ডাউনলোড</button>
+      <button onclick="fullExcelDownload()" style="background:#fff;color:#006400;border:none;border-radius:10px;padding:12px 20px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit">⬇️ Excel ডাউনলোড</button>
+      <button onclick="fullPDFDownload()" style="background:#fff;color:#dc2626;border:none;border-radius:10px;padding:12px 20px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit;margin-top:8px">📄 PDF ডাউনলোড (জলছাপ সহ)</button>
     </div>
     <div class="card" style="margin-bottom:14px">
       ${ch("👤","সদস্যভিত্তিক স্টেটমেন্ট","প্রতি সদস্যের সম্পূর্ণ হিসাব")}
