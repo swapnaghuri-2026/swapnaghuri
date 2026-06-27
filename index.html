@@ -144,7 +144,7 @@ button,input,select,textarea{font-family:'Hind Siliguri',sans-serif}
 
 .bell-wrap{position:relative;cursor:pointer}
 .bell-dot{position:absolute;top:-3px;right:-3px;background:var(--rd);color:#fff;font-size:9px;font-weight:800;border-radius:10px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px}
-.notif-pop{position:absolute;top:36px;right:0;background:var(--white);border:1px solid var(--border);border-radius:13px;box-shadow:0 8px 28px rgba(0,0,0,.18);width:300px;max-height:380px;overflow-y:auto;z-index:500;display:none}
+.notif-pop{position:absolute;top:42px;right:-10px;background:var(--white);border:1px solid var(--border);border-radius:13px;box-shadow:0 8px 28px rgba(0,0,0,.18);width:min(320px,90vw);max-height:420px;overflow-y:auto;z-index:500;display:none}
 .notif-pop.show{display:block}
 .notif-item{padding:11px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;cursor:pointer}
 .notif-item:hover{background:#fafafa}
@@ -598,17 +598,26 @@ function closeFab(){
 // ══════════════════
 function getNotifications(){
   const list=[];
+  // নোটিশ
   (D.notices||[]).slice().reverse().forEach(n=>{
     list.push({id:"notice-"+n.id,icon:"📢",text:"নতুন নোটিশ: "+n.title,date:n.date||"",type:"notice"});
   });
+  // মিটিং
+  (D.meetings||[]).filter(m=>m.date>=new Date().toISOString().slice(0,10)).slice(0,3).forEach(m=>{
+    list.push({id:"meet-"+m.id,icon:"📅",text:"আসন্ন মিটিং: "+m.title+" ("+ds(m.date)+")",date:m.date,type:"meeting"});
+  });
+  // বকেয়া চাঁদা — প্রতি সদস্যের জন্য একটি করে
   const duesList=(typeof getDuesList==="function")?getDuesList():[];
   duesList.filter(m=>m.totalDue>0).forEach(m=>{
     list.push({id:"due-"+m.id,icon:"⚠️",text:m.name+" — বকেয়া চাঁদা "+fmt(m.totalDue),date:"",type:"due"});
   });
+  // বকেয়া ঋণ
   (D.loans||[]).filter(l=>l.remaining>0).forEach(l=>{
     list.push({id:"loan-"+l.id,icon:"🤝",text:gn(l.mid)+" — বকেয়া ঋণ "+fmt(l.remaining),date:"",type:"loan"});
   });
-  return list;
+  // ডুপ্লিকেট বাদ
+  const seen=new Set();
+  return list.filter(n=>{if(seen.has(n.id))return false;seen.add(n.id);return true;});
 }
 function readNotifIds(){try{return JSON.parse(localStorage.getItem("sg_notif_read")||"[]");}catch(e){return [];}}
 function markNotifRead(id){
@@ -631,12 +640,25 @@ function renderNotifBell(){
     else{dot.style.display="none";}
   }
   const pop=document.getElementById("notif-pop");
-  if(pop){
-    pop.innerHTML = items.length ?
-      `<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f1f5f9"><b style="font-size:12px">নোটিফিকেশন</b><span onclick="markAllNotifRead()" style="font-size:11px;color:#1a8a00;cursor:pointer">সব পড়া হয়েছে</span></div>` +
-      items.map(n=>`<div class="notif-item${read.includes(n.id)?"":" unread"}" onclick="markNotifRead('${n.id}')"><span style="margin-right:6px">${n.icon}</span>${n.text}</div>`).join("")
-      : `<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">কোনো নোটিফিকেশন নেই</div>`;
-  }
+  if(!pop)return;
+  if(!items.length){pop.innerHTML=`<div style="padding:24px;text-align:center;color:#94a3b8;font-size:12px">কোনো নোটিফিকেশন নেই</div>`;return;}
+  pop.innerHTML=
+    `<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f1f5f9;position:sticky;top:0;background:#fff;z-index:1">
+      <b style="font-size:13px;color:#071a07">🔔 নোটিফিকেশন (${unread.length} অপঠিত)</b>
+      ${unread.length?`<span onclick="markAllNotifRead()" style="font-size:11px;color:#1a8a00;cursor:pointer;font-weight:600">সব পড়া হয়েছে ✓</span>`:""}
+    </div>`+
+    items.map(n=>{
+      const isRead=read.includes(n.id);
+      const typeColor=n.type==="due"?"#dc2626":n.type==="loan"?"#d97706":n.type==="meeting"?"#2563eb":"#006400";
+      return `<div onclick="markNotifRead('${n.id}')" style="padding:10px 14px;border-bottom:1px solid #f8fafc;cursor:pointer;background:${isRead?"#fff":"#f0fdf4"};transition:background .2s;display:flex;gap:10px;align-items:flex-start">
+        <span style="font-size:18px;flex-shrink:0">${n.icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;line-height:1.5;color:${isRead?"#64748b":"#071a07"};font-weight:${isRead?400:600}">${n.text}</div>
+          ${n.date?`<div style="font-size:10px;color:#94a3b8;margin-top:2px">${ds(n.date)}</div>`:""}
+        </div>
+        ${!isRead?`<span style="width:8px;height:8px;border-radius:50%;background:${typeColor};flex-shrink:0;margin-top:4px"></span>`:""}
+      </div>`;
+    }).join("");
 }
 function toggleNotif(){
   const pop=document.getElementById("notif-pop");
