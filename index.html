@@ -144,7 +144,7 @@ button,input,select,textarea{font-family:'Hind Siliguri',sans-serif}
 
 .bell-wrap{position:relative;cursor:pointer}
 .bell-dot{position:absolute;top:-3px;right:-3px;background:var(--rd);color:#fff;font-size:9px;font-weight:800;border-radius:10px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px}
-.notif-pop{position:absolute;top:42px;right:-10px;background:var(--white);border:1px solid var(--border);border-radius:13px;box-shadow:0 8px 28px rgba(0,0,0,.18);width:min(320px,90vw);max-height:420px;overflow-y:auto;z-index:500;display:none}
+.notif-pop{position:fixed;top:64px;right:8px;background:var(--white);border:1px solid var(--border);border-radius:13px;box-shadow:0 8px 28px rgba(0,0,0,.25);width:min(340px,calc(100vw - 16px));max-height:70vh;overflow-y:auto;z-index:9998;display:none}
 .notif-pop.show{display:block}
 .notif-item{padding:11px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;cursor:pointer}
 .notif-item:hover{background:#fafafa}
@@ -244,7 +244,6 @@ const firebaseConfig = {
           <span id="bell-dot" class="bell-dot" style="display:none">0</span>
           <div class="notif-pop" id="notif-pop"></div>
         </div>
-        ${''/* মেসেজ বাটন — শুধু অ্যাডমিনের জন্য JS-এ দেখানো হবে */}
         <button id="msg-btn" onclick="showMsgPanel()" style="display:none;background:#25D366;border:none;border-radius:9px;padding:6px 10px;cursor:pointer;font-size:16px" title="মেসেজ পাঠান">📲</button>
         <div id="tb-badge"></div>
         <div style="text-align:right">
@@ -300,6 +299,7 @@ const TABS = [
     {id:"meeting",icon:"📅",label:"মিটিং"},
     {id:"report",icon:"📊",label:"রিপোর্ট সেন্টার"},
     {id:"history",icon:"🕘",label:"কার্যক্রম ইতিহাস"},
+    {id:"visitors",icon:"👥",label:"ভিজিটর ইতিহাস"},
     {id:"rules",icon:"📜",label:"নিয়মকানুন"},
     {id:"gallery",icon:"🖼️",label:"গ্যালারি"},
     {id:"opinion",icon:"💬",label:"মতামত"},
@@ -356,7 +356,11 @@ function logActivity(type, text){
 }
 function delActivity(id){
   D.activityLog=(D.activityLog||[]).filter(a=>String(a.id)!==String(id));
-  sv();toast("🗑 মুছে গেছে","#dc2626");goTab("home");
+  sv();
+  toast("🗑 মুছে গেছে","#dc2626");
+  // Inline refresh
+  const el=document.querySelector(`[onclick="delActivity(${id})"]`);
+  if(el) el.closest('div[style*="border-bottom"]').remove();
 }
 
 // ══════════════════════════════════════════
@@ -398,8 +402,8 @@ function login(r){
     document.getElementById("fab-btn").classList.add("show");
     if(r!=="admin") document.getElementById("vbar").style.display="block";
     buildNav();
+    trackVisitor();
     goTab("home");
-    // Firebase sync later
     setTimeout(function(){
       try{
         if(typeof firebase!=="undefined"&&firebase.apps&&firebase.apps.length){
@@ -533,7 +537,7 @@ function goTab(id){
   closeSB();
   const c=document.getElementById("content");
   c.className="content pa";c.innerHTML="";
-  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory};
+  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,visitors:pgVisitors};
   if(pages[id])c.innerHTML=pages[id]();
   updHdr();
 }
@@ -666,10 +670,10 @@ function toggleNotif(){
   if(pop.classList.contains("show")) renderNotifBell();
 }
 document.addEventListener("click",function(e){
+  const pop=document.getElementById("notif-pop");
   const wrap=document.querySelector(".bell-wrap");
-  if(wrap && !wrap.contains(e.target)){
-    const pop=document.getElementById("notif-pop");
-    if(pop) pop.classList.remove("show");
+  if(pop&&pop.classList.contains("show")&&wrap&&!wrap.contains(e.target)&&!pop.contains(e.target)){
+    pop.classList.remove("show");
   }
 });
 
@@ -2109,28 +2113,22 @@ function fullPDFDownload(){
 
   const wm=`<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:80px;color:rgba(0,100,0,.06);font-weight:900;z-index:0;pointer-events:none;white-space:nowrap">স্বপ্নঘুড়ি</div>`;
 
-  const tbl=(cols,rows)=>`<table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px">
-    <thead><tr>${cols.map(c=>`<th style="background:#006400;color:#fff;padding:8px;text-align:left;border:1px solid #005000">${c}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map((r,i)=>`<tr style="background:${i%2===0?"#f9fff9":"#fff"}">${r.map(c=>`<td style="padding:7px 8px;border:1px solid #e2e8f0">${c}</td>`).join("")}</tr>`).join("")}</tbody>
+  const tbl=(cols,rows)=>`<table>
+    <thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr>${r.map((c,ci)=>`<td style="${ci===0?"text-align:left":"text-align:center"}">${c}</td>`).join("")}</tr>`).join("")}</tbody>
   </table>`;
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>body{font-family:'Hind Siliguri',Arial,sans-serif;margin:0;padding:20px;color:#071a07;position:relative}
-  @media print{@page{margin:15mm}body{padding:0}.no-print{display:none}}
-  h1{color:#006400;text-align:center;margin-bottom:4px}
-  h2{color:#006400;border-bottom:2px solid #006400;padding-bottom:4px;margin-top:20px}
-  .meta{text-align:center;color:#64748b;font-size:12px;margin-bottom:20px}
+  <style>${pdfStyle}
   .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
   .sbox{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;text-align:center}
-  .sbox .sv{font-size:18px;font-weight:800;color:#006400}.sbox .sl{font-size:11px;color:#64748b}
-  .wm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:100px;color:rgba(0,100,0,.05);font-weight:900;z-index:0;pointer-events:none;white-space:nowrap}
+  .sbox .sv{font-size:16px;font-weight:800;color:#006400}.sbox .sl{font-size:11px;color:#64748b}
   </style></head><body>
-  <div class="wm">স্বপ্নঘুড়ি</div>
-  <button class="no-print" onclick="window.print()" style="position:fixed;top:16px;right:16px;background:#006400;color:#fff;border:none;border-radius:8px;padding:10px 20px;cursor:pointer;font-size:14px;z-index:999">🖨️ প্রিন্ট / PDF সেভ করুন</button>
+  ${pdfWM()}${pdfBtn()}
   <h1>🪁 স্বপ্নঘুড়ি — সম্পূর্ণ আর্থিক প্রতিবেদন</h1>
-  <div class="meta">তারিখ: ${now2} | মোট সদস্য: ${members.length} জন</div>
+  <div class="meta">তারিখ: ${now2} | মোট সদস্য: ${bnNum(members.length)} জন</div>
   <div class="summary">
-    ${[["সর্বমোট আয়",fmt(totInc)],["সর্বমোট ব্যয়",fmt(totExp)],["নিট তহবিল",fmt(fund)],["মোট সম্পদ",fmt(totNetAsset)],["মোট বিনিয়োগ",fmt(totInvest)],["মোট বাহ্যিক দায়",fmt(totLiability)]].map(([l,v])=>`<div class="sbox"><div class="sv">${v}</div><div class="sl">${l}</div></div>`).join("")}
+    ${[["সর্বমোট আয়",fmtBn(totInc)],["সর্বমোট ব্যয়",fmtBn(totExp)],["নিট তহবিল",fmtBn(fund)],["মোট সম্পদ",fmtBn(totNetAsset)],["মোট বিনিয়োগ",fmtBn(totInvest)],["মোট বাহ্যিক দায়",fmtBn(totLiability)]].map(([l,v])=>`<div class="sbox"><div class="sv">${v}</div><div class="sl">${l}</div></div>`).join("")}
   </div>
   <h2>সদস্য তালিকা</h2>
   ${tbl(["নাম","পদ","মোট চাঁদা","বকেয়া চাঁদা","মোট ঋণ","ঋণ বকেয়া"],
@@ -2138,33 +2136,33 @@ function fullPDFDownload(){
       const mPay=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
       const mDue=(duesList.find(d=>d.id==m.id)||{}).totalDue||0;
       const mLoans=loans.filter(l=>l.mid==m.id);
-      return [m.name,m.role||"সদস্য",fmt(mPay),fmt(mDue),fmt(mLoans.reduce((s,l)=>s+l.principal,0)),fmt(mLoans.reduce((s,l)=>s+l.remaining,0))];
+      return [m.name,m.role||"সদস্য",fmtBn(mPay),fmtBn(mDue),fmtBn(mLoans.reduce((s,l)=>s+l.principal,0)),fmtBn(mLoans.reduce((s,l)=>s+l.remaining,0))];
     })
   )}
   <h2>ঋণের ইতিহাস</h2>
   ${tbl(["সদস্য","তারিখ","মূল ঋণ","বকেয়া","পরিশোধিত","উদ্দেশ্য"],
-    loans.map(l=>{const name=(members.find(m=>m.id==l.mid)||{}).name||"";return [name,l.date,fmt(l.principal),fmt(l.remaining),fmt(l.principal-l.remaining),l.note||"—"];})
+    loans.map(l=>{const name=(members.find(m=>m.id==l.mid)||{}).name||"";return [name,l.date,fmtBn(l.principal),fmtBn(l.remaining),fmtBn(l.principal-l.remaining),l.note||"—"];})
   )}
   <h2>বিনিয়োগ</h2>
   ${tbl(["বিনিয়োগ","ধরন","পরিমাণ","তারিখ","অবস্থা"],
-    investments.map(i=>[i.title,i.type,fmt(i.amount),i.date,i.status||"সক্রিয়"])
+    investments.map(i=>[i.title,i.type,fmtBn(i.amount),i.date,i.status||"সক্রিয়"])
   )}
   <h2>সম্পদ</h2>
-  ${tbl(["নাম","ক্যাটাগরি","মূল্য","তারিখ"],assets.map(a=>[a.name,a.category,fmt(a.value),a.date]))}
+  ${tbl(["নাম","ক্যাটাগরি","মূল্য","তারিখ"],assets.map(a=>[a.name,a.category,fmtBn(a.value),a.date]))}
   <h2>আয়-ব্যয়</h2>
   ${tbl(["তারিখ","বিবরণ","ধরন","পরিমাণ"],[
-    ...income.map(i=>[i.date,i.title,"আয়",fmt(i.amount)]),
-    ...expenses.map(e=>[e.date,e.title,"ব্যয়",fmt(e.amount)])
+    ...income.map(i=>[i.date,i.title,"আয়",fmtBn(i.amount)]),
+    ...expenses.map(e=>[e.date,e.title,"ব্যয়",fmtBn(e.amount)])
   ].sort((a,b)=>b[0].localeCompare(a[0])))}
   <h2>বাহ্যিক দায়</h2>
-  ${tbl(["পাওনাদার","ধরন","পরিমাণ","তারিখ"],liabilities.map(l=>[l.name,l.type||"—",fmt(l.amount),l.date||"—"]))}
+  ${tbl(["পাওনাদার","ধরন","পরিমাণ","তারিখ"],liabilities.map(l=>[l.name,l.type||"—",fmtBn(l.amount),l.date||"—"]))}
   <h2>ব্যালেন্স শিট সারসংক্ষেপ</h2>
   ${tbl(["বিবরণ","পরিমাণ"],[
-    ["সর্বমোট সম্পদ",fmt(totNetAsset)],
-    ["মোট বাহ্যিক দায়",fmt(totLiability)],
-    ["নিট সম্পদ (সম্পদ − দায়)",fmt(totNetAsset-totLiability)],
-    ["নিট তহবিল",fmt(fund)],
-    ["প্রতি সদস্যের অংশ",fmt(members.length?fund/members.length:0)],
+    ["সর্বমোট সম্পদ",fmtBn(totNetAsset)],
+    ["মোট বাহ্যিক দায়",fmtBn(totLiability)],
+    ["নিট সম্পদ (সম্পদ − দায়)",fmtBn(totNetAsset-totLiability)],
+    ["নিট তহবিল",fmtBn(fund)],
+    ["প্রতি সদস্যের অংশ",fmtBn(members.length?Math.round(fund/members.length):0)],
   ])}
   </body></html>`;
 
@@ -2184,49 +2182,39 @@ function pdfDownload(type){
   if(type==="savings"){
     title="চাঁদার রিপোর্ট";
     const totals=members.map(m=>({name:m.name,total:payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0)}));
-    tableHTML=`<table border="1" cellpadding="8" style="width:100%;border-collapse:collapse">
-      <tr style="background:#006400;color:#fff"><th>সদস্য</th><th>মোট চাঁদা</th></tr>
-      ${totals.map(t=>`<tr><td>${t.name}</td><td style="text-align:right">৳${t.total.toLocaleString()}</td></tr>`).join("")}
-      <tr style="background:#f0fdf4;font-weight:bold"><td>সর্বমোট</td><td style="text-align:right">৳${payments.reduce((s,p)=>s+p.amount,0).toLocaleString()}</td></tr>
-    </table>`;
-
+    tableHTML=`<table><thead><tr><th style="text-align:left">সদস্য</th><th>মোট চাঁদা</th></tr></thead><tbody>
+      ${totals.map(t=>`<tr><td style="text-align:left">${t.name}</td><td>${fmtBn(t.total)}</td></tr>`).join("")}
+      <tr style="background:#f0fdf4;font-weight:800"><td style="text-align:left">সর্বমোট</td><td>${fmtBn(payments.reduce((s,p)=>s+p.amount,0))}</td></tr>
+    </tbody></table>`;
   } else if(type==="loans"){
     title="ঋণ ব্যবস্থাপনা রিপোর্ট";
-    tableHTML=`<table border="1" cellpadding="8" style="width:100%;border-collapse:collapse">
-      <tr style="background:#006400;color:#fff"><th>সদস্য</th><th>মূল ঋণ</th><th>বকেয়া</th><th>পরিশোধ</th><th>অবস্থা</th></tr>
-      ${loans.map(l=>{const n=(members.find(m=>m.id==l.mid)||{}).name||"";const s=l.remaining===0?"পরিশোধিত":l.remaining<l.principal?"আংশিক":"বাকি";return `<tr><td>${n}</td><td style="text-align:right">৳${l.principal.toLocaleString()}</td><td style="text-align:right;color:red">৳${l.remaining.toLocaleString()}</td><td style="text-align:right">৳${(l.principal-l.remaining).toLocaleString()}</td><td>${s}</td></tr>`;}).join("")}
-      <tr style="background:#f0fdf4;font-weight:bold"><td>সর্বমোট</td><td style="text-align:right">৳${loans.reduce((s,l)=>s+l.principal,0).toLocaleString()}</td><td style="text-align:right;color:red">৳${loans.reduce((s,l)=>s+l.remaining,0).toLocaleString()}</td><td style="text-align:right">৳${loans.reduce((s,l)=>s+(l.principal-l.remaining),0).toLocaleString()}</td><td></td></tr>
-    </table>`;
-
+    tableHTML=`<table><thead><tr><th style="text-align:left">সদস্য</th><th>মূল ঋণ</th><th>বকেয়া</th><th>পরিশোধ</th><th>অবস্থা</th></tr></thead><tbody>
+      ${loans.map(l=>{const n=(members.find(m=>m.id==l.mid)||{}).name||"";const s=l.remaining===0?"পরিশোধিত":l.remaining<l.principal?"আংশিক":"বাকি";return `<tr><td style="text-align:left">${n}</td><td>${fmtBn(l.principal)}</td><td style="color:#dc2626;font-weight:600">${fmtBn(l.remaining)}</td><td>${fmtBn(l.principal-l.remaining)}</td><td>${s}</td></tr>`;}).join("")}
+      <tr style="background:#f0fdf4;font-weight:800"><td style="text-align:left">সর্বমোট</td><td>${fmtBn(loans.reduce((s,l)=>s+l.principal,0))}</td><td style="color:#dc2626">${fmtBn(loans.reduce((s,l)=>s+l.remaining,0))}</td><td>${fmtBn(loans.reduce((s,l)=>s+(l.principal-l.remaining),0))}</td><td></td></tr>
+    </tbody></table>`;
   } else if(type==="invest"){
     title="বিনিয়োগ রিপোর্ট";
-    tableHTML=`<table border="1" cellpadding="8" style="width:100%;border-collapse:collapse">
-      <tr style="background:#006400;color:#fff"><th>বিনিয়োগ</th><th>ধরন</th><th>পরিমাণ</th><th>প্রত্যাশিত আয়</th><th>অবস্থা</th></tr>
-      ${investments.map(i=>`<tr><td>${i.title}</td><td>${i.type}</td><td style="text-align:right">৳${i.amount.toLocaleString()}</td><td style="text-align:right">৳${Math.round(i.amount*i.returnRate/100).toLocaleString()}</td><td>${i.status||"সক্রিয়"}</td></tr>`).join("")}
-      <tr style="background:#f0fdf4;font-weight:bold"><td colspan="2">সর্বমোট</td><td style="text-align:right">৳${investments.reduce((s,i)=>s+i.amount,0).toLocaleString()}</td><td></td><td></td></tr>
-    </table>`;
-
+    tableHTML=`<table><thead><tr><th style="text-align:left">বিনিয়োগ</th><th>ধরন</th><th>পরিমাণ</th><th>প্রত্যাশিত আয়</th><th>অবস্থা</th></tr></thead><tbody>
+      ${investments.map(i=>`<tr><td style="text-align:left">${i.title}</td><td>${i.type}</td><td>${fmtBn(i.amount)}</td><td>${fmtBn(Math.round(i.amount*(i.returnRate||0)/100))}</td><td>${i.status||"সক্রিয়"}</td></tr>`).join("")}
+      <tr style="background:#f0fdf4;font-weight:800"><td colspan="2" style="text-align:left">সর্বমোট</td><td>${fmtBn(investments.reduce((s,i)=>s+i.amount,0))}</td><td></td><td></td></tr>
+    </tbody></table>`;
   } else if(type==="assets"){
     title="সম্পদের হিসাব";
-    tableHTML=`<table border="1" cellpadding="8" style="width:100%;border-collapse:collapse">
-      <tr style="background:#006400;color:#fff"><th>সম্পদ</th><th>ক্যাটাগরি</th><th>মূল্য</th><th>তারিখ</th></tr>
-      ${assets.map(a=>`<tr><td>${a.name}</td><td>${a.category}</td><td style="text-align:right">৳${a.value.toLocaleString()}</td><td>${a.date}</td></tr>`).join("")}
-      <tr style="background:#f0fdf4;font-weight:bold"><td colspan="2">সর্বমোট</td><td style="text-align:right">৳${assets.reduce((s,a)=>s+a.value,0).toLocaleString()}</td><td></td></tr>
-    </table>`;
-
+    tableHTML=`<table><thead><tr><th style="text-align:left">সম্পদ</th><th>ক্যাটাগরি</th><th>মূল্য</th><th>তারিখ</th></tr></thead><tbody>
+      ${assets.map(a=>`<tr><td style="text-align:left">${a.name}</td><td>${a.category}</td><td>${fmtBn(a.value)}</td><td>${a.date}</td></tr>`).join("")}
+      <tr style="background:#f0fdf4;font-weight:800"><td colspan="2" style="text-align:left">সর্বমোট</td><td>${fmtBn(assets.reduce((s,a)=>s+a.value,0))}</td><td></td></tr>
+    </tbody></table>`;
   } else if(type==="expenses"){
     title="আয়-ব্যয় বিবরণী";
     const totI=income.reduce((s,i)=>s+i.amount,0)+payments.reduce((s,p)=>s+p.amount,0);
     const totE=expenses.reduce((s,e)=>s+e.amount,0);
-    tableHTML=`<table border="1" cellpadding="8" style="width:100%;border-collapse:collapse">
-      <tr style="background:#006400;color:#fff"><th>বিবরণ</th><th>ক্যাটাগরি</th><th>আয়</th><th>ব্যয়</th></tr>
-      ${income.map(i=>`<tr><td>${i.title}</td><td>${i.category||""}</td><td style="text-align:right;color:green">৳${i.amount.toLocaleString()}</td><td></td></tr>`).join("")}
-      <tr><td>সদস্য চাঁদা (মোট)</td><td>সদস্য চাঁদা</td><td style="text-align:right;color:green">৳${payments.reduce((s,p)=>s+p.amount,0).toLocaleString()}</td><td></td></tr>
-      ${expenses.map(e=>`<tr><td>${e.title}</td><td>${e.category||""}</td><td></td><td style="text-align:right;color:red">৳${e.amount.toLocaleString()}</td></tr>`).join("")}
-      <tr style="background:#f0fdf4;font-weight:bold"><td colspan="2">সর্বমোট</td><td style="text-align:right;color:green">৳${totI.toLocaleString()}</td><td style="text-align:right;color:red">৳${totE.toLocaleString()}</td></tr>
-      <tr style="background:#dcfce7;font-weight:bold"><td colspan="2">নিট উদ্বৃত্ত</td><td colspan="2" style="text-align:right">৳${(totI-totE).toLocaleString()}</td></tr>
-    </table>`;
-
+    tableHTML=`<table><thead><tr><th style="text-align:left">বিবরণ</th><th>ক্যাটাগরি</th><th>আয়</th><th>ব্যয়</th></tr></thead><tbody>
+      ${income.map(i=>`<tr><td style="text-align:left">${i.title}</td><td>${i.category||""}</td><td style="color:#16a34a;font-weight:600">${fmtBn(i.amount)}</td><td>—</td></tr>`).join("")}
+      <tr><td style="text-align:left">সদস্য চাঁদা (মোট)</td><td>সদস্য চাঁদা</td><td style="color:#16a34a;font-weight:600">${fmtBn(payments.reduce((s,p)=>s+p.amount,0))}</td><td>—</td></tr>
+      ${expenses.map(e=>`<tr><td style="text-align:left">${e.title}</td><td>${e.category||""}</td><td>—</td><td style="color:#dc2626;font-weight:600">${fmtBn(e.amount)}</td></tr>`).join("")}
+      <tr style="background:#f0fdf4;font-weight:800"><td colspan="2" style="text-align:left">সর্বমোট</td><td style="color:#16a34a">${fmtBn(totI)}</td><td style="color:#dc2626">${fmtBn(totE)}</td></tr>
+      <tr style="background:#dcfce7;font-weight:800"><td colspan="2" style="text-align:left">নিট উদ্বৃত্ত</td><td colspan="2">${fmtBn(totI-totE)}</td></tr>
+    </tbody></table>`;
   } else if(type==="balance"){
     title="ব্যালেন্স শিট";
     const totI=income.reduce((s,i)=>s+i.amount,0)+payments.reduce((s,p)=>s+p.amount,0);
@@ -2234,25 +2222,22 @@ function pdfDownload(type){
     const totA=assets.reduce((s,a)=>s+a.value,0);
     const totL=loans.reduce((s,l)=>s+l.remaining,0);
     const totInv=investments.reduce((s,i)=>s+i.amount,0);
-    tableHTML=`<table border="1" cellpadding="8" style="width:100%;border-collapse:collapse">
-      <tr style="background:#006400;color:#fff"><th>বিবরণ</th><th>পরিমাণ</th></tr>
-      <tr style="background:#f0fdf4"><td colspan="2"><b>সম্পদ</b></td></tr>
-      ${assets.map(a=>`<tr><td style="padding-left:20px">${a.name} (${a.category})</td><td style="text-align:right">৳${a.value.toLocaleString()}</td></tr>`).join("")}
-      <tr><td style="padding-left:20px">বিতরণকৃত ঋণ</td><td style="text-align:right">৳${totL.toLocaleString()}</td></tr>
-      ${investments.map(i=>`<tr><td style="padding-left:20px">${i.title}</td><td style="text-align:right">৳${i.amount.toLocaleString()}</td></tr>`).join("")}
-      <tr style="font-weight:bold;background:#dcfce7"><td>সর্বমোট সম্পদ</td><td style="text-align:right">৳${(totA+totL+totInv).toLocaleString()}</td></tr>
-      <tr style="background:#fff1f2"><td colspan="2"><b>দায় ও মূলধন</b></td></tr>
-      <tr><td style="padding-left:20px">মোট আয়</td><td style="text-align:right">৳${totI.toLocaleString()}</td></tr>
-      <tr><td style="padding-left:20px">মোট ব্যয়</td><td style="text-align:right;color:red">-৳${totE.toLocaleString()}</td></tr>
-      <tr style="font-weight:bold;background:#dcfce7"><td>নিট তহবিল</td><td style="text-align:right">৳${(totI-totE).toLocaleString()}</td></tr>
-    </table>`;
+    tableHTML=`<table><thead><tr><th style="text-align:left">বিবরণ</th><th>পরিমাণ</th></tr></thead><tbody>
+      <tr style="background:#f0fdf4"><td colspan="2" style="text-align:left;font-weight:800;color:#006400">📋 সম্পদ</td></tr>
+      ${assets.map(a=>`<tr><td style="text-align:left;padding-left:16px">${a.name} (${a.category})</td><td>${fmtBn(a.value)}</td></tr>`).join("")}
+      <tr><td style="text-align:left;padding-left:16px">বিতরণকৃত ঋণ</td><td>${fmtBn(totL)}</td></tr>
+      ${investments.map(i=>`<tr><td style="text-align:left;padding-left:16px">${i.title}</td><td>${fmtBn(i.amount)}</td></tr>`).join("")}
+      <tr style="font-weight:800;background:#dcfce7"><td style="text-align:left">সর্বমোট সম্পদ</td><td>${fmtBn(totA+totL+totInv)}</td></tr>
+      <tr style="background:#fff1f2"><td colspan="2" style="text-align:left;font-weight:800;color:#dc2626">📋 দায় ও মূলধন</td></tr>
+      <tr><td style="text-align:left;padding-left:16px">মোট আয়</td><td>${fmtBn(totI)}</td></tr>
+      <tr><td style="text-align:left;padding-left:16px">মোট ব্যয়</td><td style="color:#dc2626">-${fmtBn(totE)}</td></tr>
+      <tr style="font-weight:800;background:#dcfce7"><td style="text-align:left">নিট তহবিল</td><td>${fmtBn(totI-totE)}</td></tr>
+    </tbody></table>`;
   }
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>body{font-family:'Hind Siliguri',Arial,sans-serif;padding:30px;color:#111}
-  h1{color:#006400;border-bottom:3px solid #006400;padding-bottom:10px}
-  .meta{color:#666;font-size:13px;margin-bottom:20px}
-  table{font-size:13px}</style></head><body>
+  <style>${pdfStyle}</style></head><body>
+  ${pdfWM()}${pdfBtn()}
   <h1>🪁 স্বপ্নঘুড়ি — ${title}</h1>
   <div class="meta">তারিখ: ${now2}</div>
   ${tableHTML}
@@ -2266,8 +2251,81 @@ function pdfDownload(type){
 }
 
 // ══════════════════════════════════════════
-// চাঁদার শিট (নভেম্বর ২০২১ থেকে বর্তমান)
+// ভিজিটর ট্র্যাকিং
 // ══════════════════════════════════════════
+function trackVisitor(){
+  try{
+    const visitors=JSON.parse(localStorage.getItem("sg_visitors")||"[]");
+    const now=new Date();
+    const entry={
+      id:Date.now(),
+      time:now.toISOString(),
+      role:role||"অজ্ঞাত",
+      ua:navigator.userAgent.slice(0,80),
+      page:window.location.href.split("?")[0]
+    };
+    visitors.unshift(entry);
+    // সর্বোচ্চ ২০০টা রাখব
+    if(visitors.length>200) visitors.splice(200);
+    localStorage.setItem("sg_visitors",JSON.stringify(visitors));
+  }catch(e){}
+}
+
+function pgVisitors(){
+  if(!isA()) return `<div style="padding:40px;text-align:center;color:#94a3b8">⛔ শুধুমাত্র অ্যাডমিনের জন্য</div>`;
+  const visitors=JSON.parse(localStorage.getItem("sg_visitors")||"[]");
+  const byDate={};
+  visitors.forEach(v=>{
+    const d=v.time.slice(0,10);
+    if(!byDate[d]) byDate[d]=[];
+    byDate[d].push(v);
+  });
+  const rows=visitors.slice(0,100).map((v,i)=>{
+    const dt=new Date(v.time);
+    const timeStr=dt.toLocaleString("bn-BD");
+    const device=v.ua.includes("Mobile")?"📱 মোবাইল":"💻 কম্পিউটার";
+    return `<tr>
+      <td style="text-align:center">${Number(i+1).toLocaleString("bn-BD")}</td>
+      <td style="text-align:center">${timeStr}</td>
+      <td style="text-align:center">${v.role==="admin"?"👑 অ্যাডমিন":"👁️ ভিউয়ার"}</td>
+      <td style="text-align:center">${device}</td>
+    </tr>`;
+  }).join("");
+
+  const today=new Date().toISOString().slice(0,10);
+  const todayCount=visitors.filter(v=>v.time.startsWith(today)).length;
+  const totalCount=visitors.length;
+
+  return `
+    <div class="section-title">👥 ভিজিটর ইতিহাস</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div class="card" style="text-align:center;padding:16px">
+        <div style="font-size:28px;font-weight:800;color:#006400">${Number(todayCount).toLocaleString("bn-BD")}</div>
+        <div style="font-size:12px;color:#64748b">আজকের ভিজিট</div>
+      </div>
+      <div class="card" style="text-align:center;padding:16px">
+        <div style="font-size:28px;font-weight:800;color:#1a8a00">${Number(totalCount).toLocaleString("bn-BD")}</div>
+        <div style="font-size:12px;color:#64748b">মোট ভিজিট</div>
+      </div>
+    </div>
+    <div class="card">
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr style="background:#006400">
+            <th style="color:#fff;text-align:center">#</th>
+            <th style="color:#fff;text-align:center">সময়</th>
+            <th style="color:#fff;text-align:center">ভূমিকা</th>
+            <th style="color:#fff;text-align:center">ডিভাইস</th>
+          </tr></thead>
+          <tbody>${rows||`<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:20px">কোনো ভিজিট রেকর্ড নেই</td></tr>`}</tbody>
+        </table>
+      </div>
+      ${visitors.length>100?`<div style="padding:10px;text-align:center;color:#94a3b8;font-size:12px">সর্বশেষ ১০০টি দেখানো হচ্ছে</div>`:""}
+      <div style="padding:12px;text-align:right">
+        <button onclick="localStorage.removeItem('sg_visitors');goTab('visitors')" style="background:#fee2e2;color:#dc2626;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600">🗑 সব মুছুন</button>
+      </div>
+    </div>`;
+}
 function pgDuesSheet() {
   const members = D.members||[];
   const payments = D.payments||[];
@@ -3641,38 +3699,66 @@ function clearHistory(){
   sv();toast("🗑 ইতিহাস মুছে ফেলা হয়েছে","#dc2626");goTab("history");
 }
 
+// ── সব PDF-এর জন্য common style ও watermark ──
+const pdfStyle=`
+  @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700;800&display=swap');
+  *{font-family:'Hind Siliguri',Arial,sans-serif;box-sizing:border-box}
+  body{margin:0;padding:24px;color:#071a07;position:relative;min-height:100vh}
+  @media print{@page{margin:12mm}.no-print{display:none!important}body{padding:8px}}
+  h1{color:#006400;text-align:center;font-size:20px;margin-bottom:4px;border-bottom:2px solid #006400;padding-bottom:8px}
+  h2{color:#006400;font-size:15px;border-bottom:1px solid #86efac;padding-bottom:4px;margin-top:18px}
+  .meta{text-align:center;color:#64748b;font-size:12px;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px}
+  th{background:#006400;color:#fff;padding:8px;text-align:center;border:1px solid #004d00}
+  td{padding:7px 8px;border:1px solid #e2e8f0;text-align:center;vertical-align:middle}
+  tr:nth-child(even){background:#f9fff9}
+  .wm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);
+    font-size:90px;color:rgba(0,100,0,.06);font-weight:900;z-index:0;
+    pointer-events:none;white-space:nowrap;user-select:none}
+  .no-print-btn{position:fixed;bottom:20px;right:20px;background:#006400;color:#fff;
+    border:none;border-radius:10px;padding:12px 22px;cursor:pointer;
+    font-size:14px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:999}
+`;
+const pdfWM=()=>`<div class="wm">🪁 স্বপ্নঘুড়ি</div>`;
+const pdfBtn=()=>`<button class="no-print-btn no-print" onclick="window.print()">🖨️ প্রিন্ট / PDF সেভ</button>`;
+const bnNum=n=>Number(n||0).toLocaleString("bn-BD");
+const fmtBn=n=>"৳"+bnNum(n);
+
 // pdfDownload তে members, voting, meeting, health যোগ
 const _oldPdfDl=pdfDownload;
 pdfDownload=function(type){
   if(type==="members"){
     const members=D.members||[];const payments=D.payments||[];const loans=D.loans||[];
     const allMonths4=[];let d4=new Date(2021,10,1);while(d4<=new Date()){allMonths4.push(`${d4.getFullYear()}-${String(d4.getMonth()+1).padStart(2,"0")}`);d4=new Date(d4.getFullYear(),d4.getMonth()+1,1);}
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;padding:30px;font-size:13px}h1{color:#006400;border-bottom:3px solid #006400;padding-bottom:8px}table{width:100%;border-collapse:collapse}th{background:#006400;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #e2e8f0}</style></head><body>
-    <h1>🪁 স্বপ্নঘুড়ি — সদস্য তালিকা</h1><p>তারিখ: ${new Date().toLocaleDateString("bn-BD")} | মোট সদস্য: ${members.length} জন</p>
+    const duesList=getDuesList();
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfStyle}</style></head><body>
+    ${pdfWM()}${pdfBtn()}
+    <h1>🪁 স্বপ্নঘুড়ি — সদস্য তালিকা</h1>
+    <div class="meta">তারিখ: ${new Date().toLocaleDateString("bn-BD")} | মোট সদস্য: ${bnNum(members.length)} জন</div>
     <table><thead><tr><th>#</th><th>নাম</th><th>পদ</th><th>মোবাইল</th><th>মোট চাঁদা</th><th>চাঁদা বকেয়া</th><th>ঋণ বকেয়া</th></tr></thead><tbody>
     ${members.map((m,i)=>{
       const mp=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
-      const spM=(D.specialMonths||[]).filter(x=>x.mid==m.id);
-      const me=allMonths4.reduce((s,mon)=>{const sp=spM.find(x=>x.month===mon);return s+getApplicableRate(m.id,mon)+(sp?sp.amount:0);},0);
+      const mDue=(duesList.find(d=>d.id==m.id)||{}).totalDue||0;
       const ml=loans.filter(l=>l.mid==m.id).reduce((s,l)=>s+l.remaining,0);
-      return `<tr><td>${i+1}</td><td><b>${m.name}</b></td><td>${m.role||"সদস্য"}</td><td>${m.phone||"—"}</td><td>৳${mp.toLocaleString()}</td><td style="color:${me-mp>0?"red":"green"}">৳${(me-mp).toLocaleString()}</td><td style="color:${ml>0?"red":"green"}">৳${ml.toLocaleString()}</td></tr>`;
+      return `<tr><td>${bnNum(i+1)}</td><td style="text-align:left;font-weight:600">${m.name}</td><td>${m.role||"সদস্য"}</td><td>${m.phone||"—"}</td><td>${fmtBn(mp)}</td><td style="color:${mDue>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(mDue)}</td><td style="color:${ml>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(ml)}</td></tr>`;
     }).join("")}
     </tbody></table></body></html>`;
     const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);
     toast("📄 PDF খুলছে");return;
   }
-  
   if(type==="voting"){
     const votes=D.votes||[];const members=D.members||[];
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;padding:30px;font-size:13px}h1{color:#006400;border-bottom:3px solid #006400;padding-bottom:8px}table{width:100%;border-collapse:collapse}th{background:#006400;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #e2e8f0}.card{border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px}</style></head><body>
-    <h1>🪁 স্বপ্নঘুড়ি — ভোটিং রিপোর্ট</h1><p>তারিখ: ${new Date().toLocaleDateString("bn-BD")}</p>
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfStyle}.card{border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:14px}</style></head><body>
+    ${pdfWM()}${pdfBtn()}
+    <h1>🪁 স্বপ্নঘুড়ি — ভোটিং রিপোর্ট</h1>
+    <div class="meta">তারিখ: ${new Date().toLocaleDateString("bn-BD")}</div>
     ${votes.map(v=>{
       const y=Object.values(v.votes||{}).filter(x=>x==="হ্যাঁ").length;
       const n=Object.values(v.votes||{}).filter(x=>x==="না").length;
-      return `<div class="card"><h3>${v.title}</h3><p>${v.desc||""}</p>
-      <table><tr><th>সদস্য</th><th>ভোট</th></tr>
-      ${members.map(m=>`<tr><td>${m.name}</td><td>${(v.votes||{})[m.id]||"ভোট দেননি"}</td></tr>`).join("")}
-      <tr style="background:#f0fdf4;font-weight:bold"><td>ফলাফল</td><td>হ্যাঁ: ${y}, না: ${n}</td></tr></table></div>`;
+      return `<div class="card"><h2>${v.title}</h2><p>${v.desc||""}</p>
+      <table><thead><tr><th>সদস্য</th><th>ভোট</th></tr></thead><tbody>
+      ${members.map(m=>`<tr><td style="text-align:left">${m.name}</td><td style="color:${(v.votes||{})[m.id]==="হ্যাঁ"?"#16a34a":(v.votes||{})[m.id]==="না"?"#dc2626":"#94a3b8"};font-weight:600">${(v.votes||{})[m.id]||"ভোট দেননি"}</td></tr>`).join("")}
+      <tr style="background:#f0fdf4;font-weight:800"><td>ফলাফল</td><td>✅ হ্যাঁ: ${bnNum(y)} | ❌ না: ${bnNum(n)}</td></tr></tbody></table></div>`;
     }).join("")}
     </body></html>`;
     const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);
@@ -3680,17 +3766,23 @@ pdfDownload=function(type){
   }
   if(type==="meeting"){
     const meetings=D.meetings||[];const members=D.members||[];
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;padding:30px;font-size:13px}h1{color:#006400;border-bottom:3px solid #006400;padding-bottom:8px}table{width:100%;border-collapse:collapse}th{background:#006400;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #e2e8f0}.card{border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px}</style></head><body>
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfStyle}.card{border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:14px}</style></head><body>
+    ${pdfWM()}${pdfBtn()}
     <h1>🪁 স্বপ্নঘুড়ি — মিটিং রিপোর্ট</h1>
+    <div class="meta">তারিখ: ${new Date().toLocaleDateString("bn-BD")}</div>
     ${meetings.map(mt=>{
       const att=mt.attendance||{};
       const present=members.filter(m=>att[m.id]).map(m=>m.name).join(", ");
       const absent=members.filter(m=>!att[m.id]).map(m=>m.name).join(", ");
-      return `<div class="card"><h3>${mt.title}</h3><p>তারিখ: ${mt.date||"—"} | স্থান: ${mt.place||"—"}</p>
-      ${mt.agenda?`<p><b>এজেন্ডা:</b> ${mt.agenda}</p>`:""}
-      <p><b>উপস্থিত:</b> ${present||"কেউ নয়"}</p>
-      <p><b>অনুপস্থিত:</b> ${absent||"সবাই উপস্থিত"}</p>
-      ${mt.minutes?`<p><b>কার্যবিবরণী:</b> ${mt.minutes}</p>`:""}</div>`;
+      return `<div class="card"><h2>${mt.title}</h2>
+      <table><thead><tr><th>বিবরণ</th><th>তথ্য</th></tr></thead><tbody>
+      <tr><td>তারিখ</td><td>${mt.date||"—"}</td></tr>
+      <tr><td>স্থান</td><td>${mt.place||"—"}</td></tr>
+      ${mt.agenda?`<tr><td>এজেন্ডা</td><td style="text-align:left">${mt.agenda}</td></tr>`:""}
+      <tr><td>উপস্থিত</td><td style="text-align:left;color:#16a34a">${present||"কেউ নয়"}</td></tr>
+      <tr><td>অনুপস্থিত</td><td style="text-align:left;color:#dc2626">${absent||"সবাই উপস্থিত"}</td></tr>
+      ${mt.minutes?`<tr><td>কার্যবিবরণী</td><td style="text-align:left">${mt.minutes}</td></tr>`:""}
+      </tbody></table></div>`;
     }).join("")}
     </body></html>`;
     const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);
@@ -3698,16 +3790,17 @@ pdfDownload=function(type){
   }
   if(type==="health"){
     const members=D.members||[];const payments=D.payments||[];const loans=D.loans||[];
-    const allMonths3=[];let d3=new Date(2021,10,1);while(d3<=new Date()){allMonths3.push(`${d3.getFullYear()}-${String(d3.getMonth()+1).padStart(2,"0")}`);d3=new Date(d3.getFullYear(),d3.getMonth()+1,1);}
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;padding:30px;font-size:13px}h1{color:#006400;border-bottom:3px solid #006400;padding-bottom:8px}table{width:100%;border-collapse:collapse}th{background:#006400;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #e2e8f0}</style></head><body>
-    <h1>🪁 স্বপ্নঘুড়ি — স্বাস্থ্য রিপোর্ট</h1><p>তারিখ: ${new Date().toLocaleDateString("bn-BD")}</p>
+    const duesList=getDuesList();
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfStyle}</style></head><body>
+    ${pdfWM()}${pdfBtn()}
+    <h1>🪁 স্বপ্নঘুড়ি — স্বাস্থ্য রিপোর্ট</h1>
+    <div class="meta">তারিখ: ${new Date().toLocaleDateString("bn-BD")}</div>
     <table><thead><tr><th>সদস্য</th><th>মোট চাঁদা</th><th>চাঁদা বকেয়া</th><th>ঋণ বকেয়া</th></tr></thead><tbody>
     ${members.map(m=>{
       const mp=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
-      const spM=(D.specialMonths||[]).filter(x=>x.mid==m.id);
-      const me=allMonths3.reduce((s,mon)=>{const sp=spM.find(x=>x.month===mon);return s+getApplicableRate(m.id,mon)+(sp?sp.amount:0);},0);
+      const mDue=(duesList.find(d=>d.id==m.id)||{}).totalDue||0;
       const ml=loans.filter(l=>l.mid==m.id).reduce((s,l)=>s+l.remaining,0);
-      return `<tr><td>${m.name}</td><td>৳${mp.toLocaleString()}</td><td>৳${(me-mp).toLocaleString()}</td><td>৳${ml.toLocaleString()}</td></tr>`;
+      return `<tr><td style="text-align:left;font-weight:600">${m.name}</td><td>${fmtBn(mp)}</td><td style="color:${mDue>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(mDue)}</td><td style="color:${ml>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(ml)}</td></tr>`;
     }).join("")}
     </tbody></table></body></html>`;
     const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);
@@ -3775,6 +3868,7 @@ window.addEventListener("DOMContentLoaded",function(){
       document.getElementById("fab-btn").classList.add("show");
       if(savedRole!=="admin") document.getElementById("vbar").style.display="block";
       buildNav();
+      trackVisitor();
       goTab("home");
     }catch(e){
       sessionStorage.removeItem("sg_role");
