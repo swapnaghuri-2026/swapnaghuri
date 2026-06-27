@@ -1828,20 +1828,72 @@ function delOp(id){D.opinions=(D.opinions||[]).filter(o=>o.id!==id);sv();toast("
 
 function pgGallery(){
   const gal=D.gallery||[];
-  const form=isA()?`<div class="card">${ch("📸","ছবি যোগ করুন","","p")}<div class="cb">
-    <label style="display:block;border:2px dashed var(--border);border-radius:11px;padding:22px;text-align:center;cursor:pointer;margin-bottom:11px;background:#f8fafc" onmouseover="this.style.borderColor='#1a8a00'" onmouseout="this.style.borderColor='var(--border)'">
-      <div id="ipv"><div style="font-size:30px;margin-bottom:7px">📸</div><div style="font-size:13px;color:var(--muted)">ছবি বেছে নিন (সর্বোচ্চ ১০ MB)</div></div>
-      <input type="file" accept="image/*" onchange="prevImg(this)" style="display:none">
+  const fileIcon=type=>{
+    if(!type) return "📄";
+    if(type.startsWith("image")) return "🖼️";
+    if(type.startsWith("video")) return "🎬";
+    if(type.startsWith("audio")) return "🎵";
+    if(type.includes("pdf")) return "📕";
+    if(type.includes("word")||type.includes("doc")) return "📝";
+    if(type.includes("sheet")||type.includes("excel")||type.includes("csv")) return "📊";
+    return "📄";
+  };
+  const renderItem=g=>{
+    const isImg=g.type&&g.type.startsWith("image")||(!g.type&&g.src&&g.src.startsWith("data:image"));
+    const isVid=g.type&&g.type.startsWith("video");
+    const isAud=g.type&&g.type.startsWith("audio");
+    let media="";
+    if(isImg) media=`<img src="${g.src}" style="width:100%;height:130px;object-fit:cover;display:block">`;
+    else if(isVid) media=`<video src="${g.src}" controls style="width:100%;height:130px;object-fit:cover;display:block"></video>`;
+    else if(isAud) media=`<div style="background:#f0fdf4;padding:14px;text-align:center"><div style="font-size:32px">🎵</div><audio src="${g.src}" controls style="width:100%;margin-top:6px"></audio></div>`;
+    else media=`<div style="background:#f8fafc;height:130px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px"><div style="font-size:40px">${fileIcon(g.type)}</div><div style="font-size:11px;color:#64748b">${g.name||"ফাইল"}</div><a href="${g.src}" download="${g.name||"file"}" style="font-size:11px;background:#006400;color:#fff;padding:4px 10px;border-radius:6px;text-decoration:none">⬇️ ডাউনলোড</a></div>`;
+    return `<div style="border-radius:11px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.07);background:var(--white);position:relative">
+      ${media}
+      <div style="padding:7px 9px">
+        <div style="font-size:11px;font-weight:600;color:var(--ink)">${g.caption||g.name||""}</div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:2px">${ds(g.date)}</div>
+      </div>
+      ${isA()?`<button onclick="delGal(${g.id})" style="position:absolute;top:5px;right:5px;background:rgba(0,0,0,.5);border:none;border-radius:5px;padding:2px 6px;cursor:pointer;color:#fff;font-size:11px">🗑</button>`:""}
+    </div>`;
+  };
+  const form=isA()?`<div class="card">${ch("📁","মিডিয়া যোগ করুন","ছবি · ভিডিও · অডিও · ডকুমেন্ট","p")}<div class="cb">
+    <label style="display:block;border:2px dashed var(--border);border-radius:11px;padding:22px;text-align:center;cursor:pointer;margin-bottom:11px;background:#f8fafc">
+      <div id="ipv"><div style="font-size:30px;margin-bottom:7px">📁</div><div style="font-size:13px;color:var(--muted)">ফাইল বেছে নিন (সর্বোচ্চ ১০০ MB)</div><div style="font-size:11px;color:#94a3b8;margin-top:4px">ছবি · ভিডিও · অডিও · PDF · Word · Excel</div></div>
+      <input type="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx" onchange="prevFile(this)" style="display:none">
     </label>
-    <div class="field"><label>ক্যাপশন</label><input id="gcap" placeholder="ছবির বিবরণ"></div>
+    <div class="field"><label>ক্যাপশন (ঐচ্ছিক)</label><input id="gcap" placeholder="ফাইলের বিবরণ"></div>
     <button class="btn" style="background:${GR.p};color:#fff" onclick="addGal()">📤 আপলোড করুন</button>
   </div></div>`:"";
-  const grid=gal.length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:11px">${gal.slice().reverse().map(g=>`<div style="border-radius:11px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.07);background:var(--white);position:relative"><img src="${g.src}" style="width:100%;height:145px;object-fit:cover;display:block"><div style="padding:7px 9px"><div style="font-size:11px;font-weight:600;color:var(--ink)">${g.caption||""}</div><div style="font-size:10px;color:#94a3b8;margin-top:2px">${ds(g.date)}</div></div>${isA()?`<button onclick="delGal(${g.id})" style="position:absolute;top:5px;right:5px;background:rgba(0,0,0,.5);border:none;border-radius:5px;padding:2px 6px;cursor:pointer;color:#fff;font-size:11px">🗑</button>`:""}</div>`).join("")}</div>`:`<div style="text-align:center;padding:48px;color:#94a3b8"><div style="font-size:44px;margin-bottom:10px">🖼️</div>কোনো ছবি নেই</div>`;
+  const grid=gal.length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:11px">${gal.slice().reverse().map(g=>renderItem(g)).join("")}</div>`:`<div style="text-align:center;padding:48px;color:#94a3b8"><div style="font-size:44px;margin-bottom:10px">🖼️</div>কোনো ফাইল নেই</div>`;
   return form+grid;
 }
-window._gid=null;
-function prevImg(i){const f=i.files[0];if(!f)return;if(f.size>10485760){toast("⚠️ ছবির সাইজ ১০ MB-র বেশি হবে না","#d97706");return;}const r=new FileReader();r.onload=e=>{window._gid=e.target.result;document.getElementById("ipv").innerHTML=`<img src="${e.target.result}" style="max-height:140px;border-radius:7px;object-fit:cover">`;};r.readAsDataURL(f);}
-function addGal(){if(!window._gid){toast("⚠️ ছবি বেছে নিন","#d97706");return;}D.gallery=[...(D.gallery||[]),{id:Date.now(),src:window._gid,caption:document.getElementById("gcap").value,date:new Date().toISOString().slice(0,10)}];window._gid=null;sv();toast("✅ ছবি যোগ হয়েছে");goTab("gallery");}
+window._gid=null;window._gtype=null;window._gname=null;
+function prevFile(i){
+  const f=i.files[0];if(!f)return;
+  if(f.size>104857600){toast("⚠️ ফাইলের সাইজ ১০০ MB-র বেশি হবে না","#d97706");return;}
+  window._gtype=f.type;window._gname=f.name;
+  const r=new FileReader();
+  r.onload=e=>{
+    window._gid=e.target.result;
+    const isImg=f.type.startsWith("image");
+    const isVid=f.type.startsWith("video");
+    const isAud=f.type.startsWith("audio");
+    let prev="";
+    if(isImg) prev=`<img src="${e.target.result}" style="max-height:120px;border-radius:7px;object-fit:cover">`;
+    else if(isVid) prev=`<video src="${e.target.result}" style="max-height:120px;border-radius:7px" controls></video>`;
+    else if(isAud) prev=`<div style="font-size:28px">🎵</div><audio src="${e.target.result}" controls style="width:100%"></audio>`;
+    else prev=`<div style="font-size:36px">📄</div><div style="font-size:12px;color:#64748b">${f.name}</div>`;
+    document.getElementById("ipv").innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;gap:8px">${prev}<div style="font-size:11px;color:#1a8a00;font-weight:600">✅ প্রস্তুত: ${f.name}</div></div>`;
+  };
+  r.readAsDataURL(f);
+}
+function prevImg(i){prevFile(i);}
+function addGal(){
+  if(!window._gid){toast("⚠️ ফাইল বেছে নিন","#d97706");return;}
+  D.gallery=[...(D.gallery||[]),{id:Date.now(),src:window._gid,type:window._gtype||"",name:window._gname||"",caption:document.getElementById("gcap").value,date:new Date().toISOString().slice(0,10)}];
+  window._gid=null;window._gtype=null;window._gname=null;
+  sv();toast("✅ ফাইল যোগ হয়েছে");goTab("gallery");
+}
 function delGal(id){D.gallery=(D.gallery||[]).filter(g=>g.id!==id);sv();toast("🗑","#dc2626");goTab("gallery");}
 
 function pgRules(){
@@ -2601,12 +2653,25 @@ function pgDuesSheet() {
 
     <!-- চাঁদা সম্পাদনা Modal -->
     <div id="due-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;align-items:center;justify-content:center">
-      <div style="background:#fff;border-radius:14px;padding:22px;width:90%;max-width:340px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
+      <div style="background:#fff;border-radius:14px;padding:22px;width:90%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
         <div style="font-weight:700;font-size:16px;margin-bottom:14px" id="dm-title">চাঁদা যোগ / সম্পাদনা</div>
         <input type="hidden" id="dm-mid">
         <input type="hidden" id="dm-month">
         <input type="hidden" id="dm-pid">
         <div class="field"><label>পরিমাণ (৳)</label><input type="number" id="dm-amt" placeholder="0"></div>
+        <div class="field"><label>পেমেন্ট মেথড</label>
+          <select id="dm-method" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+            <option value="নগদ">💵 নগদ</option>
+            <option value="bKash">📱 bKash</option>
+            <option value="Nagad">📱 Nagad</option>
+            <option value="Rocket">📱 Rocket</option>
+            <option value="ব্যাংক ট্রান্সফার">🏦 ব্যাংক ট্রান্সফার</option>
+            <option value="চেক">📝 চেক</option>
+            <option value="অন্যান্য">অন্যান্য</option>
+          </select>
+        </div>
+        <div class="field"><label>তারিখ</label><input type="date" id="dm-date" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="field"><label>নোট (ঐচ্ছিক)</label><input id="dm-note" placeholder="বিবরণ"></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-g" onclick="saveDueModal()">✅ সেভ করুন</button>
           <button class="btn btn-outline" onclick="closeDueModal()">বাতিল</button>
@@ -2688,16 +2753,23 @@ function addDue(mid, month, defaultAmt) {
   document.getElementById("dm-month").value = month;
   document.getElementById("dm-pid").value = "";
   document.getElementById("dm-amt").value = defaultAmt;
+  if(document.getElementById("dm-method")) document.getElementById("dm-method").value="নগদ";
+  if(document.getElementById("dm-date")) document.getElementById("dm-date").value=new Date().toISOString().slice(0,10);
+  if(document.getElementById("dm-note")) document.getElementById("dm-note").value="";
   document.getElementById("dm-del").style.display = "none";
   document.getElementById("due-modal").style.display = "flex";
 }
 
 function editDue(mid, month, pid, amount) {
+  const p=(D.payments||[]).find(x=>x.id==pid);
   document.getElementById("dm-title").textContent = "চাঁদা সম্পাদনা";
   document.getElementById("dm-mid").value = mid;
   document.getElementById("dm-month").value = month;
   document.getElementById("dm-pid").value = pid;
   document.getElementById("dm-amt").value = amount;
+  if(document.getElementById("dm-method")) document.getElementById("dm-method").value=p&&p.method?p.method:"নগদ";
+  if(document.getElementById("dm-date")) document.getElementById("dm-date").value=p&&p.date?p.date:new Date().toISOString().slice(0,10);
+  if(document.getElementById("dm-note")) document.getElementById("dm-note").value=p&&p.note?p.note:"";
   document.getElementById("dm-del").style.display = "inline-flex";
   document.getElementById("due-modal").style.display = "flex";
 }
@@ -2707,13 +2779,16 @@ function saveDueModal() {
   const month = document.getElementById("dm-month").value;
   const pid = document.getElementById("dm-pid").value;
   const amt = Number(document.getElementById("dm-amt").value);
+  const method = document.getElementById("dm-method")?document.getElementById("dm-method").value:"নগদ";
+  const date = document.getElementById("dm-date")?document.getElementById("dm-date").value:new Date().toISOString().slice(0,10);
+  const note = document.getElementById("dm-note")?document.getElementById("dm-note").value:"";
   if(!amt) { toast("⚠️ পরিমাণ দিন","#d97706"); return; }
   if(pid) {
-    D.payments = (D.payments||[]).map(p => p.id==pid ? {...p, amount:amt} : p);
-    logActivity("payment", `${gn(mid)} — ${month} মাসের চাঁদা সম্পাদনা করে ${fmt(amt)} করা হয়েছে`);
+    D.payments = (D.payments||[]).map(p => p.id==pid ? {...p, amount:amt, method, date, note} : p);
+    logActivity("payment", `${gn(mid)} — ${month} মাসের চাঁদা সম্পাদনা: ${fmt(amt)} (${method})`);
   } else {
-    D.payments = [...(D.payments||[]), {id:Date.now(), mid, month, amount:amt, note:""}];
-    logActivity("payment", `${gn(mid)} — ${month} মাসের চাঁদা ${fmt(amt)} যোগ করা হয়েছে`);
+    D.payments = [...(D.payments||[]), {id:Date.now(), mid, month, amount:amt, method, date, note}];
+    logActivity("payment", `${gn(mid)} — ${month} মাসের চাঁদা ${fmt(amt)} জমা (${method})`);
   }
   sv(); toast("✅ সেভ হয়েছে"); closeDueModal(); goTab("duessheet");
 }
@@ -3144,38 +3219,43 @@ function memberStatPDF(mid){
     d=new Date(d.getFullYear(),d.getMonth()+1,1);
   }
   let totalExp=0;
-  allMonths.forEach(mon=>{const sp=specialMonths.find(s=>s.month===mon);totalExp+=getApplicableRate(mid,mon)+(sp?sp.amount:0);});
+  allMonths.forEach(mon=>{const sp=specialMonths.find(s=>s.mid==mid&&s.month===mon);totalExp+=getApplicableRate(mid,mon)+(sp?sp.amount:0);});
   const totalPaid=payments.reduce((s,p)=>s+p.amount,0);
+  const loanDue=loans.reduce((s,l)=>s+l.remaining,0);
+  const bnM={"01":"জানু","02":"ফেব্রু","03":"মার্চ","04":"এপ্রিল","05":"মে","06":"জুন","07":"জুলাই","08":"আগস্ট","09":"সেপ্টে","10":"অক্টো","11":"নভে","12":"ডিসে"};
+  const fmtM=mon=>{const[y,mo]=mon.split("-");return `${bnM[mo]||mo} ${y}`;};
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>body{font-family:Arial,sans-serif;padding:30px;color:#111;font-size:13px}
-  h1{color:#006400;border-bottom:3px solid #006400;padding-bottom:8px}
-  h2{color:#006400;font-size:15px;margin-top:20px}
-  table{width:100%;border-collapse:collapse;margin-top:10px}
-  th{background:#006400;color:#fff;padding:8px;text-align:left}
-  td{padding:7px 8px;border-bottom:1px solid #e2e8f0}
-  .kpi{display:inline-block;background:#f0fdf4;border-radius:8px;padding:10px 16px;margin:6px;text-align:center}
-  .kv{font-size:18px;font-weight:800;color:#006400}
-  .kl{font-size:11px;color:#64748b}</style></head><body>
+  <style>${pdfStyle}
+  .kpi{display:inline-block;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 16px;margin:6px;text-align:center}
+  .kv{font-size:18px;font-weight:800;color:#006400}.kl{font-size:11px;color:#64748b}
+  </style></head><body>
+  ${pdfWM()}${pdfBtn()}
   <h1>🪁 স্বপ্নঘুড়ি — সদস্য স্টেটমেন্ট</h1>
-  <p><b>নাম:</b> ${m.name} | <b>পদ:</b> ${m.role||"সদস্য"} | <b>তারিখ:</b> ${new Date().toLocaleDateString("bn-BD")}</p>
-  <div>
-    <div class="kpi"><div class="kv">${fmt(totalPaid)}</div><div class="kl">মোট চাঁদা</div></div>
-    <div class="kpi"><div class="kv" style="color:#dc2626">${fmt(totalExp-totalPaid)}</div><div class="kl">চাঁদা বকেয়া</div></div>
-    <div class="kpi"><div class="kv" style="color:#d97706">${fmt(loans.reduce((s,l)=>s+l.remaining,0))}</div><div class="kl">ঋণ বকেয়া</div></div>
+  <div class="meta"><b>নাম:</b> ${m.name} | <b>পদ:</b> ${m.role||"সদস্য"} | <b>তারিখ:</b> ${new Date().toLocaleDateString("bn-BD")}</div>
+  <div style="margin-bottom:16px">
+    <div class="kpi"><div class="kv">${fmtBn(totalPaid)}</div><div class="kl">মোট চাঁদা</div></div>
+    <div class="kpi"><div class="kv" style="color:#dc2626">${fmtBn(totalExp-totalPaid)}</div><div class="kl">চাঁদা বকেয়া</div></div>
+    <div class="kpi"><div class="kv" style="color:#d97706">${fmtBn(loanDue)}</div><div class="kl">ঋণ বকেয়া</div></div>
   </div>
   <h2>চাঁদার ইতিহাস</h2>
-  <table><thead><tr><th>মাস</th><th>নির্ধারিত</th><th>পরিশোধ</th><th>অবস্থা</th></tr></thead><tbody>
+  <table><thead><tr><th>মাস</th><th>নিয়মিত</th><th>বিশেষ</th><th>মোট নির্ধারিত</th><th>পরিশোধ</th><th>অবস্থা</th></tr></thead><tbody>
   ${allMonths.map(mon=>{
-    const sp=specialMonths.find(s=>s.month===mon);
-    const cr=getApplicableRate(mid,mon)+(sp?sp.amount:0);
-    const paid=payments.find(p=>p.month===mon);
-    return `<tr><td>${mon}</td><td style="text-align:right">৳${cr.toLocaleString()}</td><td style="text-align:right">${paid?"৳"+paid.amount.toLocaleString():"—"}</td><td>${paid?"✅":"❌"}</td></tr>`;
+    const sp=specialMonths.find(s=>s.mid==mid&&s.month===mon);
+    const reg=getApplicableRate(mid,mon);
+    const spAmt=sp?sp.amount:0;
+    const cr=reg+spAmt;
+    const paidList=payments.filter(p=>p.month===mon);
+    const paidAmt=paidList.reduce((s,p)=>s+p.amount,0);
+    const isPaid=paidAmt>=cr;
+    const isPartial=paidAmt>0&&paidAmt<cr;
+    return `<tr><td>${fmtM(mon)}</td><td>${fmtBn(reg)}</td><td style="color:#7c3aed">${spAmt?fmtBn(spAmt):"—"}</td><td style="font-weight:600">${fmtBn(cr)}</td><td style="color:${isPaid?"#16a34a":isPartial?"#d97706":"#dc2626"};font-weight:600">${paidAmt?fmtBn(paidAmt):"—"}</td><td>${isPaid?"✅":isPartial?"আংশিক":"❌"}</td></tr>`;
   }).join("")}
-  <tr style="background:#f0fdf4;font-weight:800"><td>সর্বমোট</td><td style="text-align:right">৳${totalExp.toLocaleString()}</td><td style="text-align:right">৳${totalPaid.toLocaleString()}</td><td>${totalExp-totalPaid>0?"বকেয়া ৳"+(totalExp-totalPaid).toLocaleString():"✅ পরিশোধিত"}</td></tr>
+  <tr style="background:#f0fdf4;font-weight:800"><td>সর্বমোট</td><td colspan="2"></td><td>${fmtBn(totalExp)}</td><td style="color:#16a34a">${fmtBn(totalPaid)}</td><td style="color:#dc2626">${totalExp-totalPaid>0?"বকেয়া "+fmtBn(totalExp-totalPaid):"✅ পরিশোধিত"}</td></tr>
   </tbody></table>
   ${loans.length?`<h2>ঋণের ইতিহাস</h2>
   <table><thead><tr><th>তারিখ</th><th>মূল ঋণ</th><th>বকেয়া</th><th>পরিশোধ</th><th>উদ্দেশ্য</th></tr></thead><tbody>
-  ${loans.map(l=>`<tr><td>${l.date}</td><td>৳${l.principal.toLocaleString()}</td><td style="color:red">৳${l.remaining.toLocaleString()}</td><td>৳${(l.principal-l.remaining).toLocaleString()}</td><td>${l.note||"—"}</td></tr>`).join("")}
+  ${loans.map(l=>`<tr><td>${l.date}</td><td>${fmtBn(l.principal)}</td><td style="color:#dc2626;font-weight:600">${fmtBn(l.remaining)}</td><td>${fmtBn(l.principal-l.remaining)}</td><td style="text-align:left">${l.note||"—"}</td></tr>`).join("")}
+  <tr style="background:#f0fdf4;font-weight:800"><td>সর্বমোট</td><td>${fmtBn(loans.reduce((s,l)=>s+l.principal,0))}</td><td style="color:#dc2626">${fmtBn(loanDue)}</td><td>${fmtBn(loans.reduce((s,l)=>s+(l.principal-l.remaining),0))}</td><td></td></tr>
   </tbody></table>`:""}
   </body></html>`;
   const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);
