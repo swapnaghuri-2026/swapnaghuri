@@ -2776,7 +2776,7 @@ function pgMemberStat(){
 
   let totalExp=0;
   allMonths.forEach(mon=>{
-    const sp=specialMonths.find(s=>s.month===mon);
+    const sp=specialMonths.find(s=>s.mid==m.id&&s.month===mon);
     totalExp+=getApplicableRate(m.id,mon)+(sp?sp.amount:0);
   });
   const totalPaid=payments.reduce((s,p)=>s+p.amount,0);
@@ -2803,10 +2803,6 @@ function pgMemberStat(){
     const totalRate=regularRate+spAmt;
     const paid=payments.filter(p=>p.mid==m.id&&p.month===mon);
     const totalPaidMon=paid.reduce((s,p)=>s+p.amount,0);
-    // নিয়মিত চাঁদা থেকে পরিশোধ
-    const paidRegular=Math.min(totalPaidMon, regularRate);
-    // বিশেষ চাঁদা থেকে পরিশোধ
-    const paidSpecial=spAmt>0?Math.max(0,totalPaidMon-regularRate):0;
     const isPaid=totalPaidMon>=totalRate;
     const isPartial=totalPaidMon>0&&totalPaidMon<totalRate;
     const statusCell=isPaid
@@ -2816,13 +2812,12 @@ function pgMemberStat(){
         :'<span style="color:#dc2626;font-size:15px">❌</span>';
     const editCell=isA()?(totalPaidMon>0
       ?paid.map(p=>'<button onclick="editDue('+m.id+','+"'"+mon+"'"+','+p.id+','+p.amount+')" style="font-size:11px;background:#eff6ff;border:none;border-radius:5px;padding:3px 7px;cursor:pointer;margin:1px">✏️</button>').join("")
-      :'<button onclick="addDue('+m.id+','+"'"+mon+"'"+','+totalRate+')" style="font-size:11px;background:#fee2e2;border:none;border-radius:5px;padding:3px 7px;cursor:pointer;color:#dc2626">+ যোগ</button>'):"";
+      :'<button onclick="addDue('+m.id+','+"'"+mon+"'"+','+totalRate+')" style="font-size:11px;background:#fee2e2;border:none;border-radius:5px;padding:3px 7px;cursor:pointer;color:#dc2626">+যোগ</button>'):"";
     return '<tr style="vertical-align:middle">'
       +'<td style="text-align:center;white-space:nowrap">'+fmtMon(mon)+'</td>'
       +'<td style="text-align:center">'+(regularRate?fmt(regularRate):"—")+'</td>'
       +'<td style="text-align:center;color:#7c3aed;font-weight:700">'+(spAmt?fmt(spAmt):"—")+'</td>'
-      +'<td style="text-align:center;color:'+(paidRegular>=regularRate?"#16a34a":"#dc2626")+'">'+(paidRegular?fmt(paidRegular):"—")+'</td>'
-      +'<td style="text-align:center;color:'+(spAmt&&paidSpecial>=spAmt?"#16a34a":spAmt?"#dc2626":"#94a3b8")+'">'+(spAmt?(paidSpecial?fmt(paidSpecial):"—"):"—")+'</td>'
+      +'<td style="text-align:center;color:'+(isPaid?"#16a34a":isPartial?"#d97706":"#dc2626")+';font-weight:600">'+(totalPaidMon?fmt(totalPaidMon):"—")+'</td>'
       +'<td style="text-align:center">'+statusCell+'</td>'
       +(isA()?'<td style="text-align:center">'+editCell+'</td>':"")
       +'</tr>';
@@ -2875,22 +2870,20 @@ function pgMemberStat(){
 
     <!-- চাঁদার ইতিহাস (শেষ ২৪ মাস) -->
     <div class="card" style="margin-bottom:12px">
-      ${ch("💰","চাঁদার ইতিহাস","শেষ ২৪ মাস")}
+      ${ch("💰","চাঁদার ইতিহাস","নভেম্বর ২০২১ থেকে বর্তমান — সম্পূর্ণ")}
       <div style="overflow-x:auto">
         <table class="tbl">
           <thead>
             <tr style="background:#004d00">
               <th style="color:#fff;text-align:center" rowspan="2">মাসের নাম</th>
               <th style="color:#fff;text-align:center;border-left:1px solid rgba(255,255,255,.3)" colspan="2">নির্ধারিত</th>
-              <th style="color:#fff;text-align:center;border-left:1px solid rgba(255,255,255,.3)" colspan="2">পরিশোধ</th>
+              <th style="color:#fff;text-align:center;border-left:1px solid rgba(255,255,255,.3)" rowspan="2">মোট পরিশোধ</th>
               <th style="color:#fff;text-align:center;border-left:1px solid rgba(255,255,255,.3)" rowspan="2">অবস্থা</th>
               ${isA()?'<th style="color:#fff;text-align:center" rowspan="2">সম্পাদনা</th>':""}
             </tr>
             <tr style="background:#006400">
-              <th style="color:#fff;text-align:center;border-left:1px solid rgba(255,255,255,.3)">নিয়মিত চাঁদা</th>
-              <th style="color:#d8b4fe;text-align:center">বিশেষ চাঁদা</th>
-              <th style="color:#fff;text-align:center;border-left:1px solid rgba(255,255,255,.3)">নিয়মিত চাঁদা</th>
-              <th style="color:#d8b4fe;text-align:center">বিশেষ চাঁদা</th>
+              <th style="color:#fff;text-align:center;border-left:1px solid rgba(255,255,255,.3)">নিয়মিত</th>
+              <th style="color:#d8b4fe;text-align:center">বিশেষ</th>
             </tr>
           </thead>
           <tbody>${monthRows}</tbody>
@@ -2899,7 +2892,6 @@ function pgMemberStat(){
             <td style="text-align:center">${fmt(allMonths.reduce((s,mon)=>s+getApplicableRate(m.id,mon),0))}</td>
             <td style="text-align:center;color:#7c3aed">${fmt(specialMonths.filter(s=>s.mid==m.id).reduce((s,x)=>s+x.amount,0))}</td>
             <td style="text-align:center;color:#16a34a">${fmt(totalPaid)}</td>
-            <td style="text-align:center;color:#16a34a">—</td>
             <td style="text-align:center;color:#dc2626">${totalDue>0?"বকেয়া "+fmt(totalDue):"✅"}</td>
             ${isA()?'<td></td>':""}
           </tr></tfoot>
