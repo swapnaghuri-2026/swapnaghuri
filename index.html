@@ -299,7 +299,7 @@ const TABS = [
     {id:"meeting",icon:"📅",label:"মিটিং"},
     {id:"report",icon:"📊",label:"রিপোর্ট সেন্টার"},
     {id:"history",icon:"🕘",label:"কার্যক্রম ইতিহাস"},
-    {id:"visitors",icon:"👥",label:"ভিজিটর ইতিহাস"},
+    ...(isA()?[{id:"visitors",icon:"👥",label:"ভিজিটর ইতিহাস"}]:[]),
     {id:"payment",icon:"💳",label:"পেমেন্ট তথ্য"},
     {id:"rules",icon:"📜",label:"নিয়মকানুন"},
     {id:"gallery",icon:"🖼️",label:"গ্যালারি"},
@@ -1582,7 +1582,7 @@ function pgNotice(){
     </div>
     <button class="btn btn-gold" onclick="addNotice()">📤 প্রকাশ করুন</button>
   </div></div>`:"";
-  const list=notices.slice().sort((a,b)=>b.pinned-a.pinned).map(n=>{const t=tM[n.type]||tM.info;return `<div class="notice-card" style="background:${t.bg};border-color:${t.c}44">${n.pinned?`<div style="position:absolute;top:12px;right:${isA()?"44px":"14px"};font-size:14px">📌</div>`:""}<span style="font-size:24px;flex-shrink:0">${t.icon}</span><div style="flex:1"><div style="font-weight:700;font-size:15px;margin-bottom:4px;padding-right:30px;color:#071a07">${n.title}</div><div style="font-size:13px;color:#475569;line-height:1.85;margin-bottom:5px" id="nb-${n.id}">${renderNoticeBody(n.body)}</div><div style="font-size:11px;color:#94a3b8">${ds(n.date)}</div></div>${isA()?`<button class="btn btn-sm" style="background:rgba(0,0,0,.06);border:none;flex-shrink:0;align-self:flex-start" onclick="delNotice(${n.id})">🗑</button>`:""}</div>`;}).join("")||`<div style="text-align:center;padding:40px;color:#94a3b8">কোনো নোটিশ নেই</div>`;
+  const list=notices.slice().sort((a,b)=>b.pinned-a.pinned).map(n=>{const t=tM[n.type]||tM.info;return `<div class="notice-card" style="background:${t.bg};border-color:${t.c}44;cursor:pointer" onclick="toggleNoticeBody(${n.id})">${n.pinned?`<div style="position:absolute;top:12px;right:${isA()?"44px":"14px"};font-size:14px">📌</div>`:""}<span style="font-size:24px;flex-shrink:0">${t.icon}</span><div style="flex:1"><div style="font-weight:700;font-size:15px;margin-bottom:4px;padding-right:30px;color:#071a07">${n.title}</div><div style="font-size:11px;color:#94a3b8;margin-bottom:4px">${ds(n.date)} <span id="notice-arrow-${n.id}" style="font-size:10px">▼ বিস্তারিত দেখুন</span></div><div style="font-size:13px;color:#475569;line-height:1.85;margin-bottom:5px;display:none" id="nb-${n.id}" onclick="event.stopPropagation()">${renderNoticeBody(n.body)}</div></div>${isA()?`<button class="btn btn-sm" style="background:rgba(0,0,0,.06);border:none;flex-shrink:0;align-self:flex-start" onclick="event.stopPropagation();delNotice(${n.id})">🗑</button>`:""}</div>`;}).join("")||`<div style="text-align:center;padding:40px;color:#94a3b8">কোনো নোটিশ নেই</div>`;
   return form+list;
 }
 function addNotice(){
@@ -1590,6 +1590,14 @@ function addNotice(){
   D.notices=[...(D.notices||[]),{id:Date.now(),title:t,body:b,type:document.getElementById("ntTy").value,date:document.getElementById("ntD").value,pinned:document.getElementById("ntP").checked}];
   logActivity("notice",`নতুন নোটিশ প্রকাশিত হয়েছে: ${t}`);
   sv();toast("✅ নোটিশ প্রকাশিত");goTab("notice");
+}
+function toggleNoticeBody(id){
+  const body=document.getElementById("nb-"+id);
+  const arrow=document.getElementById("notice-arrow-"+id);
+  if(!body) return;
+  const isHidden=body.style.display==="none";
+  body.style.display=isHidden?"block":"none";
+  if(arrow) arrow.textContent=isHidden?"▲ সংক্ষেপ করুন":"▼ বিস্তারিত দেখুন";
 }
 function delNotice(id){
   const n=(D.notices||[]).find(x=>x.id===id);
@@ -1654,10 +1662,10 @@ function pgMembers(){
       <div class="field"><label>মোবাইল</label><input type="tel" id="mPh" placeholder="01XXXXXXXXX"></div>
     </div>
     <div class="grid2">
-      <div class="field"><label>পদবি</label><select id="mRl">${roles.map(r=>`<option>${r}</option>`).join("")}</select></div>
+      <div class="field"><label>পদবি</label><select id="mRl">${roles.map(r=>'<option>'+r+'</option>').join("")}</select></div>
       <div class="field"><label>যোগদানের মাস</label><input type="month" id="mJn" value="${new Date().toISOString().slice(0,7)}"></div>
     </div>
-    <div class="field"><label>মাসিক চাঁদার হার (৳) — প্রাথমিক/ডিফল্ট হার</label><input type="number" id="mRt" value="2000" placeholder="2000"></div>
+    <div class="field"><label>মাসিক চাঁদার হার (৳)</label><input type="number" id="mRt" value="2000" placeholder="2000"></div>
     <button class="btn btn-g" onclick="addMember()">✅ যোগ করুন</button>
   </div></div>`:"";
 
@@ -1677,9 +1685,9 @@ function pgMembers(){
       <div style="height:5px;background:${g}"></div>
       <div style="padding:14px">
         <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
-          ${av(m.name,44,g)}
+          ${m.photo?`<img src="${m.photo}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid ${g}">`:`${av(m.name,44,g)}`}
           <div style="flex:1">
-            <div style="font-weight:700;font-size:15px;color:var(--ink)">${m.name}</div>
+            <div style="font-weight:700;font-size:15px;color:var(--ink);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(0,100,0,.3)" onclick="openMemberProfile(${m.id})">${m.name}</div>
             <span style="font-size:10px;background:#dcfce7;color:#1a8a00;border-radius:5px;padding:2px 7px;font-weight:700">${m.role||"সদস্য"}</span>
           </div>
           ${isA()?`<div style="display:flex;gap:5px">
@@ -1711,12 +1719,13 @@ function pgMembers(){
         ${m.phone?`<div style="font-size:12px;color:#64748b;margin-top:9px">📞 ${m.phone}</div>`:""}
         ${m.join?`<div style="font-size:11px;color:#94a3b8;margin-top:3px">যোগদান: ${m.join}</div>`:""}
         <div style="font-size:11px;color:#94a3b8;margin-top:3px">💼 তহবিলে অংশ: ${fmt(fundShare)}</div>
-        <div style="font-size:11px;color:#1a8a00;margin-top:3px;font-weight:700">📌 বর্তমান কার্যকর চাঁদার হার: ${fmt(getApplicableRate(m.id,curMon))}</div>
-        ${isA()?`<div style="margin-top:10px;display:flex;gap:6px">
-          <button onclick="memberStatPDF(${m.id})" style="font-size:11px;background:#fee2e2;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#dc2626">📄 PDF</button>
+        <div style="font-size:11px;color:#1a8a00;margin-top:3px;font-weight:700">📌 বর্তমান চাঁদার হার: ${fmt(getApplicableRate(m.id,curMon))}</div>
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+          <button onclick="openMemberProfile(${m.id})" style="font-size:11px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:5px 10px;cursor:pointer;color:#006400;font-weight:600">👤 প্রোফাইল</button>
+          <button onclick="memberStatPDF(${m.id})" style="font-size:11px;background:#fee2e2;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#dc2626">📄 স্টেটমেন্ট PDF</button>
           <button onclick="memberStatXL(${m.id})" style="font-size:11px;background:#dcfce7;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#16a34a">📊 Excel</button>
-          <button onclick="goTab('memberstat');window._statMid=${m.id}" style="font-size:11px;background:#eff6ff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#2563eb">📋 লেনদেন ইতিহাস</button>
-        </div>`:""}
+          <button onclick="goTab('memberstat');window._statMid=${m.id}" style="font-size:11px;background:#eff6ff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#2563eb">📋 লেনদেন</button>
+        </div>
       </div>
     </div>`;
   }).join("");
@@ -1738,13 +1747,9 @@ function pgMembers(){
         <input type="hidden" id="em-id">
         <div class="field"><label>পূর্ণ নাম</label><input type="text" id="em-name"></div>
         <div class="field"><label>মোবাইল</label><input type="tel" id="em-phone" placeholder="01XXXXXXXXX"></div>
-        <div class="field"><label>পদবি</label>
-          <select id="em-role" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
-            ${roles.map(r=>`<option>${r}</option>`).join("")}
-          </select>
-        </div>
+        <div class="field"><label>পদবি</label><select id="em-role">${roles.map(r=>'<option>'+r+'</option>').join("")}</select></div>
         <div class="field"><label>যোগদানের মাস</label><input type="month" id="em-join"></div>
-        <div class="field"><label>মাসিক চাঁদার প্রাথমিক/ডিফল্ট হার (৳)</label><input type="number" id="em-rate" placeholder="2000"></div>
+        <div class="field"><label>মাসিক চাঁদার হার (৳)</label><input type="number" id="em-rate" placeholder="2000"></div>
         <div style="font-size:11px;color:#94a3b8;margin:-6px 0 10px">নতুন হার নির্দিষ্ট তারিখ থেকে কার্যকর করতে "চাঁদার শিট" পেজে রেট ম্যানেজমেন্ট ব্যবহার করুন</div>
         <div class="field"><label>নোমিনি</label><input type="text" id="em-nominee" placeholder="নোমিনির নাম"></div>
         <div class="field"><label>ঠিকানা</label><input type="text" id="em-address" placeholder="গ্রাম/শহর"></div>
@@ -1753,7 +1758,328 @@ function pgMembers(){
           <button class="btn btn-outline" onclick="document.getElementById('member-edit-modal').style.display='none'">বাতিল</button>
         </div>
       </div>
-    </div>`;
+    </div>
+  `;
+}
+
+function openMemberProfile(mid){
+  const m=(D.members||[]).find(x=>x.id==mid);
+  if(!m) return;
+  const payments=(D.payments||[]).filter(p=>p.mid==mid);
+  const loans=(D.loans||[]).filter(l=>l.mid==mid);
+  const duesList=getDuesList();
+  const dueRec=duesList.find(x=>x.id==mid)||{};
+  const meetings=D.meetings||[];
+  const attCount=meetings.filter(mt=>(mt.attendance||{})[mid]).length;
+  const attPct=meetings.length?Math.round(attCount/meetings.length*100):0;
+  const totalPaid=payments.reduce((s,p)=>s+p.amount,0);
+  const totalDueChada=Math.max(0,dueRec.totalDue||0);
+  const totalLoan=loans.reduce((s,l)=>s+l.principal,0);
+  const totalLoanDue=loans.reduce((s,l)=>s+l.remaining,0);
+  const fundShare=calcFund()/Math.max(1,(D.members||[]).length);
+  const curRate=getApplicableRate(mid,curMon);
+  const lastPay=payments.sort((a,b)=>b.id-a.id)[0];
+  const lastLoan=loans.sort((a,b)=>b.id-a.id)[0];
+  const bloodGroups=["A+","A-","B+","B-","AB+","AB-","O+","O-"];
+
+  const tabBtn=(id,label,active)=>`<button onclick="switchProfileTab('${id}')" id="ptab-${id}" style="padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;background:${active?"#006400":"#f1f5f9"};color:${active?"#fff":"#64748b"};transition:all .2s">${label}</button>`;
+
+  const sel=(id,opts,val)=>`<select id="ep-${id}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit">${opts.map(o=>`<option${o===val?" selected":""}>${o}</option>`).join("")}</select>`;
+  const inp=(id,val,ph,type="text")=>`<input id="ep-${id}" type="${type}" value="${val||""}" placeholder="${ph}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit;box-sizing:border-box">`;
+  const fld=(label,content)=>`<div style="margin-bottom:10px"><div style="font-size:11px;color:#64748b;margin-bottom:3px;font-weight:600">${label}</div>${content}</div>`;
+  const row=(label,value,color="#071a07")=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9"><span style="font-size:12px;color:#64748b">${label}</span><span style="font-size:13px;font-weight:700;color:${color}">${value}</span></div>`;
+
+  const html=`<div id="member-profile-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:10px;overflow-y:auto" onclick="if(event.target===this)closeMemberProfile()">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:480px;overflow:hidden;margin:auto">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#006400,#1a8a00);padding:20px;position:relative">
+      <button onclick="closeMemberProfile()" style="position:absolute;top:12px;right:12px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:16px">✕</button>
+      <button onclick="memberProfilePDF(${mid})" style="position:absolute;top:12px;right:54px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:12px;font-weight:600">📄 PDF</button>
+      <div style="display:flex;align-items:center;gap:14px">
+        ${m.photo?`<img src="${m.photo}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff;border:3px solid rgba(255,255,255,.3)">${m.name?m.name[0]:""}</div>`}
+        <div>
+          <div style="font-size:18px;font-weight:800;color:#fff">${m.name}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:2px">${m.role||"সদস্য"} | আইডি: #${String(mid).slice(-4)}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:2px">যোগদান: ${m.join||"—"}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:6px;padding:12px;overflow-x:auto;background:#f8fafc;flex-wrap:wrap">
+      ${tabBtn("personal","👤 ব্যক্তিগত",true)}
+      ${tabBtn("contact","📞 যোগাযোগ",false)}
+      ${tabBtn("org","🏛️ সংগঠন",false)}
+      ${tabBtn("finance","💰 আর্থিক",false)}
+      ${tabBtn("banking","🏦 ব্যাংকিং",false)}
+      ${tabBtn("emergency","☎️ জরুরি",false)}
+      ${tabBtn("docs","📄 ডকুমেন্ট",false)}
+      ${tabBtn("activity","📊 Activity",false)}
+      ${isA()?tabBtn("admin","🔒 অ্যাডমিন",false):""}
+    </div>
+
+    <!-- Tab Contents -->
+    <div style="padding:16px;max-height:60vh;overflow-y:auto">
+
+      <!-- ১. ব্যক্তিগত -->
+      <div id="ptab-personal-content">
+        <div style="text-align:center;margin-bottom:14px">
+          ${m.photo?`<img src="${m.photo}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #006400;margin-bottom:8px">`:`<div style="width:80px;height:80px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#006400;margin:0 auto 8px">${m.name?m.name[0]:""}</div>`}
+          <label style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;color:#006400;font-weight:600">📷 ছবি পরিবর্তন<input type="file" accept="image/*" onchange="changeMemberPhoto(${mid},this)" style="display:none"></label>
+        </div>
+        <div class="grid2">
+          ${fld("বাংলা নাম",inp("bname",m.name,"বাংলা নাম"))}
+          ${fld("ইংরেজি নাম",inp("ename",m.ename,"English Name"))}
+        </div>
+        <div class="grid2">
+          ${fld("পিতার নাম",inp("father",m.father,"পিতার নাম"))}
+          ${fld("মাতার নাম",inp("mother",m.mother,"মাতার নাম"))}
+        </div>
+        <div class="grid2">
+          ${fld("জন্মতারিখ",inp("dob",m.dob,"","date"))}
+          ${fld("রক্তের গ্রুপ",sel("blood",bloodGroups,m.blood||""))}
+        </div>
+        <div class="grid2">
+          ${fld("পেশা",inp("occupation",m.occupation,"পেশা"))}
+          ${fld("বৈবাহিক অবস্থা",sel("marital",["অবিবাহিত","বিবাহিত","বিধবা/বিধুর","তালাকপ্রাপ্ত"],m.marital||""))}
+        </div>
+        ${fld("NID নম্বর",inp("nid",m.nid,"জাতীয় পরিচয়পত্র নম্বর"))}
+        <button onclick="saveMemberProfile(${mid})" class="btn btn-g" style="width:100%;margin-top:6px">✅ সেভ করুন</button>
+      </div>
+
+      <!-- ২. যোগাযোগ -->
+      <div id="ptab-contact-content" style="display:none">
+        ${fld("মোবাইল নম্বর",inp("phone",m.phone,"01XXXXXXXXX","tel"))}
+        ${fld("বিকল্প নম্বর",inp("altphone",m.altphone,"01XXXXXXXXX","tel"))}
+        ${fld("ই-মেইল",inp("email",m.email,"email@example.com","email"))}
+        ${fld("বর্তমান ঠিকানা",`<textarea id="ep-address" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit;box-sizing:border-box;height:60px">${m.address||""}</textarea>`)}
+        ${fld("স্থায়ী ঠিকানা",`<textarea id="ep-permaddress" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit;box-sizing:border-box;height:60px">${m.permaddress||""}</textarea>`)}
+        <button onclick="saveMemberProfile(${mid})" class="btn btn-g" style="width:100%;margin-top:6px">✅ সেভ করুন</button>
+      </div>
+
+      <!-- ৩. সংগঠন -->
+      <div id="ptab-org-content" style="display:none">
+        ${row("সদস্য আইডি","#"+String(mid).slice(-4))}
+        ${row("পদবি",m.role||"সদস্য")}
+        ${row("যোগদানের তারিখ",m.join||"—")}
+        ${row("সদস্যের অবস্থা",m.status||"সক্রিয়","#16a34a")}
+        ${row("মোট উপস্থিতি",`${attCount}/${meetings.length} (${attPct}%)`)}
+        ${isA()?`
+        <div style="margin-top:12px">
+          ${fld("পদবি",sel("role",["সভাপতি","সম্পাদক","কোষাধ্যক্ষ","সদস্য","উপদেষ্টা"],m.role||""))}
+          ${fld("সদস্যের অবস্থা",sel("status",["সক্রিয়","নিষ্ক্রিয়","স্থগিত"],m.status||"সক্রিয়"))}
+          ${fld("যোগদানের মাস",inp("join",m.join,"","month"))}
+          <button onclick="saveMemberProfile(${mid})" class="btn btn-g" style="width:100%;margin-top:6px">✅ সেভ করুন</button>
+        </div>`:""}
+      </div>
+
+      <!-- ৪. আর্থিক (Auto Calculated) -->
+      <div id="ptab-finance-content" style="display:none">
+        <div style="background:#f0fdf4;border-radius:10px;padding:12px;margin-bottom:12px;text-align:center">
+          <div style="font-size:11px;color:#64748b;margin-bottom:4px">মাসিক চাঁদার হার</div>
+          <div style="font-size:22px;font-weight:800;color:#006400">${fmt(curRate)}</div>
+        </div>
+        ${row("মোট জমাকৃত চাঁদা",fmt(totalPaid),"#16a34a")}
+        ${row("মোট বকেয়া চাঁদা",fmt(totalDueChada),"#dc2626")}
+        ${row("মোট ঋণ গ্রহণ",fmt(totalLoan),"#d97706")}
+        ${row("অবশিষ্ট ঋণ",fmt(totalLoanDue),"#dc2626")}
+        ${row("তহবিলে অংশ",fmt(fundShare),"#7c3aed")}
+        ${row("মোট উপস্থিতি",`${attCount}/${meetings.length}`)}
+        <div style="background:#fff1f2;border-radius:10px;padding:10px;margin-top:12px;text-align:center">
+          <div style="font-size:11px;color:#64748b">মোট বকেয়া (চাঁদা + ঋণ)</div>
+          <div style="font-size:20px;font-weight:800;color:#dc2626">${fmt(totalDueChada+totalLoanDue)}</div>
+        </div>
+      </div>
+
+      <!-- ৫. ব্যাংকিং -->
+      <div id="ptab-banking-content" style="display:none">
+        ${fld("ব্যাংকের নাম",inp("bankname",m.bankname,"ব্যাংকের নাম"))}
+        ${fld("অ্যাকাউন্ট নম্বর",inp("banknum",m.banknum,"অ্যাকাউন্ট নম্বর"))}
+        ${fld("বিকাশ",inp("bkash",m.bkash,"01XXXXXXXXX","tel"))}
+        ${fld("নগদ",inp("nagad",m.nagad,"01XXXXXXXXX","tel"))}
+        ${fld("রকেট",inp("rocket",m.rocket,"01XXXXXXXXX","tel"))}
+        <button onclick="saveMemberProfile(${mid})" class="btn btn-g" style="width:100%;margin-top:6px">✅ সেভ করুন</button>
+      </div>
+
+      <!-- ৬. জরুরি যোগাযোগ -->
+      <div id="ptab-emergency-content" style="display:none">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px">☎️ জরুরি যোগাযোগ</div>
+        ${fld("নাম",inp("emname",m.emname,"জরুরি যোগাযোগের নাম"))}
+        ${fld("সম্পর্ক",inp("emrel",m.emrel,"যেমন: ভাই, বাবা"))}
+        ${fld("মোবাইল",inp("emphone",m.emphone,"01XXXXXXXXX","tel"))}
+        ${fld("ঠিকানা",`<textarea id="ep-emaddress" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit;box-sizing:border-box;height:60px">${m.emaddress||""}</textarea>`)}
+        <div style="border-top:1px solid #f1f5f9;margin:12px 0;padding-top:12px"><div style="font-weight:700;font-size:13px;margin-bottom:10px">👤 নমিনি (Nominee)</div></div>
+        ${fld("নমিনির নাম",inp("nomname",m.nomname,"নমিনির নাম"))}
+        ${fld("সম্পর্ক",inp("nomrel",m.nomrel,"সম্পর্ক"))}
+        ${fld("মোবাইল",inp("nomphone",m.nomphone,"01XXXXXXXXX","tel"))}
+        ${fld("ঠিকানা",`<textarea id="ep-nomaddress" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit;box-sizing:border-box;height:60px">${m.nomaddress||""}</textarea>`)}
+        <button onclick="saveMemberProfile(${mid})" class="btn btn-g" style="width:100%;margin-top:6px">✅ সেভ করুন</button>
+      </div>
+
+      <!-- ৭. ডকুমেন্ট -->
+      <div id="ptab-docs-content" style="display:none">
+        <div style="display:grid;gap:10px">
+          ${["nidcopy:NID কপি","photo:ছবি","signature:স্বাক্ষর","otherdoc:অন্যান্য ফাইল"].map(x=>{
+            const[fid,label]=x.split(":");
+            return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px">
+              <div style="font-size:12px;font-weight:600;margin-bottom:8px">${label}</div>
+              ${m[fid]?`<div style="margin-bottom:8px"><img src="${m[fid]}" style="max-width:100%;max-height:100px;border-radius:6px;object-fit:cover" onerror="this.style.display='none'"><br><a href="${m[fid]}" target="_blank" style="font-size:11px;color:#006400">📄 দেখুন / ডাউনলোড</a></div>`:`<div style="font-size:11px;color:#94a3b8;margin-bottom:8px">কোনো ফাইল নেই</div>`}
+              <label style="background:#f0fdf4;border:1px solid #86efac;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:11px;color:#006400;font-weight:600">📤 আপলোড<input type="file" accept="image/*,.pdf" onchange="uploadMemberDoc(${mid},'${fid}',this)" style="display:none"></label>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>
+
+      <!-- ৮. Activity -->
+      <div id="ptab-activity-content" style="display:none">
+        ${row("সর্বশেষ চাঁদা",lastPay?`${fmt(lastPay.amount)} — ${lastPay.date||""}${lastPay.method?" ("+lastPay.method+")":""}`:"-—")}
+        ${row("সর্বশেষ ঋণ",lastLoan?`${fmt(lastLoan.principal)} — ${lastLoan.date||""}`:"-—")}
+        ${row("মোট পেমেন্ট সংখ্যা",`${payments.length} টি`)}
+        ${row("মোট ঋণ সংখ্যা",`${loans.length} টি`)}
+        ${row("অ্যাকাউন্ট তৈরি",m.createdAt?new Date(m.createdAt).toLocaleDateString("bn-BD"):"—")}
+        ${row("সদস্যপদ শুরু",m.join||"—")}
+        <div style="margin-top:12px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px">সাম্প্রতিক পেমেন্ট</div>
+          ${payments.slice().sort((a,b)=>b.id-a.id).slice(0,5).map(p=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9"><span style="font-size:12px;color:#64748b">${p.month} ${p.method?"("+p.method+")":""}</span><span style="font-size:12px;font-weight:700;color:#16a34a">${fmt(p.amount)}</span></div>`).join("")||`<div style="color:#94a3b8;font-size:12px">কোনো পেমেন্ট নেই</div>`}
+        </div>
+      </div>
+
+      <!-- ৯. অ্যাডমিন (গোপন) -->
+      ${isA()?`<div id="ptab-admin-content" style="display:none">
+        <div style="background:#fff1f2;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;color:#dc2626">🔒 এই তথ্য শুধুমাত্র অ্যাডমিন দেখতে পারবেন</div>
+        ${fld("অ্যাডমিন নোট / মন্তব্য",`<textarea id="ep-adminnote" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit;box-sizing:border-box;height:100px">${m.adminnote||""}</textarea>`)}
+        <button onclick="saveMemberProfile(${mid})" class="btn btn-g" style="width:100%;margin-top:6px">✅ সেভ করুন</button>
+      </div>`:""}
+
+    </div>
+  </div>
+</div>`;
+
+  document.body.insertAdjacentHTML("beforeend",html);
+}
+
+function switchProfileTab(id){
+  document.querySelectorAll('[id^="ptab-"][id$="-content"]').forEach(el=>el.style.display="none");
+  document.querySelectorAll('[id^="ptab-"]:not([id$="-content"])').forEach(btn=>{btn.style.background="#f1f5f9";btn.style.color="#64748b";});
+  const content=document.getElementById("ptab-"+id+"-content");
+  const btn=document.getElementById("ptab-"+id);
+  if(content) content.style.display="block";
+  if(btn){btn.style.background="#006400";btn.style.color="#fff";}
+}
+
+function closeMemberProfile(){
+  const modal=document.getElementById("member-profile-modal");
+  if(modal) modal.remove();
+}
+
+function saveMemberProfile(mid){
+  const m=(D.members||[]).find(x=>x.id==mid);
+  if(!m) return;
+  const g=id=>document.getElementById("ep-"+id);
+  const gv=id=>{const el=g(id);return el?el.value.trim():undefined;};
+  const fields=["bname","ename","father","mother","dob","blood","occupation","marital","nid",
+    "phone","altphone","email","address","permaddress",
+    "role","status","join",
+    "bankname","banknum","bkash","nagad","rocket",
+    "emname","emrel","emphone","emaddress",
+    "nomname","nomrel","nomphone","nomaddress","adminnote"];
+  const fieldMap={bname:"name",phone:"phone",role:"role",join:"join"};
+  fields.forEach(fid=>{
+    const val=gv(fid);
+    if(val!==undefined){
+      const key=fieldMap[fid]||fid;
+      m[key]=val;
+    }
+  });
+  sv();toast("✅ প্রোফাইল সেভ হয়েছে");
+}
+
+function memberProfilePDF(mid){
+  const m=(D.members||[]).find(x=>x.id==mid);if(!m)return;
+  const payments=(D.payments||[]).filter(p=>p.mid==mid);
+  const loans=(D.loans||[]).filter(l=>l.mid==mid);
+  const duesList=getDuesList();
+  const dueRec=duesList.find(x=>x.id==mid)||{};
+  const meetings=D.meetings||[];
+  const attCount=meetings.filter(mt=>(mt.attendance||{})[mid]).length;
+  const totalPaid=payments.reduce((s,p)=>s+p.amount,0);
+  const totalDueChada=Math.max(0,dueRec.totalDue||0);
+  const totalLoan=loans.reduce((s,l)=>s+l.principal,0);
+  const totalLoanDue=loans.reduce((s,l)=>s+l.remaining,0);
+  const fundShare=calcFund()/Math.max(1,(D.members||[]).length);
+  const curRate=getApplicableRate(mid,curMon);
+  const r=(label,val)=>`<tr><td style="padding:7px 10px;border:1px solid #e2e8f0;color:#64748b;font-size:12px;width:40%">${label}</td><td style="padding:7px 10px;border:1px solid #e2e8f0;font-weight:600;font-size:12px">${val||"—"}</td></tr>`;
+  const sec=(title)=>`<tr><td colspan="2" style="background:#006400;color:#fff;padding:8px 10px;font-weight:700;font-size:13px">${title}</td></tr>`;
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfStyle}table{width:100%;border-collapse:collapse;margin-bottom:16px}.kpi{display:inline-block;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin:4px;text-align:center}.kv{font-size:16px;font-weight:800;color:#006400}.kl{font-size:10px;color:#64748b}</style></head><body>
+  ${pdfWM()}${pdfBtn()}
+  <div style="background:linear-gradient(135deg,#006400,#1a8a00);padding:20px;border-radius:12px;margin-bottom:20px;display:flex;align-items:center;gap:16px">
+    ${m.photo?`<img src="${m.photo}" style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff">${m.name?m.name[0]:""}</div>`}
+    <div>
+      <h1 style="color:#fff;margin:0;font-size:20px;border:none">${m.name}</h1>
+      <div style="color:rgba(255,255,255,.8);font-size:13px">${m.role||"সদস্য"} | আইডি: #${String(mid).slice(-4)}</div>
+      <div style="color:rgba(255,255,255,.7);font-size:12px">যোগদান: ${m.join||"—"}</div>
+    </div>
+  </div>
+  <div style="margin-bottom:16px">
+    ${[["মোট চাঁদা",fmtBn(totalPaid)],["বকেয়া চাঁদা",fmtBn(totalDueChada)],["মোট ঋণ",fmtBn(totalLoan)],["ঋণ বকেয়া",fmtBn(totalLoanDue)],["তহবিল অংশ",fmtBn(fundShare)],["মাসিক হার",fmtBn(curRate)]].map(([l,v])=>`<div class="kpi"><div class="kv">${v}</div><div class="kl">${l}</div></div>`).join("")}
+  </div>
+  <table>
+    ${sec("👤 ব্যক্তিগত তথ্য")}
+    ${r("বাংলা নাম",m.name)}${r("ইংরেজি নাম",m.ename)}
+    ${r("পিতার নাম",m.father)}${r("মাতার নাম",m.mother)}
+    ${r("জন্মতারিখ",m.dob)}${r("রক্তের গ্রুপ",m.blood)}
+    ${r("পেশা",m.occupation)}${r("বৈবাহিক অবস্থা",m.marital)}
+    ${r("NID নম্বর",m.nid)}
+    ${sec("📞 যোগাযোগ")}
+    ${r("মোবাইল",m.phone)}${r("বিকল্প নম্বর",m.altphone)}
+    ${r("ই-মেইল",m.email)}${r("বর্তমান ঠিকানা",m.address)}
+    ${r("স্থায়ী ঠিকানা",m.permaddress)}
+    ${sec("🏛️ সংগঠন")}
+    ${r("পদবি",m.role)}${r("অবস্থা",m.status||"সক্রিয়")}
+    ${r("যোগদান",m.join)}${r("উপস্থিতি",`${attCount}/${meetings.length}`)}
+    ${sec("💰 আর্থিক তথ্য (স্বয়ংক্রিয়)")}
+    ${r("মাসিক চাঁদার হার",fmtBn(curRate))}${r("মোট জমা",fmtBn(totalPaid))}
+    ${r("মোট বকেয়া চাঁদা",fmtBn(totalDueChada))}${r("মোট ঋণ",fmtBn(totalLoan))}
+    ${r("অবশিষ্ট ঋণ",fmtBn(totalLoanDue))}${r("তহবিলে অংশ",fmtBn(fundShare))}
+    ${sec("🏦 ব্যাংকিং")}
+    ${r("ব্যাংকের নাম",m.bankname)}${r("অ্যাকাউন্ট নম্বর",m.banknum)}
+    ${r("বিকাশ",m.bkash)}${r("নগদ",m.nagad)}${r("রকেট",m.rocket)}
+    ${sec("☎️ জরুরি যোগাযোগ")}
+    ${r("নাম",m.emname)}${r("সম্পর্ক",m.emrel)}${r("মোবাইল",m.emphone)}
+    ${sec("👤 নমিনি")}
+    ${r("নাম",m.nomname)}${r("সম্পর্ক",m.nomrel)}${r("মোবাইল",m.nomphone)}
+  </table>
+  <h2>সাম্প্রতিক পেমেন্ট</h2>
+  <table><thead><tr><th>মাস</th><th>পরিমাণ</th><th>মেথড</th><th>তারিখ</th></tr></thead><tbody>
+  ${payments.slice().sort((a,b)=>b.id-a.id).slice(0,10).map(p=>`<tr><td>${p.month}</td><td>${fmtBn(p.amount)}</td><td>${p.method||"—"}</td><td>${p.date||"—"}</td></tr>`).join("")||`<tr><td colspan="4" style="text-align:center;color:#94a3b8">কোনো পেমেন্ট নেই</td></tr>`}
+  </tbody></table>
+  <div style="margin-top:20px;font-size:11px;color:#94a3b8;text-align:center">প্রিন্ট তারিখ: ${new Date().toLocaleDateString("bn-BD")} | স্বপ্নঘুড়ি সংগঠন</div>
+  </body></html>`;
+  const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);
+  toast("📄 PDF প্রস্তুত হচ্ছে");
+}
+
+function changeMemberPhoto(mid,input){
+  const f=input.files[0];if(!f)return;
+  if(f.size>2097152){toast("⚠️ ছবি ২ MB-র কম হতে হবে","#d97706");return;}
+  const r=new FileReader();
+  r.onload=e=>{
+    const m=(D.members||[]).find(x=>x.id==mid);
+    if(m){m.photo=e.target.result;sv();toast("✅ ছবি আপডেট হয়েছে");closeMemberProfile();openMemberProfile(mid);}
+  };
+  r.readAsDataURL(f);
+}
+
+function uploadMemberDoc(mid,field,input){
+  const f=input.files[0];if(!f)return;
+  if(f.size>5242880){toast("⚠️ ফাইল ৫ MB-র কম হতে হবে","#d97706");return;}
+  const r=new FileReader();
+  r.onload=e=>{
+    const m=(D.members||[]).find(x=>x.id==mid);
+    if(m){m[field]=e.target.result;sv();toast("✅ ফাইল আপলোড হয়েছে");closeMemberProfile();openMemberProfile(mid);}
+  };
+  r.readAsDataURL(f);
 }
 
 function addMember(){
@@ -1764,7 +2090,9 @@ function addMember(){
     phone:document.getElementById("mPh").value,
     role:document.getElementById("mRl").value,
     join:document.getElementById("mJn").value,
-    monthlyRate:Number(document.getElementById("mRt").value||2000)
+    monthlyRate:Number(document.getElementById("mRt").value||2000),
+    createdAt:new Date().toISOString(),
+    status:"সক্রিয়"
   }];
   logActivity("member",`নতুন সদস্য যোগ হয়েছে: ${n} (${document.getElementById("mRl").value})`);
   sv();toast("✅ সদস্য যোগ হয়েছে");goTab("members");
@@ -1846,10 +2174,10 @@ function pgGallery(){
     const isVid=g.type&&g.type.startsWith("video");
     const isAud=g.type&&g.type.startsWith("audio");
     let media="";
-    if(isImg) media=`<img src="${g.src}" style="width:100%;height:130px;object-fit:cover;display:block">`;
+    if(isImg) media=`<img src="${g.src}" style="width:100%;height:130px;object-fit:cover;display:block;cursor:pointer" onclick="openGalleryItem(${g.id})">`;
     else if(isVid) media=`<video src="${g.src}" controls style="width:100%;height:130px;object-fit:cover;display:block"></video>`;
     else if(isAud) media=`<div style="background:#f0fdf4;padding:14px;text-align:center"><div style="font-size:32px">🎵</div><audio src="${g.src}" controls style="width:100%;margin-top:6px"></audio></div>`;
-    else media=`<div style="background:#f8fafc;height:130px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px"><div style="font-size:40px">${fileIcon(g.type)}</div><div style="font-size:11px;color:#64748b">${g.name||"ফাইল"}</div><a href="${g.src}" download="${g.name||"file"}" style="font-size:11px;background:#006400;color:#fff;padding:4px 10px;border-radius:6px;text-decoration:none">⬇️ ডাউনলোড</a></div>`;
+    else media=`<div style="background:#f8fafc;height:130px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;cursor:pointer" onclick="openGalleryItem(${g.id})"><div style="font-size:40px">${fileIcon(g.type)}</div><div style="font-size:11px;color:#64748b">${g.name||"ফাইল"}</div><a href="${g.src}" download="${g.name||"file"}" style="font-size:11px;background:#006400;color:#fff;padding:4px 10px;border-radius:6px;text-decoration:none">⬇️ ডাউনলোড</a></div>`;
     return `<div style="border-radius:11px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.07);background:var(--white);position:relative">
       ${media}
       <div style="padding:7px 9px">
@@ -1896,6 +2224,19 @@ function addGal(){
   D.gallery=[...(D.gallery||[]),{id:Date.now(),src:window._gid,type:window._gtype||"",name:window._gname||"",caption:document.getElementById("gcap").value,date:new Date().toISOString().slice(0,10)}];
   window._gid=null;window._gtype=null;window._gname=null;
   sv();toast("✅ ফাইল যোগ হয়েছে");goTab("gallery");
+}
+function openGalleryItem(id){
+  const g=(D.gallery||[]).find(x=>x.id===id);
+  if(!g) return;
+  const isImg=g.type&&g.type.startsWith("image")||(!g.type&&g.src&&g.src.startsWith("data:image"));
+  const html=`<div id="gallery-viewer" style="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)document.getElementById('gallery-viewer').remove()">
+    <button onclick="document.getElementById('gallery-viewer').remove()" style="position:absolute;top:14px;right:14px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:6px 12px;cursor:pointer;color:#fff;font-size:18px">✕</button>
+    ${isImg?`<img src="${g.src}" style="max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px">`:`<a href="${g.src}" download="${g.name||'file'}" style="background:#006400;color:#fff;padding:14px 24px;border-radius:12px;text-decoration:none;font-size:16px;font-weight:700">⬇️ ${g.name||"ফাইল ডাউনলোড করুন"}</a>`}
+    <div style="color:rgba(255,255,255,.8);font-size:13px;margin-top:12px;text-align:center">${g.caption||g.name||""}</div>
+    <div style="color:rgba(255,255,255,.5);font-size:11px;margin-top:4px">${ds(g.date)}</div>
+    ${isImg?`<a href="${g.src}" download="${g.name||'image'}" style="margin-top:12px;background:rgba(255,255,255,.15);color:#fff;padding:8px 16px;border-radius:8px;text-decoration:none;font-size:12px">⬇️ ডাউনলোড</a>`:""}
+  </div>`;
+  document.body.insertAdjacentHTML("beforeend",html);
 }
 function delGal(id){D.gallery=(D.gallery||[]).filter(g=>g.id!==id);sv();toast("🗑","#dc2626");goTab("gallery");}
 
@@ -3833,9 +4174,11 @@ function pgReport(){
     <div style="background:linear-gradient(135deg,#006400,#1a8a00);border-radius:14px;padding:18px;margin-bottom:16px;text-align:center">
       <div style="font-size:28px;margin-bottom:6px">📊</div>
       <div style="color:#fff;font-weight:800;font-size:16px;margin-bottom:4px">সম্পূর্ণ সংগঠনের হিসাব</div>
-      <div style="color:rgba(255,255,255,.75);font-size:12px;margin-bottom:12px">চাঁদা · ঋণ · বিনিয়োগ · সম্পদ · আয়-ব্যয় · দায় · ব্যালেন্স শিট — সব একসাথে ১০টি শিটে</div>
-      <button onclick="fullExcelDownload()" style="background:#fff;color:#006400;border:none;border-radius:10px;padding:12px 20px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit">⬇️ Excel ডাউনলোড</button>
-      <button onclick="fullPDFDownload()" style="background:#fff;color:#dc2626;border:none;border-radius:10px;padding:12px 20px;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit;margin-top:8px">📄 PDF ডাউনলোড (জলছাপ সহ)</button>
+      <div style="color:rgba(255,255,255,.75);font-size:12px;margin-bottom:12px">চাঁদা · ঋণ · বিনিয়োগ · সম্পদ · আয়-ব্যয় · দায় · ব্যালেন্স শিট</div>
+      ${isA()?`<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <button onclick="fullExcelDownload()" style="background:#fff;color:#006400;border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit">⬇️ Excel ডাউনলোড</button>
+        <button onclick="fullPDFDownload()" style="background:#fff;color:#dc2626;border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit">📄 PDF (জলছাপ সহ)</button>
+      </div>`:`<div style="color:rgba(255,255,255,.6);font-size:12px">⛔ শুধুমাত্র অ্যাডমিন ডাউনলোড করতে পারবেন</div>`}
     </div>
     <div class="card" style="margin-bottom:14px">
       ${ch("👤","সদস্যভিত্তিক স্টেটমেন্ট","প্রতি সদস্যের সম্পূর্ণ হিসাব")}
