@@ -130,6 +130,68 @@ button,input,select,textarea{font-family:'Hind Siliguri',sans-serif}
 
 .viewer-bar{background:var(--yl);border-bottom:2px solid var(--gd);padding:7px 22px;font-size:12px;color:var(--gd);font-weight:600}
 
+/* ── Global Search ── */
+.gsearch-wrap{padding:10px 10px 6px;position:relative}
+.gsearch-input{width:100%;padding:9px 36px 9px 14px;border-radius:10px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);color:#fff;font-size:13px;font-family:inherit;outline:none;transition:border-color .2s}
+.gsearch-input::placeholder{color:rgba(255,255,255,.35)}
+.gsearch-input:focus{border-color:rgba(134,239,172,.6);background:rgba(255,255,255,.15)}
+.gsearch-icon{position:absolute;right:22px;top:50%;transform:translateY(-50%);font-size:14px;opacity:.5;pointer-events:none}
+.gsearch-results{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9990;display:none;align-items:flex-start;justify-content:center;padding-top:70px}
+.gsearch-results.show{display:flex}
+.gsearch-box{background:var(--white);border-radius:16px;width:min(560px,96vw);max-height:75vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.gsearch-top{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--white);z-index:1}
+.gsearch-top input{flex:1;border:none;outline:none;font-size:15px;font-family:inherit;background:transparent;color:var(--ink)}
+.gsearch-item{padding:11px 16px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;gap:12px;align-items:center;transition:background .15s}
+.gsearch-item:hover{background:#f0fdf4}
+.gsearch-item:last-child{border-bottom:none}
+.gsearch-cat{padding:7px 16px 4px;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px;background:#f8fafc;text-transform:uppercase}
+.gsearch-empty{padding:40px;text-align:center;color:var(--muted);font-size:13px}
+
+/* ── Collapsible Sidebar Sections ── */
+.sb-sec-btn{width:100%;background:none;border:none;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between;padding:10px 12px 4px;text-align:left}
+.sb-sec-label{font-size:9px;font-weight:700;color:rgba(255,255,255,.35);letter-spacing:1.5px;text-transform:uppercase}
+.sb-sec-arrow{font-size:10px;color:rgba(255,255,255,.3);transition:transform .2s}
+.sb-sec-arrow.open{transform:rotate(90deg)}
+.sb-sec-items{overflow:hidden;transition:max-height .25s ease}
+.sb-sec-divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:4px 10px}
+
+/* ── Dark mode visibility fixes ── */
+html[data-theme="dark"] .gsearch-box{background:var(--white)}
+html[data-theme="dark"] .gsearch-top{background:var(--white);border-bottom-color:var(--border)}
+html[data-theme="dark"] .gsearch-top input{color:var(--ink)}
+html[data-theme="dark"] .gsearch-item:hover{background:#1a241c}
+html[data-theme="dark"] .gsearch-cat{background:#0f1a10;color:var(--muted)}
+html[data-theme="dark"] .section-title{color:var(--ink)}
+html[data-theme="dark"] .section-sub{color:var(--muted)}
+html[data-theme="dark"] .kpi{background:var(--white)}
+html[data-theme="dark"] .kpi .kl{color:var(--muted)}
+html[data-theme="dark"] .row{border-bottom-color:var(--border)}
+html[data-theme="dark"] .rl{color:var(--muted)}
+html[data-theme="dark"] .tab-bar{background:var(--white)}
+html[data-theme="dark"] .tab-btn{color:var(--muted)}
+html[data-theme="dark"] .notice-card{background:var(--white)}
+html[data-theme="dark"] .notif-pop{background:var(--white)}
+html[data-theme="dark"] #notif-pop div[style*="background:#fff"]{background:var(--white)!important}
+html[data-theme="dark"] .prog{background:#1e2e20}
+html[data-theme="dark"] .tbl th{color:var(--muted)}
+html[data-theme="dark"] .tbl td{color:var(--ink)}
+html[data-theme="dark"] .hi{background:#142a18}
+html[data-theme="dark"] .rd-row{background:#2a1418}
+html[data-theme="dark"] .login-wrap{background:linear-gradient(135deg,#020708,#003300,#003300)}
+html[data-theme="dark"] .hero{background:linear-gradient(135deg,#020708,#003300,#003300)}
+html[data-theme="dark"] .btn-outline{border-color:var(--border);color:var(--muted)}
+html[data-theme="dark"] .fab-menu button{background:var(--white);color:var(--ink);border-color:var(--border)}
+html[data-theme="dark"] .stat-box{background:var(--white)}
+html[data-theme="dark"] .stat-box .sl{color:var(--muted)}
+
+/* AI Report modal */
+.ai-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9990;display:none;align-items:center;justify-content:center}
+.ai-modal-bg.show{display:flex}
+.ai-modal{background:var(--white);border-radius:16px;width:min(620px,95vw);max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+html[data-theme="dark"] .ai-modal{background:var(--white)}
+.ai-typing{display:inline-block;width:6px;height:14px;background:var(--g2);border-radius:2px;animation:blink .7s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
 .stat-box{text-align:center;background:#f8fafc;border-radius:9px;padding:9px 6px}
 .stat-box .sv{font-size:12px;font-weight:700}.stat-box .sl{font-size:10px;color:#94a3b8;margin-top:2px}
 
@@ -206,6 +268,10 @@ const firebaseConfig = {
       <div style="color:rgba(255,255,255,.4);font-size:11px;margin-top:2px"></div>
       <div id="sb-badge" style="margin-top:8px"></div>
     </div>
+    <div class="gsearch-wrap">
+      <input class="gsearch-input" type="text" placeholder="🔍 সার্চ করুন..." onclick="openGSearch()" readonly>
+      <span class="gsearch-icon">🔍</span>
+    </div>
     <nav class="sb-nav" id="sb-nav"></nav>
     <div class="sb-footer">
       <div style="color:rgba(255,255,255,.4);font-size:10px">মোট তহবিল</div>
@@ -239,6 +305,7 @@ const firebaseConfig = {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
+        <button onclick="openGSearch()" title="গ্লোবাল সার্চ (Ctrl+K)" style="background:var(--bg);border:1.5px solid var(--border);border-radius:9px;padding:7px 13px;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;white-space:nowrap">🔍 <span style="display:none" id="tb-search-label">সার্চ</span> <kbd style="font-size:10px;background:var(--border);border-radius:4px;padding:1px 5px;color:var(--muted)">Ctrl K</kbd></button>
         <div class="bell-wrap" onclick="toggleNotif()">
           <span style="font-size:20px">🔔</span>
           <span id="bell-dot" class="bell-dot" style="display:none">0</span>
@@ -254,6 +321,48 @@ const firebaseConfig = {
     </div>
     <div class="content" id="content"></div>
     <nav class="mobile-nav" id="mn"></nav>
+  </div>
+</div>
+
+<!-- Global Search Modal -->
+<div class="gsearch-results" id="gsearch-modal" onclick="closeGSearch(event)">
+  <div class="gsearch-box" id="gsearch-box">
+    <div class="gsearch-top">
+      <span style="font-size:18px">🔍</span>
+      <input type="text" id="gsearch-field" placeholder="নাম, মোবাইল, আইডি, এনআইডি, ঋণ, সঞ্চয়..." oninput="runGSearch(this.value)" autocomplete="off">
+      <button onclick="closeGSearchBtn()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted)">✕</button>
+    </div>
+    <div id="gsearch-body"><div class="gsearch-empty">উপরে টাইপ করুন — নাম, মোবাইল, সদস্য আইডি, এনআইডি, ঋণ, সঞ্চয় সব খোঁজা যাবে</div></div>
+  </div>
+</div>
+
+<!-- AI Report Modal -->
+<div class="ai-modal-bg" id="ai-modal-bg" onclick="closeAIModal(event)">
+  <div class="ai-modal" id="ai-modal">
+    <div style="background:linear-gradient(135deg,#006400,#1a8a00);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-radius:16px 16px 0 0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:22px">🤖</span>
+        <div>
+          <div style="color:#fff;font-weight:800;font-size:15px">AI রিপোর্ট বিশ্লেষক</div>
+          <div style="color:rgba(255,255,255,.65);font-size:11px">Claude AI দিয়ে স্মার্ট বিশ্লেষণ</div>
+        </div>
+      </div>
+      <button onclick="closeAIModalBtn()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:6px 10px;color:#fff;cursor:pointer;font-size:14px">✕</button>
+    </div>
+    <div style="padding:16px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('সমিতির সার্বিক আর্থিক অবস্থা বিশ্লেষণ করো')">📊 আর্থিক অবস্থা</button>
+        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('কোন সদস্যের বকেয়া সবচেয়ে বেশি এবং কী করণীয়?')">⚠️ বকেয়া বিশ্লেষণ</button>
+        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('ঋণ আদায়ের পরিস্থিতি ও পরামর্শ দাও')">🤝 ঋণ পরামর্শ</button>
+        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('বিনিয়োগের ফলাফল ও ভবিষ্যৎ পরিকল্পনা দাও')">📈 বিনিয়োগ পরামর্শ</button>
+        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('আগামী ৩ মাসের জন্য কী কী পদক্ষেপ নেওয়া উচিত?')">🎯 কর্মপরিকল্পনা</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" id="ai-question" placeholder="যেকোনো প্রশ্ন করুন..." style="flex:1;padding:10px 13px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);outline:none" onkeydown="if(event.key==='Enter')askAI()">
+        <button class="btn btn-g" onclick="askAI()" id="ai-send-btn">পাঠান</button>
+      </div>
+      <div id="ai-answer" style="min-height:80px;background:#f8fafc;border-radius:10px;padding:14px;font-size:13px;line-height:1.7;color:var(--ink);white-space:pre-wrap;display:none"></div>
+    </div>
   </div>
 </div>
 
@@ -338,7 +447,13 @@ const sv=()=>{
 
 function toast(m,c="#1a8a00"){const t=document.getElementById("toast");t.textContent=m;t.style.background=c;t.style.display="block";t.style.animation="fadeUp .3s ease";setTimeout(()=>t.style.display="none",2800);}
 const bdg=(t,c,bg,s=11)=>`<span class="badge" style="color:${c};background:${bg};font-size:${s}px">${t}</span>`;
-const av=(n,sz=40,g="linear-gradient(135deg,#006400,#1a8a00)")=>`<div class="avatar" style="width:${sz}px;height:${sz}px;font-size:${sz*.38}px;background:${g}">${(n||"?").charAt(0)}</div>`;
+const av=(n,sz=40,g="linear-gradient(135deg,#006400,#1a8a00)",mid=null)=>{
+  if(mid){const mem=(D.members||[]).find(m=>m.id==mid);if(mem&&mem.photo)return `<img src="${mem.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;flex-shrink:0">`;}
+  // name দিয়েও member খুঁজব
+  const byName=(D.members||[]).find(m=>m.name===n);
+  if(byName&&byName.photo)return `<img src="${byName.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;flex-shrink:0">`;
+  return `<div class="avatar" style="width:${sz}px;height:${sz}px;font-size:${sz*.38}px;background:${g}">${(n||"?").charAt(0)}</div>`;
+};
 const pb=(p,c="#1a8a00",h=8)=>`<div class="prog" style="height:${h}px"><div class="prog-bar" style="width:${Math.min(100,p)}%;height:${h}px;background:${c}"></div></div>`;
 const GR={g:"linear-gradient(135deg,#006400,#1a8a00)",r:"linear-gradient(135deg,#991b1b,#dc2626)",b:"linear-gradient(135deg,#006400,#1a8a00)",gold:"linear-gradient(135deg,#92400e,#d97706)",p:"linear-gradient(135deg,#5b21b6,#7c3aed)",teal:"linear-gradient(135deg,#134e4a,#0d9488)"};
 const ch=(ic,ti,su="",g="g")=>`<div class="ch" style="background:${GR[g]}"><span class="ci">${ic}</span><div><div class="ct">${ti}</div>${su?`<div class="cs">${su}</div>`:""}</div></div>`;
@@ -474,12 +589,25 @@ function restoreData(event){
 // ══════════════════
 function buildNav(){
   const isAd=isA();
+  // সেকশন collapse state
+  if(!window._sbOpen) window._sbOpen={};
+  TABS.forEach(s=>{if(window._sbOpen[s.sec]===undefined)window._sbOpen[s.sec]=true;});
+
   let html="";
-  TABS.forEach(s=>{
+  TABS.forEach((s,si)=>{
     const visibleItems=s.items.filter(t=>!t.adminOnly||isAd);
-    if(!visibleItems.length) return;
-    html+=`<div class="sb-section">${s.sec}</div>`;
+    if(!visibleItems.length)return;
+    const isOpen=window._sbOpen[s.sec]!==false;
+    const secIcons={"প্রধান":"🏠","আর্থিক ব্যবস্থাপনা":"💰","সদস্য ব্যবস্থাপনা":"👥","প্রশাসনিক":"🏛️","রিপোর্ট":"📊","সেটিংস":"⚙️"};
+    const secIcon=secIcons[s.sec]||"";
+    if(si>0) html+=`<hr class="sb-sec-divider">`;
+    html+=`<button class="sb-sec-btn" onclick="toggleSbSec('${s.sec}')">
+      <span class="sb-sec-label">${secIcon} ${s.sec}</span>
+      <span class="sb-sec-arrow${isOpen?" open":""}" id="sba-${si}">›</span>
+    </button>`;
+    html+=`<div class="sb-sec-items" id="sbi-${si}" style="max-height:${isOpen?"500px":"0"}">`;
     visibleItems.forEach(t=>{html+=`<button class="sb-btn${t.id===curTab?" active":""}" onclick="goTab('${t.id}')" id="sb-${t.id}"><span class="sbi">${t.icon}</span>${t.label}</button>`;});
+    html+=`</div>`;
   });
   document.getElementById("sb-nav").innerHTML=html;
 
@@ -495,6 +623,10 @@ function buildNav(){
   if(msgBtn) msgBtn.style.display=isAd?"block":"none";
   renderNotifBell();
   updHdr();
+}
+function toggleSbSec(sec){
+  window._sbOpen[sec]=window._sbOpen[sec]===false?true:false;
+  buildNav();
 }
 function updHdr(){
   const fund=calcFund();
@@ -739,7 +871,7 @@ function pgHome(){
 
   const chadaDueRows=duesList.filter(m=>m.totalDue>0).sort((a,b)=>b.totalDue-a.totalDue).map(m=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #f1f5f9">
-      <div style="display:flex;align-items:center;gap:9px">${av(m.name,32)}<span style="font-weight:600;font-size:13px">${m.name}</span></div>
+      <div style="display:flex;align-items:center;gap:9px">${av(m.name,32,"linear-gradient(135deg,#006400,#1a8a00)",m.id)}<span style="font-weight:600;font-size:13px">${m.name}</span></div>
       ${bdg(fmt(m.totalDue),"#dc2626","#fee2e2")}
     </div>`).join("")||`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো বকেয়া চাঁদা নেই 🎉</div>`;
 
@@ -959,7 +1091,7 @@ function pgLoans(){
     const intAmt=Math.round((l.principal-l.remaining)*l.rate/100);
     return `<div class="card"><div style="padding:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:11px">
-        <div style="display:flex;align-items:center;gap:10px">${av(gn(l.mid),40)}<div><div style="font-weight:700;font-size:15px">${gn(l.mid)}</div><div style="font-size:11px;color:#94a3b8">${l.date} · সুদ ${l.rate}%${l.note?" · "+l.note:""}</div></div></div>
+        <div style="display:flex;align-items:center;gap:10px">${av(gn(l.mid),40,"linear-gradient(135deg,#006400,#1a8a00)",l.mid)}<div><div style="font-weight:700;font-size:15px">${gn(l.mid)}</div><div style="font-size:11px;color:#94a3b8">${l.date} · সুদ ${l.rate}%${l.note?" · "+l.note:""}</div></div></div>
         ${bdg(status,sc,sc+"18")}
       </div>
       <div class="grid3" style="margin-bottom:11px">
@@ -1687,7 +1819,9 @@ function pgMembers(){
       <div style="height:5px;background:${g}"></div>
       <div style="padding:14px">
         <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
-          ${m.photo?`<img src="${m.photo}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid ${g}">`:`${av(m.name,44,g)}`}
+          ${m.photo
+            ? `<label title="ছবি পরিবর্তন" style="cursor:pointer;flex-shrink:0"><img src="${m.photo}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid ${g}"><input type="file" accept="image/*" onchange="changeMemberPhoto(${m.id},this)" style="display:none"></label>`
+            : `<label title="ছবি যোগ করুন" style="cursor:pointer;flex-shrink:0">${av(m.name,44,g,m.id)}<input type="file" accept="image/*" onchange="changeMemberPhoto(${m.id},this)" style="display:none"></label>`}
           <div style="flex:1">
             <div style="font-weight:700;font-size:15px;color:var(--ink);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(0,100,0,.3)" onclick="openMemberProfile(${m.id})">${m.name}</div>
             <span style="font-size:10px;background:#dcfce7;color:#1a8a00;border-radius:5px;padding:2px 7px;font-weight:700">${m.role||"সদস্য"}</span>
@@ -2152,7 +2286,7 @@ function pgOpinion(){
     <div class="field"><label>মতামত / পরামর্শ</label><textarea id="opT" placeholder="আপনার মতামত লিখুন..."></textarea></div>
     <button class="btn" style="background:${GR.p};color:#fff" onclick="addOp()">📤 পাঠান</button>
   </div></div>`;
-  const list=ops.slice().reverse().map(o=>`<div class="card"><div style="padding:16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:9px">${av(gn(o.mid),36,GR.p)}<div style="flex:1"><div style="font-weight:700;font-size:14px">${gn(o.mid)}</div><div style="font-size:11px;color:#94a3b8">${ds(o.date)}</div></div>${isA()?`<button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delOp(${o.id})">🗑</button>`:""}</div><div style="font-size:13px;line-height:1.75;margin-bottom:9px">${o.text}</div><button onclick="likeOp(${o.id})" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;padding:5px 13px;font-size:12px;color:#1a8a00;cursor:pointer;font-family:inherit;font-weight:600">👍 ${o.likes||0}</button></div></div>`).join("")||`<div style="text-align:center;padding:40px;color:#94a3b8">💬 কোনো মতামত নেই</div>`;
+  const list=ops.slice().reverse().map(o=>`<div class="card"><div style="padding:16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:9px">${av(gn(o.mid),36,GR.p,o.mid)}<div style="flex:1"><div style="font-weight:700;font-size:14px">${gn(o.mid)}</div><div style="font-size:11px;color:#94a3b8">${ds(o.date)}</div></div>${isA()?`<button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delOp(${o.id})">🗑</button>`:""}</div><div style="font-size:13px;line-height:1.75;margin-bottom:9px">${o.text}</div><button onclick="likeOp(${o.id})" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;padding:5px 13px;font-size:12px;color:#1a8a00;cursor:pointer;font-family:inherit;font-weight:600">👍 ${o.likes||0}</button></div></div>`).join("")||`<div style="text-align:center;padding:40px;color:#94a3b8">💬 কোনো মতামত নেই</div>`;
   return form+list;
 }
 function addOp(){const m=document.getElementById("opM").value,t=document.getElementById("opT").value.trim();if(!m||!t)return;D.opinions=[...(D.opinions||[]),{id:Date.now(),mid:Number(m),text:t,date:new Date().toISOString().slice(0,10),likes:0}];sv();toast("✅ মতামত যোগ হয়েছে");goTab("opinion");}
@@ -3506,11 +3640,7 @@ function pgChadaDues(){
   return allDues.map(m=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 16px;border-bottom:1px solid #f5f5f5">
       <div style="display:flex;align-items:center;gap:10px">
-        ${av(m.name,36)}
-        <div>
-          <div style="font-weight:600;font-size:13px">${m.name}</div>
-          <div style="font-size:11px;color:#94a3b8">
-            ${m.cDue>0?`চাঁদা: ${fmt(m.cDue)}`:""}
+        ${av(m.name,36,"linear-gradient(135deg,#006400,#1a8a00)",m.id)}
             ${m.cDue>0&&m.lDue>0?" · ":""}
             ${m.lDue>0?`ঋণ: ${fmt(m.lDue)}`:""}
           </div>
@@ -3618,7 +3748,7 @@ function pgMemberStat(){
     <!-- সদস্যের KPI -->
     <div class="card" style="margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:14px;padding:16px">
-        ${av(m.name,56)}
+        ${av(m.name,56,"linear-gradient(135deg,#006400,#1a8a00)",m.id)}
         <div>
           <div style="font-weight:800;font-size:18px">${m.name}</div>
           <div style="font-size:13px;color:#64748b">${m.role||"সদস্য"} · যোগদান: ${m.joinDate||"নভে ২০২১"}</div>
@@ -4154,10 +4284,7 @@ function pgReport(){
   const memberStatCards=members.map(m=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #f1f5f9">
       <div style="display:flex;align-items:center;gap:10px">
-        ${av(m.name,36)}
-        <div>
-          <div style="font-weight:600;font-size:13px">${m.name}</div>
-          <div style="font-size:11px;color:#94a3b8">${m.role||"সদস্য"}</div>
+        ${av(m.name,36,"linear-gradient(135deg,#006400,#1a8a00)",m.id)}
         </div>
       </div>
       <div style="display:flex;gap:6px">
@@ -4170,6 +4297,16 @@ function pgReport(){
     <div style="margin-bottom:12px">
       <div class="section-title">📊 রিপোর্ট সেন্টার</div>
       <div class="section-sub">সব রিপোর্ট এক জায়গায় — PDF ও Excel ডাউনলোড</div>
+    </div>
+
+    <!-- AI রিপোর্ট -->
+    <div style="background:linear-gradient(135deg,#3b0764,#6d28d9);border-radius:14px;padding:18px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="font-size:36px">🤖</div>
+      <div style="flex:1;min-width:180px">
+        <div style="color:#fff;font-weight:800;font-size:15px;margin-bottom:3px">AI দিয়ে রিপোর্ট বিশ্লেষণ</div>
+        <div style="color:rgba(255,255,255,.7);font-size:12px">আর্থিক অবস্থা, বকেয়া, ঋণ, বিনিয়োগ — সব বিশ্লেষণ করুন Claude AI দিয়ে</div>
+      </div>
+      <button onclick="openAIModal()" style="background:#fff;color:#6d28d9;border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">🤖 AI বিশ্লেষণ শুরু করুন</button>
     </div>
 
     <!-- সম্পূর্ণ হিসাব ডাউনলোড -->
@@ -4261,6 +4398,185 @@ function clearHistory(){
   if(!confirm("সম্পূর্ণ কার্যক্রম ইতিহাস মুছে ফেলতে চান? এটি ফিরিয়ে আনা যাবে না।"))return;
   D.activityLog=[];
   sv();toast("🗑 ইতিহাস মুছে ফেলা হয়েছে","#dc2626");goTab("history");
+}
+
+// ══════════════════════════════════════════
+// GLOBAL SEARCH
+// ══════════════════════════════════════════
+function openGSearch(){
+  document.getElementById("gsearch-modal").classList.add("show");
+  setTimeout(()=>{const f=document.getElementById("gsearch-field");if(f){f.focus();f.value="";}runGSearch("");},80);
+}
+function closeGSearch(e){
+  if(e&&e.target!==document.getElementById("gsearch-modal"))return;
+  closeGSearchBtn();
+}
+function closeGSearchBtn(){
+  document.getElementById("gsearch-modal").classList.remove("show");
+}
+document.addEventListener("keydown",function(e){
+  if(e.key==="Escape")closeGSearchBtn();
+  if((e.ctrlKey||e.metaKey)&&e.key==="k"){e.preventDefault();openGSearch();}
+});
+function runGSearch(q){
+  const body=document.getElementById("gsearch-body");
+  if(!D||!q||!q.trim()){body.innerHTML=`<div class="gsearch-empty">উপরে টাইপ করুন — নাম, মোবাইল, সদস্য আইডি, এনআইডি, ঋণ, সঞ্চয় সব খোঁজা যাবে</div>`;return;}
+  const ql=q.trim().toLowerCase();
+  const results=[];
+
+  // সদস্য
+  (D.members||[]).forEach(m=>{
+    const hit=[m.name,m.phone,String(m.id||""),m.nid||"",m.role||""].some(f=>(f||"").toLowerCase().includes(ql));
+    if(hit) results.push({cat:"👥 সদস্য",icon:"👤",title:m.name,sub:(m.role||"সদস্য")+(m.phone?" · "+m.phone:"")+(m.nid?" · NID: "+m.nid:""),action:()=>{closeGSearchBtn();goTab("members");}});
+  });
+
+  // সঞ্চয় / চাঁদা
+  (D.payments||[]).forEach(p=>{
+    const mName=gn(p.mid);
+    const hit=[mName,String(p.amount||""),p.month||"",p.note||""].some(f=>(f||"").toLowerCase().includes(ql));
+    if(hit) results.push({cat:"💰 সঞ্চয়",icon:"💰",title:mName+" — ৳"+Number(p.amount||0).toLocaleString("bn-BD"),sub:"মাস: "+(p.month||"—")+(p.note?" · "+p.note:""),action:()=>{closeGSearchBtn();goTab("savings");}});
+  });
+
+  // ঋণ
+  (D.loans||[]).forEach(l=>{
+    const mName=gn(l.mid);
+    const hit=[mName,String(l.principal||""),String(l.remaining||""),l.note||""].some(f=>(f||"").toLowerCase().includes(ql));
+    if(hit) results.push({cat:"🤝 ঋণ",icon:"🤝",title:mName+" — মূল: ৳"+Number(l.principal||0).toLocaleString("bn-BD"),sub:"বকেয়া: ৳"+Number(l.remaining||0).toLocaleString("bn-BD")+(l.note?" · "+l.note:""),action:()=>{closeGSearchBtn();goTab("loans");}});
+  });
+
+  // আয়-ব্যয়
+  (D.income||[]).forEach(i=>{
+    if(!([i.desc||"",String(i.amount||""),i.date||""].some(f=>(f||"").toLowerCase().includes(ql))))return;
+    results.push({cat:"📥 আয়",icon:"📥",title:(i.desc||"আয়")+" — ৳"+Number(i.amount||0).toLocaleString("bn-BD"),sub:i.date||"",action:()=>{closeGSearchBtn();goTab("expenses");}});
+  });
+  (D.expenses||[]).forEach(e=>{
+    if(!([e.desc||"",String(e.amount||""),e.date||"",e.cat||""].some(f=>(f||"").toLowerCase().includes(ql))))return;
+    results.push({cat:"📤 ব্যয়",icon:"📤",title:(e.desc||"ব্যয়")+" — ৳"+Number(e.amount||0).toLocaleString("bn-BD"),sub:(e.cat||"")+(e.date?" · "+e.date:""),action:()=>{closeGSearchBtn();goTab("expenses");}});
+  });
+
+  // বিনিয়োগ
+  (D.investments||[]).forEach(i=>{
+    if(!([i.title||"",String(i.amount||""),i.type||""].some(f=>(f||"").toLowerCase().includes(ql))))return;
+    results.push({cat:"📈 বিনিয়োগ",icon:"📈",title:(i.title||"বিনিয়োগ")+" — ৳"+Number(i.amount||0).toLocaleString("bn-BD"),sub:i.type||"",action:()=>{closeGSearchBtn();goTab("invest");}});
+  });
+
+  // নোটিশ
+  (D.notices||[]).forEach(n=>{
+    if(!([n.title||"",n.body||""].some(f=>(f||"").toLowerCase().includes(ql))))return;
+    results.push({cat:"📢 নোটিশ",icon:"📢",title:n.title||"নোটিশ",sub:(n.body||"").slice(0,60),action:()=>{closeGSearchBtn();goTab("notice");}});
+  });
+
+  // সম্পদ
+  (D.assets||[]).forEach(a=>{
+    if(!([a.name||"",String(a.value||""),a.category||""].some(f=>(f||"").toLowerCase().includes(ql))))return;
+    results.push({cat:"🏛️ সম্পদ",icon:"🏛️",title:(a.name||"সম্পদ")+" — ৳"+Number(a.value||0).toLocaleString("bn-BD"),sub:a.category||"",action:()=>{closeGSearchBtn();goTab("assets");}});
+  });
+
+  // মিটিং
+  (D.meetings||[]).forEach(m=>{
+    if(!([m.title||"",m.place||"",m.date||""].some(f=>(f||"").toLowerCase().includes(ql))))return;
+    results.push({cat:"📅 মিটিং",icon:"📅",title:m.title||"মিটিং",sub:(m.date||"")+(m.place?" · "+m.place:""),action:()=>{closeGSearchBtn();goTab("meeting");}});
+  });
+
+  if(!results.length){body.innerHTML=`<div class="gsearch-empty">❌ "${q}" — কোনো ফলাফল পাওয়া যায়নি</div>`;return;}
+
+  // গ্রুপ করা
+  const groups={};
+  results.slice(0,60).forEach(r=>{if(!groups[r.cat])groups[r.cat]=[];groups[r.cat].push(r);});
+  let html="";
+  Object.entries(groups).forEach(([cat,items])=>{
+    html+=`<div class="gsearch-cat">${cat} (${items.length})</div>`;
+    items.slice(0,8).forEach((r,idx)=>{
+      const safeId="gsr-"+(cat+idx).replace(/\W/g,"");
+      html+=`<div class="gsearch-item" id="${safeId}">
+        <span style="font-size:22px">${r.icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--ink)">${r.title}</div>
+          ${r.sub?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${r.sub}</div>`:""}
+        </div>
+        <span style="color:var(--muted);font-size:12px">→</span>
+      </div>`;
+    });
+  });
+  body.innerHTML=html;
+  // attach click events after render
+  results.slice(0,60).forEach((r,ri)=>{
+    Object.entries(groups).forEach(([cat,items])=>{
+      items.slice(0,8).forEach((item,idx)=>{
+        const el=document.getElementById("gsr-"+(cat+idx).replace(/\W/g,""));
+        if(el&&item===r){el.onclick=r.action;}
+      });
+    });
+  });
+  // safer: re-attach by index
+  let flat=[];Object.values(groups).forEach(arr=>arr.slice(0,8).forEach(r=>flat.push(r)));
+  document.querySelectorAll(".gsearch-item").forEach((el,i)=>{if(flat[i])el.onclick=flat[i].action;});
+}
+
+// ══════════════════════════════════════════
+// AI REPORT MODAL
+// ══════════════════════════════════════════
+function openAIModal(){document.getElementById("ai-modal-bg").classList.add("show");}
+function closeAIModal(e){if(e&&e.target!==document.getElementById("ai-modal-bg"))return;closeAIModalBtn();}
+function closeAIModalBtn(){document.getElementById("ai-modal-bg").classList.remove("show");document.getElementById("ai-answer").style.display="none";}
+function aiQuickAsk(q){document.getElementById("ai-question").value=q;askAI();}
+async function askAI(){
+  const q=document.getElementById("ai-question").value.trim();
+  if(!q){toast("⚠️ প্রশ্ন লিখুন","#d97706");return;}
+  const btn=document.getElementById("ai-send-btn");
+  const ans=document.getElementById("ai-answer");
+  btn.disabled=true;btn.textContent="⏳...";
+  ans.style.display="block";
+  ans.innerHTML=`বিশ্লেষণ করছি <span class="ai-typing"></span>`;
+
+  // সমিতির ডেটা সংক্ষেপ তৈরি
+  const members=D.members||[];
+  const payments=D.payments||[];
+  const loans=D.loans||[];
+  const expenses=D.expenses||[];
+  const income=D.income||[];
+  const investments=D.investments||[];
+  const totalFund=calcFund();
+  const totalLoan=loans.reduce((s,l)=>s+l.principal,0);
+  const totalDue=loans.reduce((s,l)=>s+l.remaining,0);
+  const totalPaid=payments.reduce((s,p)=>s+p.amount,0);
+  const totalExp=expenses.reduce((s,e)=>s+e.amount,0);
+  const totalInc=income.reduce((s,i)=>s+i.amount,0)+totalPaid;
+  const totalInvest=investments.reduce((s,i)=>s+i.amount,0);
+  const duesList=(typeof getDuesList==="function")?getDuesList():[];
+  const topDue=duesList.filter(m=>m.totalDue>0).sort((a,b)=>b.totalDue-a.totalDue).slice(0,5).map(m=>`${m.name}: ৳${m.totalDue}`).join(", ");
+  const hs=calcHealthScore();
+
+  const context=`আপনি স্বপ্নঘুড়ি সমিতির AI আর্থিক বিশ্লেষক। বাংলায় উত্তর দিন।
+সমিতির তথ্য:
+- মোট সদস্য: ${members.length} জন
+- মোট তহবিল ব্যালেন্স: ৳${totalFund.toLocaleString("bn-BD")}
+- মোট আয়: ৳${totalInc.toLocaleString("bn-BD")}
+- মোট ব্যয়: ৳${totalExp.toLocaleString("bn-BD")}
+- মোট চাঁদা আদায়: ৳${totalPaid.toLocaleString("bn-BD")}
+- মোট ঋণ বিতরণ: ৳${totalLoan.toLocaleString("bn-BD")}
+- মোট বকেয়া ঋণ: ৳${totalDue.toLocaleString("bn-BD")}
+- মোট বিনিয়োগ: ৳${totalInvest.toLocaleString("bn-BD")}
+- স্বাস্থ্য স্কোর: ${hs.score}/100 (${hs.scoreLabel})
+- চাঁদা আদায়ের হার: ${hs.collectionRate}%
+- ঋণ উদ্ধারের হার: ${hs.loanRecovery}%
+- বকেয়া চাঁদা (শীর্ষ): ${topDue||"কেউ নেই"}
+ব্যবহারকারীর প্রশ্ন: ${q}
+সংক্ষিপ্ত ও স্পষ্ট পরামর্শ দিন।`;
+
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:context}]})
+    });
+    const data=await res.json();
+    const text=(data.content||[]).filter(c=>c.type==="text").map(c=>c.text).join("");
+    ans.innerHTML=text||"উত্তর পাওয়া যায়নি।";
+  }catch(e){
+    ans.innerHTML="❌ AI সংযোগ ব্যর্থ হয়েছে। ইন্টারনেট সংযোগ চেক করুন।";
+  }
+  btn.disabled=false;btn.textContent="পাঠান";
 }
 
 // ── সব PDF-এর জন্য common style ও watermark ──
