@@ -510,7 +510,7 @@ function login(r){
       }
     }
     role=r;
-    sessionStorage.setItem("sg_role",r);
+    localStorage.setItem("sg_role",r);
     try{ D=LS.get(SK)||JSON.parse(JSON.stringify(SEED)); }catch(e){ D=JSON.parse(JSON.stringify(SEED)); }
     if(!D.rateHistory) D.rateHistory=[];if(!D.liabilities) D.liabilities=[];
     if(!D.activityLog) D.activityLog=[];
@@ -519,6 +519,8 @@ function login(r){
     document.getElementById("app").style.display="flex";
     document.getElementById("fab-btn").classList.add("show");
     if(r!=="admin") document.getElementById("vbar").style.display="block";
+    // back button trap — history stack-এ entry যোগ করো
+    history.pushState({tab:"home",role:r},"","");
     buildNav();
     trackVisitor();
     goTab("home");
@@ -548,7 +550,16 @@ function login(r){
     alert("Error: "+err.message);
   }
 }
-function logout(){role=null;sessionStorage.removeItem("sg_role");document.getElementById("ls").style.display="flex";document.getElementById("app").style.display="none";document.getElementById("vbar").style.display="none";document.getElementById("pw").value="";document.getElementById("pwerr").style.display="none";document.getElementById("fab-btn").classList.remove("show");closeFab();}
+function logout(){role=null;localStorage.removeItem("sg_role");document.getElementById("ls").style.display="flex";document.getElementById("app").style.display="none";document.getElementById("vbar").style.display="none";document.getElementById("pw").value="";document.getElementById("pwerr").style.display="none";document.getElementById("fab-btn").classList.remove("show");closeFab();}
+
+// Back button — logout হবে না, home-এ যাবে
+window.addEventListener("popstate",function(e){
+  if(role){
+    // re-push যাতে back আবার কাজ করে
+    history.pushState({tab:curTab,role:role},"","");
+    if(curTab!=="home") goTab("home");
+  }
+});
 
 function backupData(){
   try{
@@ -589,15 +600,20 @@ function restoreData(event){
 // ══════════════════
 function buildNav(){
   const isAd=isA();
-  // সেকশন collapse state
   if(!window._sbOpen) window._sbOpen={};
-  TABS.forEach(s=>{if(window._sbOpen[s.sec]===undefined)window._sbOpen[s.sec]=true;});
+  // প্রথমবার: সব বন্ধ, শুধু active tab যে section-এ আছে সেটা খোলা
+  TABS.forEach(s=>{
+    if(window._sbOpen[s.sec]===undefined){
+      const hasActive=s.items.some(t=>t.id===curTab);
+      window._sbOpen[s.sec]=hasActive;
+    }
+  });
 
   let html="";
   TABS.forEach((s,si)=>{
     const visibleItems=s.items.filter(t=>!t.adminOnly||isAd);
     if(!visibleItems.length)return;
-    const isOpen=window._sbOpen[s.sec]!==false;
+    const isOpen=window._sbOpen[s.sec]===true;
     const secIcons={"প্রধান":"🏠","আর্থিক ব্যবস্থাপনা":"💰","সদস্য ব্যবস্থাপনা":"👥","প্রশাসনিক":"🏛️","রিপোর্ট":"📊","সেটিংস":"⚙️"};
     const secIcon=secIcons[s.sec]||"";
     if(si>0) html+=`<hr class="sb-sec-divider">`;
@@ -625,7 +641,7 @@ function buildNav(){
   updHdr();
 }
 function toggleSbSec(sec){
-  window._sbOpen[sec]=window._sbOpen[sec]===false?true:false;
+  window._sbOpen[sec]=!window._sbOpen[sec];
   buildNav();
 }
 function updHdr(){
@@ -666,6 +682,9 @@ function calcHealthScore(){
 }
 function goTab(id){
   curTab=id;
+  // যে section-এ এই tab আছে সেটা খুলুন
+  if(!window._sbOpen) window._sbOpen={};
+  TABS.forEach(s=>{if(s.items.some(t=>t.id===id)) window._sbOpen[s.sec]=true;});
   document.querySelectorAll(".sb-btn,.mn").forEach(b=>b.classList.remove("active","on"));
   const sb=document.getElementById("sb-"+id),mn=document.getElementById("mn-"+id);
   if(sb)sb.classList.add("active");if(mn)mn.classList.add("on");
@@ -676,6 +695,7 @@ function goTab(id){
   c.className="content pa";c.innerHTML="";
   const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,visitors:pgVisitors,payment:pgPayment};
   if(pages[id])c.innerHTML=pages[id]();
+  buildNav();
   updHdr();
 }
 function toggleSB(){document.getElementById("sb").classList.toggle("open");document.getElementById("ov").classList.toggle("show");}
@@ -3687,8 +3707,8 @@ function pgMemberStat(){
   const memberBtns=members.map(mem=>`
     <button onclick="window._statMid=${mem.id};goTab('memberstat')"
       style="padding:8px 14px;border-radius:10px;border:2px solid ${mem.id==selMid?"var(--g2)":"var(--border)"};
-      background:${mem.id==selMid?"var(--gl)":"#fff"};color:${mem.id==selMid?"var(--g2)":"var(--ink)"};
-      font-weight:${mem.id==selMid?700:400};cursor:pointer;font-family:inherit;font-size:13px">
+      background:${mem.id==selMid?"var(--g2)":"var(--white)"};color:${mem.id==selMid?"#fff":"var(--ink)"};
+      font-weight:${mem.id==selMid?700:500};cursor:pointer;font-family:inherit;font-size:13px">
       ${mem.name.split(" ")[0]}
     </button>`).join("");
 
@@ -4735,7 +4755,7 @@ pdfDownload=function(type){
 })();
 // ── Auto-login on reload ──
 window.addEventListener("DOMContentLoaded",function(){
-  const savedRole=sessionStorage.getItem("sg_role");
+  const savedRole=localStorage.getItem("sg_role");
   if(savedRole){
     try{
       role=savedRole;
@@ -4747,11 +4767,12 @@ window.addEventListener("DOMContentLoaded",function(){
       document.getElementById("app").style.display="flex";
       document.getElementById("fab-btn").classList.add("show");
       if(savedRole!=="admin") document.getElementById("vbar").style.display="block";
+      history.pushState({tab:"home",role:savedRole},"","");
       buildNav();
       trackVisitor();
       goTab("home");
     }catch(e){
-      sessionStorage.removeItem("sg_role");
+      localStorage.removeItem("sg_role");
     }
   }
 });
