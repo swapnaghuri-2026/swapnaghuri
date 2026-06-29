@@ -407,6 +407,7 @@ const TABS = [
     {id:"notice",icon:"📢",label:"নোটিশ বোর্ড"},
     {id:"news",icon:"📰",label:"নিউজ ফিড"},
     {id:"meeting",icon:"📅",label:"মিটিং"},
+    {id:"msgtemplate",icon:"✉️",label:"বার্তা টেম্পলেট"},
     {id:"report",icon:"📊",label:"রিপোর্ট সেন্টার"},
     {id:"history",icon:"🕘",label:"কার্যক্রম ইতিহাস"},
     {id:"visitors",icon:"👥",label:"ভিজিটর ইতিহাস",adminOnly:true},
@@ -422,7 +423,8 @@ const SEED = {
   expenses:[],income:[],notices:[],news:[],goals:[],
   opinions:[],gallery:[],votes:[],meetings:[],specialMonths:[],
   rateHistory:[],activityLog:[],liabilities:[],
-  paymentInfo:{bank:[],mobile:[]}
+  paymentInfo:{bank:[],mobile:[]},
+  msgTemplates:[]
 };
 
 // ══════════════════
@@ -694,7 +696,7 @@ function goTab(id){
   closeSB();
   const c=document.getElementById("content");
   c.className="content pa";c.innerHTML="";
-  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,visitors:pgVisitors,payment:pgPayment};
+  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate};
   if(pages[id])c.innerHTML=pages[id]();
   buildNav();
   updHdr();
@@ -4415,6 +4417,135 @@ function pgHistory(){
     ${filterChips}
     <div class="card">${rows}</div>`;
 }
+// ══════════════════════════════════════════
+// বার্তা টেম্পলেট
+// ══════════════════════════════════════════
+function pgMsgTemplate(){
+  if(!D.msgTemplates) D.msgTemplates=[];
+  const isAd=isA();
+  const siteUrl="https://swapnaghuri-2026.github.io/swapnaghuri";
+
+  const defaultTemplates=[
+    {id:"default1",title:"ওয়েবসাইট ভিজিট অনুরোধ",category:"সাধারণ",body:`আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nআমাদের স্বপ্নঘুড়ি সংগঠনের নতুন ডিজিটাল প্ল্যাটফর্ম চালু হয়েছে। এখন থেকে সঞ্চয়, ঋণ, আয়-ব্যয়সহ সংগঠনের সকল তথ্য অনলাইনে দেখা যাবে।\n\n🔗 ওয়েবসাইট লিংক:\n${siteUrl}\n\nঅনুগ্রহ করে একবার ভিজিট করুন এবং আপনার মূল্যবান মতামত জানান।\n\nধন্যবাদ 🪁\nস্বপ্নঘুড়ি পরিবার`},
+    {id:"default2",title:"মাসিক চাঁদা পরিশোধের অনুরোধ",category:"চাঁদা",body:`আসসালামু আলাইকুম,\n\nপ্রিয় সদস্য,\n\nএই মাসের চাঁদা এখনো পরিশোধ হয়নি। অনুগ্রহ করে দ্রুত পরিশোধ করুন।\n\nবিস্তারিত দেখুন:\n${siteUrl}\n\nধন্যবাদ।\nস্বপ্নঘুড়ি সংগঠন`},
+    {id:"default3",title:"মিটিং এর নোটিশ",category:"মিটিং",body:`আসসালামু আলাইকুম,\n\nসকল সদস্যকে জানানো যাচ্ছে যে আগামী মিটিং অনুষ্ঠিত হবে। সবাইকে যথাসময়ে উপস্থিত থাকার অনুরোধ করা হচ্ছে।\n\nবিস্তারিত জানতে:\n${siteUrl}\n\nধন্যবাদ।\nস্বপ্নঘুড়ি সংগঠন`},
+  ];
+
+  const allTemplates=[...defaultTemplates,...(D.msgTemplates||[])];
+  const cats=[...new Set(allTemplates.map(t=>t.category||"সাধারণ"))];
+
+  const cardsHtml=allTemplates.map(t=>`
+    <div class="card" style="margin-bottom:12px" id="tcard-${t.id}">
+      <div style="padding:14px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${t.title}</div>
+          <span style="font-size:10px;background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:20px;font-weight:600">${t.category||"সাধারণ"}</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="copyTemplate('${t.id}')" class="btn btn-g btn-sm">📋 কপি</button>
+          ${!t.id.startsWith("default")&&isAd?`<button onclick="editTemplate('${t.id}')" class="btn btn-sm btn-outline">✏️ সম্পাদনা</button><button onclick="deleteTemplate('${t.id}')" class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:none;border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer">🗑️</button>`:""}
+        </div>
+      </div>
+      <div style="padding:12px 16px;white-space:pre-wrap;font-size:13px;color:var(--ink);line-height:1.7;background:var(--bg);border-radius:0 0 12px 12px">${t.body}</div>
+    </div>`).join("");
+
+  return `
+    <div style="margin-bottom:12px">
+      <div class="section-title">✉️ বার্তা টেম্পলেট</div>
+      <div class="section-sub">কাস্টম মেসেজ তৈরি করুন — কপি করে যেকোনো জায়গায় পাঠান</div>
+    </div>
+
+    ${isAd?`
+    <div class="card" style="margin-bottom:16px">
+      <div style="padding:16px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:12px" id="tmpl-form-title">➕ নতুন টেম্পলেট তৈরি করুন</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <input id="tmpl-title" type="text" placeholder="টেম্পলেট শিরোনাম" style="padding:10px 13px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);outline:none">
+          <input id="tmpl-cat" type="text" placeholder="ক্যাটাগরি (যেমন: চাঁদা, মিটিং, সাধারণ)" style="padding:10px 13px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);outline:none">
+          <textarea id="tmpl-body" placeholder="বার্তা লিখুন..." rows="7" style="padding:10px 13px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);outline:none;resize:vertical;line-height:1.7"></textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="saveTemplate()" class="btn btn-g">💾 সংরক্ষণ করুন</button>
+            <button onclick="insertVar('[সদস্যের নাম]')" class="btn btn-sm btn-outline">👤 নাম যোগ</button>
+            <button onclick="insertVar('[তারিখ]')" class="btn btn-sm btn-outline">📅 তারিখ যোগ</button>
+            <button onclick="insertVar('${siteUrl}')" class="btn btn-sm btn-outline">🔗 লিংক যোগ</button>
+            <button onclick="insertVar('[পরিমাণ]')" class="btn btn-sm btn-outline">৳ পরিমাণ যোগ</button>
+          </div>
+          <input type="hidden" id="tmpl-edit-id" value="">
+        </div>
+      </div>
+    </div>`:""}
+
+    ${cardsHtml||`<div style="padding:40px;text-align:center;color:var(--muted)">কোনো টেম্পলেট নেই</div>`}`;
+}
+
+function saveTemplate(){
+  const title=document.getElementById("tmpl-title").value.trim();
+  const cat=document.getElementById("tmpl-cat").value.trim()||"সাধারণ";
+  const body=document.getElementById("tmpl-body").value.trim();
+  const editId=document.getElementById("tmpl-edit-id").value;
+  if(!title||!body){toast("⚠️ শিরোনাম ও বার্তা লিখুন","#d97706");return;}
+  if(!D.msgTemplates)D.msgTemplates=[];
+  if(editId){
+    const idx=D.msgTemplates.findIndex(t=>t.id===editId);
+    if(idx>=0)D.msgTemplates[idx]={id:editId,title,category:cat,body};
+    toast("✅ টেম্পলেট আপডেট হয়েছে");
+  }else{
+    const id="tmpl_"+Date.now();
+    D.msgTemplates.push({id,title,category:cat,body});
+    toast("✅ টেম্পলেট সংরক্ষিত হয়েছে");
+  }
+  sv();
+  document.getElementById("tmpl-title").value="";
+  document.getElementById("tmpl-cat").value="";
+  document.getElementById("tmpl-body").value="";
+  document.getElementById("tmpl-edit-id").value="";
+  document.getElementById("tmpl-form-title").textContent="➕ নতুন টেম্পলেট তৈরি করুন";
+  goTab("msgtemplate");
+}
+
+function copyTemplate(id){
+  const siteUrl="https://swapnaghuri-2026.github.io/swapnaghuri";
+  const defaults=[
+    {id:"default1",title:"ওয়েবসাইট ভিজিট অনুরোধ",category:"সাধারণ",body:`আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nআমাদের স্বপ্নঘুড়ি সংগঠনের নতুন ডিজিটাল প্ল্যাটফর্ম চালু হয়েছে। এখন থেকে সঞ্চয়, ঋণ, আয়-ব্যয়সহ সংগঠনের সকল তথ্য অনলাইনে দেখা যাবে।\n\n🔗 ওয়েবসাইট লিংক:\n${siteUrl}\n\nঅনুগ্রহ করে একবার ভিজিট করুন এবং আপনার মূল্যবান মতামত জানান।\n\nধন্যবাদ 🪁\nস্বপ্নঘুড়ি পরিবার`},
+    {id:"default2",title:"মাসিক চাঁদা পরিশোধের অনুরোধ",category:"চাঁদা",body:`আসসালামু আলাইকুম,\n\nপ্রিয় সদস্য,\n\nএই মাসের চাঁদা এখনো পরিশোধ হয়নি। অনুগ্রহ করে দ্রুত পরিশোধ করুন।\n\nবিস্তারিত দেখুন:\n${siteUrl}\n\nধন্যবাদ।\nস্বপ্নঘুড়ি সংগঠন`},
+    {id:"default3",title:"মিটিং এর নোটিশ",category:"মিটিং",body:`আসসালামু আলাইকুম,\n\nসকল সদস্যকে জানানো যাচ্ছে যে আগামী মিটিং অনুষ্ঠিত হবে। সবাইকে যথাসময়ে উপস্থিত থাকার অনুরোধ করা হচ্ছে।\n\nবিস্তারিত জানতে:\n${siteUrl}\n\nধন্যবাদ।\nস্বপ্নঘুড়ি সংগঠন`},
+  ];
+  const all=[...defaults,...(D.msgTemplates||[])];
+  const t=all.find(x=>x.id===id);
+  if(!t)return;
+  const today=new Date().toLocaleDateString("bn-BD");
+  const text=t.body.replace(/\[তারিখ\]/g,today);
+  navigator.clipboard.writeText(text).then(()=>toast("📋 কপি হয়েছে! WhatsApp-এ পেস্ট করুন")).catch(()=>{
+    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);toast("📋 কপি হয়েছে!");
+  });
+}
+
+function editTemplate(id){
+  const t=(D.msgTemplates||[]).find(x=>x.id===id);
+  if(!t)return;
+  document.getElementById("tmpl-title").value=t.title||"";
+  document.getElementById("tmpl-cat").value=t.category||"";
+  document.getElementById("tmpl-body").value=t.body||"";
+  document.getElementById("tmpl-edit-id").value=id;
+  document.getElementById("tmpl-form-title").textContent="✏️ টেম্পলেট সম্পাদনা করুন";
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function deleteTemplate(id){
+  if(!confirm("এই টেম্পলেট মুছে ফেলবেন?"))return;
+  D.msgTemplates=(D.msgTemplates||[]).filter(t=>t.id!==id);
+  sv();toast("🗑️ মুছে ফেলা হয়েছে","#dc2626");goTab("msgtemplate");
+}
+
+function insertVar(text){
+  const ta=document.getElementById("tmpl-body");
+  if(!ta)return;
+  const s=ta.selectionStart,e=ta.selectionEnd;
+  ta.value=ta.value.substring(0,s)+text+ta.value.substring(e);
+  ta.selectionStart=ta.selectionEnd=s+text.length;
+  ta.focus();
+}
+
 function clearHistory(){
   if(!confirm("সম্পূর্ণ কার্যক্রম ইতিহাস মুছে ফেলতে চান? এটি ফিরিয়ে আনা যাবে না।"))return;
   D.activityLog=[];
