@@ -148,12 +148,13 @@ button,input,select,textarea{font-family:'Hind Siliguri',sans-serif}
 .gsearch-empty{padding:40px;text-align:center;color:var(--muted);font-size:13px}
 
 /* ── Collapsible Sidebar Sections ── */
-.sb-sec-btn{width:100%;background:none;border:none;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between;padding:10px 12px 4px;text-align:left}
-.sb-sec-label{font-size:9px;font-weight:700;color:rgba(255,255,255,.35);letter-spacing:1.5px;text-transform:uppercase}
-.sb-sec-arrow{font-size:10px;color:rgba(255,255,255,.3);transition:transform .2s}
+.sb-sec-btn{width:100%;background:rgba(255,255,255,.07);border:none;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:space-between;padding:7px 10px;text-align:left;border-radius:8px;margin:3px 0}
+.sb-sec-btn:hover{background:rgba(255,255,255,.13)}
+.sb-sec-label{font-size:11px;font-weight:700;color:rgba(255,255,255,.75);letter-spacing:.5px;display:flex;align-items:center;gap:6px}
+.sb-sec-arrow{font-size:12px;color:rgba(255,255,255,.45);transition:transform .2s;font-weight:700}
 .sb-sec-arrow.open{transform:rotate(90deg)}
 .sb-sec-items{overflow:hidden;transition:max-height .25s ease}
-.sb-sec-divider{border:none;border-top:1px solid rgba(255,255,255,.07);margin:4px 10px}
+.sb-sec-divider{border:none;border-top:1px solid rgba(255,255,255,.06);margin:2px 0}
 
 /* ── Dark mode visibility fixes ── */
 html[data-theme="dark"] .gsearch-box{background:var(--white)}
@@ -614,7 +615,7 @@ function buildNav(){
     const visibleItems=s.items.filter(t=>!t.adminOnly||isAd);
     if(!visibleItems.length)return;
     const isOpen=window._sbOpen[s.sec]===true;
-    const secIcons={"প্রধান":"🏠","আর্থিক ব্যবস্থাপনা":"💰","সদস্য ব্যবস্থাপনা":"👥","প্রশাসনিক":"🏛️","রিপোর্ট":"📊","সেটিংস":"⚙️"};
+    const secIcons={"প্রধান":"🏠","আর্থিক ব্যবস্থাপনা":"💰","সদস্য ব্যবস্থাপনা":"👥","প্রশাসনিক":"📋","রিপোর্ট":"📊","সেটিংস":"⚙️"};
     const secIcon=secIcons[s.sec]||"";
     if(si>0) html+=`<hr class="sb-sec-divider">`;
     html+=`<button class="sb-sec-btn" onclick="toggleSbSec('${s.sec}')">
