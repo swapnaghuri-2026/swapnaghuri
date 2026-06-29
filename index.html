@@ -2664,7 +2664,7 @@ function fullPDFDownload(){
   const totNetAsset=totAsset+totInvest+totLoanOut+totDueChada+Math.max(0,fund);
   const now2=new Date().toLocaleDateString("bn-BD");
 
-  const wm=`<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:80px;color:rgba(0,100,0,.06);font-weight:900;z-index:0;pointer-events:none;white-space:nowrap">স্বপ্নঘুড়ি</div>`;
+  const wm=`<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:80px;font-weight:900;z-index:0;pointer-events:none;white-space:nowrap;color:transparent;-webkit-text-stroke:1px rgba(0,100,0,.10);opacity:0.15;-webkit-print-color-adjust:exact;print-color-adjust:exact">স্বপ্নঘুড়ি</div>`;
 
   const tbl=(cols,rows)=>`<table>
     <thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead>
@@ -4614,13 +4614,21 @@ const pdfStyle=`
   td{padding:7px 8px;border:1px solid #e2e8f0;text-align:center;vertical-align:middle}
   tr:nth-child(even){background:#f9fff9}
   .wm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);
-    font-size:90px;color:rgba(0,100,0,.06);font-weight:900;z-index:0;
-    pointer-events:none;white-space:nowrap;user-select:none}
+    font-size:90px;font-weight:900;z-index:0;
+    pointer-events:none;white-space:nowrap;user-select:none;
+    color:transparent;
+    -webkit-text-stroke:1px rgba(0,100,0,.12);
+    opacity:0.18}
+  @media print{
+    .wm{color:transparent;-webkit-text-stroke:1px rgba(0,100,0,.10);opacity:0.12;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .no-print-btn{display:none!important}
+  }
   .no-print-btn{position:fixed;bottom:20px;right:20px;background:#006400;color:#fff;
     border:none;border-radius:10px;padding:12px 22px;cursor:pointer;
     font-size:14px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:999}
 `;
-const pdfWM=()=>`<div class="wm">🪁 স্বপ্নঘুড়ি</div>`;
+const pdfWM=()=>`<div class="wm">স্বপ্নঘুড়ি</div>`;
 const pdfBtn=()=>`<button class="no-print-btn no-print" onclick="window.print()">🖨️ প্রিন্ট / PDF সেভ</button>`;
 const bnNum=n=>Number(n||0).toLocaleString("bn-BD");
 const fmtBn=n=>"৳"+bnNum(n);
