@@ -2812,15 +2812,62 @@ function trackVisitor(){
   try{
     const visitors=JSON.parse(localStorage.getItem("sg_visitors")||"[]");
     const now=new Date();
+    const ua=navigator.userAgent;
+
+    // ডিভাইস
+    const isMobile=/Mobile|Android|iPhone|iPad/i.test(ua);
+    const isTablet=/iPad|Tablet/i.test(ua);
+    const deviceType=isTablet?"📟 ট্যাবলেট":isMobile?"📱 মোবাইল":"💻 কম্পিউটার";
+
+    // ব্রাউজার
+    let browser="অজ্ঞাত";
+    if(/Edg\//i.test(ua)) browser="🌐 Edge";
+    else if(/OPR|Opera/i.test(ua)) browser="🔴 Opera";
+    else if(/Chrome/i.test(ua)) browser="🟢 Chrome";
+    else if(/Firefox/i.test(ua)) browser="🦊 Firefox";
+    else if(/Safari/i.test(ua)) browser="🔵 Safari";
+    else if(/SamsungBrowser/i.test(ua)) browser="📱 Samsung";
+
+    // OS
+    let os="";
+    if(/Windows/i.test(ua)) os="Windows";
+    else if(/Android/i.test(ua)) os="Android";
+    else if(/iPhone|iPad/i.test(ua)) os="iOS";
+    else if(/Mac/i.test(ua)) os="Mac";
+    else if(/Linux/i.test(ua)) os="Linux";
+
+    // লগইন করা সদস্যের নাম
+    let memberName="—";
+    if(role==="admin") memberName="👑 অ্যাডমিন";
+    else if(role && D && D.members){
+      // viewer হলে শুধু ভূমিকা দেখাব
+      memberName="👁️ ভিউয়ার";
+    }
+
     const entry={
       id:Date.now(),
       time:now.toISOString(),
       role:role||"অজ্ঞাত",
-      ua:navigator.userAgent.slice(0,80),
-      page:window.location.href.split("?")[0]
+      memberName,
+      device:deviceType,
+      browser,
+      os,
+      ua:ua.slice(0,120)
     };
+
+    // IP/অবস্থান async-এ নিই
+    fetch("https://ipapi.co/json/")
+      .then(r=>r.json())
+      .then(d=>{
+        entry.city=d.city||"";
+        entry.country=d.country_name||"";
+        entry.isp=d.org||"";
+        const all=JSON.parse(localStorage.getItem("sg_visitors")||"[]");
+        const idx=all.findIndex(v=>v.id===entry.id);
+        if(idx>=0){all[idx]=entry;localStorage.setItem("sg_visitors",JSON.stringify(all));}
+      }).catch(()=>{});
+
     visitors.unshift(entry);
-    // সর্বোচ্চ ২০০টা রাখব
     if(visitors.length>200) visitors.splice(200);
     localStorage.setItem("sg_visitors",JSON.stringify(visitors));
   }catch(e){}
@@ -2829,38 +2876,48 @@ function trackVisitor(){
 function pgVisitors(){
   if(!isA()) return `<div style="padding:40px;text-align:center;color:#94a3b8">⛔ শুধুমাত্র অ্যাডমিনের জন্য</div>`;
   const visitors=JSON.parse(localStorage.getItem("sg_visitors")||"[]");
-  const byDate={};
-  visitors.forEach(v=>{
-    const d=v.time.slice(0,10);
-    if(!byDate[d]) byDate[d]=[];
-    byDate[d].push(v);
-  });
-  const rows=visitors.slice(0,100).map((v,i)=>{
-    const dt=new Date(v.time);
-    const timeStr=dt.toLocaleString("bn-BD");
-    const device=v.ua.includes("Mobile")?"📱 মোবাইল":"💻 কম্পিউটার";
-    return `<tr>
-      <td style="text-align:center">${Number(i+1).toLocaleString("bn-BD")}</td>
-      <td style="text-align:center">${timeStr}</td>
-      <td style="text-align:center">${v.role==="admin"?"👑 অ্যাডমিন":"👁️ ভিউয়ার"}</td>
-      <td style="text-align:center">${device}</td>
-    </tr>`;
-  }).join("");
 
   const today=new Date().toISOString().slice(0,10);
   const todayCount=visitors.filter(v=>v.time.startsWith(today)).length;
   const totalCount=visitors.length;
+  const adminCount=visitors.filter(v=>v.role==="admin").length;
+  const viewerCount=visitors.filter(v=>v.role!=="admin").length;
+
+  const rows=visitors.slice(0,100).map((v,i)=>{
+    const dt=new Date(v.time);
+    const timeStr=dt.toLocaleString("bn-BD");
+    const location=[v.city,v.country].filter(Boolean).join(", ")||"—";
+    const device=v.device||(v.ua&&v.ua.includes("Mobile")?"📱 মোবাইল":"💻 কম্পিউটার");
+    const browser=v.browser||"—";
+    const os=v.os?"("+v.os+")":"";
+    return `<tr>
+      <td style="text-align:center;font-size:12px">${Number(i+1).toLocaleString("bn-BD")}</td>
+      <td style="font-size:11px">${timeStr}</td>
+      <td style="text-align:center;font-size:12px">${v.memberName||( v.role==="admin"?"👑 অ্যাডমিন":"👁️ ভিউয়ার")}</td>
+      <td style="font-size:11px">${device} ${os}</td>
+      <td style="font-size:11px">${browser}</td>
+      <td style="font-size:11px">${location}</td>
+    </tr>`;
+  }).join("");
 
   return `
     <div class="section-title">👥 ভিজিটর ইতিহাস</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div class="card" style="text-align:center;padding:16px">
-        <div style="font-size:28px;font-weight:800;color:#006400">${Number(todayCount).toLocaleString("bn-BD")}</div>
-        <div style="font-size:12px;color:#64748b">আজকের ভিজিট</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="card" style="text-align:center;padding:14px">
+        <div style="font-size:26px;font-weight:800;color:#006400">${Number(todayCount).toLocaleString("bn-BD")}</div>
+        <div style="font-size:12px;color:var(--muted)">আজকের ভিজিট</div>
       </div>
-      <div class="card" style="text-align:center;padding:16px">
-        <div style="font-size:28px;font-weight:800;color:#1a8a00">${Number(totalCount).toLocaleString("bn-BD")}</div>
-        <div style="font-size:12px;color:#64748b">মোট ভিজিট</div>
+      <div class="card" style="text-align:center;padding:14px">
+        <div style="font-size:26px;font-weight:800;color:#1a8a00">${Number(totalCount).toLocaleString("bn-BD")}</div>
+        <div style="font-size:12px;color:var(--muted)">মোট ভিজিট</div>
+      </div>
+      <div class="card" style="text-align:center;padding:14px">
+        <div style="font-size:22px;font-weight:800;color:#d97706">${Number(adminCount).toLocaleString("bn-BD")}</div>
+        <div style="font-size:12px;color:var(--muted)">👑 অ্যাডমিন</div>
+      </div>
+      <div class="card" style="text-align:center;padding:14px">
+        <div style="font-size:22px;font-weight:800;color:#0ea5e9">${Number(viewerCount).toLocaleString("bn-BD")}</div>
+        <div style="font-size:12px;color:var(--muted)">👁️ ভিউয়ার</div>
       </div>
     </div>
     <div class="card">
@@ -2868,11 +2925,13 @@ function pgVisitors(){
         <table class="tbl">
           <thead><tr style="background:#006400">
             <th style="color:#fff;text-align:center">#</th>
-            <th style="color:#fff;text-align:center">সময়</th>
-            <th style="color:#fff;text-align:center">ভূমিকা</th>
-            <th style="color:#fff;text-align:center">ডিভাইস</th>
+            <th style="color:#fff">সময়</th>
+            <th style="color:#fff;text-align:center">পরিচয়</th>
+            <th style="color:#fff">ডিভাইস</th>
+            <th style="color:#fff">ব্রাউজার</th>
+            <th style="color:#fff">অবস্থান</th>
           </tr></thead>
-          <tbody>${rows||`<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:20px">কোনো ভিজিট রেকর্ড নেই</td></tr>`}</tbody>
+          <tbody>${rows||`<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px">কোনো ভিজিট রেকর্ড নেই</td></tr>`}</tbody>
         </table>
       </div>
       ${visitors.length>100?`<div style="padding:10px;text-align:center;color:#94a3b8;font-size:12px">সর্বশেষ ১০০টি দেখানো হচ্ছে</div>`:""}
