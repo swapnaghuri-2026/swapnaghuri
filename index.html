@@ -275,7 +275,7 @@ const firebaseConfig = {
     </div>
     <nav class="sb-nav" id="sb-nav"></nav>
     <div class="sb-footer">
-      <div style="color:rgba(255,255,255,.4);font-size:10px">মোট তহবিল</div>
+      <div style="color:rgba(255,255,255,.4);font-size:10px">নগদ তহবিল (হাতে থাকা)</div>
       <div id="sb-fund" style="color:#fff;font-weight:800;font-size:18px;margin:2px 0 4px">৳০</div>
       <div style="color:rgba(255,255,255,.4);font-size:10px">মোট বকেয়া</div>
       <div id="sb-due" style="color:#f87171;font-weight:700;font-size:15px;margin:2px 0 10px">৳০</div>
@@ -315,8 +315,8 @@ const firebaseConfig = {
         </div>
         <button id="msg-btn" onclick="showMsgPanel()" style="display:none;background:#25D366;border:none;border-radius:9px;padding:6px 10px;cursor:pointer;font-size:16px" title="মেসেজ পাঠান">📲</button>
         <div id="tb-badge"></div>
-        <div style="text-align:right">
-          <div style="font-size:9px;color:var(--muted)">তহবিল</div>
+        <div style="text-align:right;cursor:pointer" onclick="explainFund()">
+          <div style="font-size:9px;color:var(--muted)">নগদ তহবিল ℹ️</div>
           <div id="tb-fund" style="font-weight:800;font-size:14px;color:var(--g2)">৳০</div>
         </div>
       </div>
@@ -402,6 +402,7 @@ const TABS = [
   {sec:"সদস্য ব্যবস্থাপনা",items:[
     {id:"members",icon:"👥",label:"সদস্যবৃন্দ"},
     {id:"memberstat",icon:"📋",label:"সদস্য স্টেটমেন্ট"},
+    {id:"formermembers",icon:"🚪",label:"পূর্ব সদস্য"},
     {id:"voting",icon:"🗳️",label:"ভোটিং"},
   ]},
   {sec:"প্রশাসনিক",items:[
@@ -425,7 +426,8 @@ const SEED = {
   opinions:[],gallery:[],votes:[],meetings:[],specialMonths:[],
   rateHistory:[],activityLog:[],liabilities:[],
   paymentInfo:{bank:[],mobile:[]},
-  msgTemplates:[]
+  msgTemplates:[],
+  formerMembers:[]
 };
 
 // ══════════════════
@@ -557,6 +559,7 @@ function login(r){
     if(!D.rateHistory) D.rateHistory=[];if(!D.liabilities) D.liabilities=[];
     if(!D.activityLog) D.activityLog=[];
     if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
+    if(!D.formerMembers) D.formerMembers=[];
     document.getElementById("ls").style.display="none";
     document.getElementById("app").style.display="flex";
     document.getElementById("fab-btn").classList.add("show");
@@ -573,7 +576,7 @@ function login(r){
             try{
               if(snap.exists()){
                 var fd=JSON.parse(snap.val());
-                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};LS.set(SK,D);if(curTab)goTab(curTab);}
+                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];LS.set(SK,D);if(curTab)goTab(curTab);}
               }
             }catch(e){}
           });
@@ -581,7 +584,7 @@ function login(r){
             try{
               if(snap.exists()&&role){
                 var fd=JSON.parse(snap.val());
-                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};LS.set(SK,D);if(curTab)goTab(curTab);}
+                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];LS.set(SK,D);if(curTab)goTab(curTab);}
               }
             }catch(e){}
           });
@@ -695,9 +698,26 @@ function updHdr(){
   document.getElementById("tb-fund").textContent=fmt(fund);
 }
 function calcFund(){
+  // নিট নগদ তহবিল = (চাঁদা + অন্যান্য আয়) − পরিচালন ব্যয় − বিতরণকৃত ঋণ (নিট) − বিনিয়োগ
+  // ঋণ বিতরণ ও বিনিয়োগ ব্যয় নয়, এটি সম্পদ স্থানান্তর (নগদ → অন্য সম্পদ)
+  const inc=(D.income||[]).reduce((s,i)=>s+i.amount,0)+(D.payments||[]).reduce((s,p)=>s+p.amount,0);
+  const exp=(D.expenses||[]).reduce((s,e)=>s+e.amount,0);
+  const loanOutstanding=(D.loans||[]).reduce((s,l)=>s+l.remaining,0); // এখনো হাতে ফেরত আসেনি এমন ঋণ
+  const totalInvest=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
+  return inc-exp-loanOutstanding-totalInvest;
+}
+// মোট হিসাবি তহবিল (পুরাতন সংজ্ঞা) — শুধু আয়-ব্যয় ভিত্তিক, রিপোর্টের জন্য রাখা হলো
+function calcGrossFund(){
   const inc=(D.income||[]).reduce((s,i)=>s+i.amount,0)+(D.payments||[]).reduce((s,p)=>s+p.amount,0);
   const exp=(D.expenses||[]).reduce((s,e)=>s+e.amount,0);
   return inc-exp;
+}
+function explainFund(){
+  const cashBalance=calcFund();
+  const loanOut=(D.loans||[]).reduce((s,l)=>s+l.remaining,0);
+  const invest=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
+  const grossFund=calcGrossFund();
+  alert(`💰 নগদ তহবিল ব্যাখ্যা\n\nএটি হলো এই মুহূর্তে হাতে/ব্যাংকে থাকা প্রকৃত নগদ টাকা।\n\nমোট আয় (চাঁদা+অন্যান্য) − ব্যয়: ৳${grossFund.toLocaleString("bn-BD")}\nবিয়োগ: বিতরণকৃত ঋণ (অবশিষ্ট): ৳${loanOut.toLocaleString("bn-BD")}\nবিয়োগ: বিনিয়োগ: ৳${invest.toLocaleString("bn-BD")}\n\n= নগদ তহবিল: ৳${cashBalance.toLocaleString("bn-BD")}\n\nঋণ ও বিনিয়োগের টাকা সম্পদ হিসেবে "ব্যালেন্স শিট" পেজে দেখানো হয়।`);
 }
 function calcHealthScore(){
   const members=D.members||[], payments=D.payments||[], loans=D.loans||[], goals=D.goals||[];
@@ -736,7 +756,7 @@ function goTab(id){
   closeSB();
   const c=document.getElementById("content");
   c.className="content pa";c.innerHTML="";
-  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate};
+  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate,formermembers:pgFormerMembers};
   if(pages[id])c.innerHTML=pages[id]();
   buildNav();
   updHdr();
@@ -1577,24 +1597,52 @@ function delExp(id){
 }
 
 // ══════════════════
-// BALANCE SHEET
+// BALANCE SHEET (সম্পদ = দায় + মূলধন)
 // ══════════════════
 function pgBalance(){
   const assets=D.assets||[], loans=D.loans||[], payments=D.payments||[], expenses=D.expenses||[], income=D.income||[], investments=D.investments||[];
   const liabilities=D.liabilities||[];
-  const totalAsset=assets.reduce((s,a)=>s+a.value,0);
-  const totalLoanOut=loans.reduce((s,l)=>s+l.remaining,0);
-  const totalInc=income.reduce((s,i)=>s+i.amount,0)+payments.reduce((s,p)=>s+p.amount,0);
-  const totalExp=expenses.reduce((s,e)=>s+e.amount,0);
-  const fund=totalInc-totalExp;
-  const totalInvest=investments.reduce((s,i)=>s+i.amount,0);
-  const totalLiability=liabilities.reduce((s,l)=>s+l.amount,0);
+  const formerMembers=D.formerMembers||[];
   const members=D.members||[];
-  const perMember=members.length?fund/members.length:0;
+
+  // ── ১. নগদ/ব্যাংক ব্যালেন্স (নিট তহবিল) ──
+  // calcFund() ইতিমধ্যে ঋণ বিতরণ ও বিনিয়োগ বিয়োগ করে রাখে
+  const cashBalance=calcFund();
+
+  // ── ২. আদায়যোগ্য ঋণ (সদস্যদের দেওয়া ঋণের অবশিষ্ট অংশ) ──
+  const totalLoanOut=loans.reduce((s,l)=>s+l.remaining,0);
+
+  // ── ৩. বিনিয়োগ ──
+  const totalInvest=investments.reduce((s,i)=>s+i.amount,0);
+
+  // ── ৪. স্থাবর সম্পদ ও চলতি সম্পদ (assets পেজ থেকে) ──
+  const fixedAssetTotal=assets.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0);
+  const currentAssetTotal=assets.filter(a=>a.category==="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+  const otherAssetTotal=assets.filter(a=>a.category!=="স্থাবর সম্পদ"&&a.category!=="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+
+  // ── ৫. বকেয়া চাঁদা (আদায়যোগ্য) ──
   const duesListB=getDuesList();
   const totalDueChadaB=duesListB.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
-  // মোট সম্পদ = সম্পদ + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা
-  const totalNetAsset=totalAsset+totalLoanOut+totalInvest+totalDueChadaB;
+
+  // ═══ মোট সম্পদ ═══
+  const totalAsset = Math.max(0,cashBalance) + totalLoanOut + totalInvest + fixedAssetTotal + currentAssetTotal + otherAssetTotal + totalDueChadaB;
+
+  // ═══ মোট দায় ═══
+  // ক) ম্যানুয়াল দায় (ব্যাংক ঋণ, ব্যক্তিগত ঋণ, বকেয়া বিল ইত্যাদি)
+  const totalManualLiability=liabilities.reduce((s,l)=>s+l.amount,0);
+  // খ) পূর্ব সদস্যদের ফেরতযোগ্য পাওনা (যা এখনো ফেরত দেওয়া হয়নি)
+  const totalFormerMemberDue=formerMembers.filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
+  const totalLiability = totalManualLiability + totalFormerMemberDue;
+
+  // ═══ মূলধন (Equity) — সবসময় বিয়োগ করেই বের করা হয়, আলাদা সূত্র দিয়ে নয় ═══
+  // মূলধন = মোট সম্পদ − মোট দায় (মূল হিসাব সমীকরণ)
+  const totalEquity = totalAsset - totalLiability;
+
+  // তথ্যের জন্য — সদস্যদের মোট চাঁদা ও ব্যয় (রেফারেন্স হিসেবে দেখানো হবে)
+  const totalChada=payments.reduce((s,p)=>s+p.amount,0);
+  const totalOtherInc=income.reduce((s,i)=>s+i.amount,0);
+  const totalExp=expenses.reduce((s,e)=>s+e.amount,0);
+  const perMemberShare = members.length ? totalEquity/members.length : 0;
 
   const liabForm=isA()?`
     <div class="card" style="margin-bottom:12px">${ch("➕","নতুন দায় যোগ করুন","বাহ্যিক দেনা — ব্যক্তি বা প্রতিষ্ঠান","r")}
@@ -1606,7 +1654,7 @@ function pgBalance(){
       <div class="grid2">
         <div class="field"><label>ধরন</label>
           <select id="lb-type" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
-            <option>ধার/ঋণ</option><option>পাওনা মজুরি</option><option>সার্ভিস বিল</option><option>অন্যান্য</option>
+            <option>ব্যাংক ঋণ</option><option>ব্যক্তিগত ঋণ</option><option>বকেয়া বিল</option><option>পাওনা মজুরি</option><option>অন্যান্য</option>
           </select>
         </div>
         <div class="field"><label>তারিখ</label><input type="date" id="lb-date" value="${new Date().toISOString().slice(0,10)}"></div>
@@ -1615,103 +1663,113 @@ function pgBalance(){
       <button class="btn btn-r" onclick="addLiability()">✅ দায় যোগ করুন</button>
     </div></div>`:"";
 
-  const liabRows=liabilities.length?liabilities.slice().reverse().map(l=>`
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #f1f5f9">
-      <div>
-        <div style="font-weight:600;font-size:13px;color:#dc2626">${l.name}</div>
-        <div style="font-size:11px;color:#94a3b8">${l.type||""} ${l.date?("— "+ds(l.date)):""}${l.note?(" | "+l.note):""}</div>
+  const assetForm=isA()?`
+    <div class="card" style="margin-bottom:12px">${ch("➕","নতুন সম্পদ যোগ করুন","স্থাবর/চলতি সম্পদ","g")}
+    <div class="cb">
+      <div class="grid2">
+        <div class="field"><label>সম্পদের নাম</label><input id="ba-name" placeholder="যেমন: জমি, আসবাবপত্র"></div>
+        <div class="field"><label>মূল্য (৳)</label><input type="number" id="ba-val" placeholder="0"></div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-weight:800;color:#dc2626;font-size:14px">${fmt(l.amount)}</span>
-        ${isA()?`<button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delLiability(${l.id})">🗑</button>`:""}
+      <div class="grid2">
+        <div class="field"><label>ক্যাটাগরি</label>
+          <select id="ba-cat" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+            <option>স্থাবর সম্পদ</option><option>চলতি সম্পদ</option><option>অন্যান্য সম্পদ</option>
+          </select>
+        </div>
+        <div class="field"><label>তারিখ</label><input type="date" id="ba-date" value="${new Date().toISOString().slice(0,10)}"></div>
       </div>
-    </div>`).join(""):`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো বাহ্যিক দায় নেই ✅</div>`;
-
-  // ── হিসাব ──
-  // মোট আয় (চাঁদা + অন্যান্য আয়)
-  const totalChada=payments.reduce((s,p)=>s+p.amount,0);
-  const totalOtherInc=income.reduce((s,i)=>s+i.amount,0);
-  // সম্পদের উপমোট
-  const fixedAssetTotal=assets.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0);
-  const currentAssetTotal=assets.filter(a=>a.category==="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
-  const otherAssetTotal=assets.filter(a=>a.category!=="স্থাবর সম্পদ"&&a.category!=="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
-  // মোট সম্পদ = স্থাবর + চলতি + অন্যান্য সম্পদ + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা + সকল আয়
-  // কিন্তু আয় ইতিমধ্যে fund-এ আছে, তাই:
-  // মোট সম্পদ = সম্পদ (সব ক্যাটাগরি) + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা + নিট তহবিল (fund)
-  const totalGrossAsset = totalAsset + totalInvest + totalLoanOut + totalDueChadaB + Math.max(0,fund);
-  // নিট সম্পদ = মোট সম্পদ − বাহ্যিক দায়
-  const netAsset = totalGrossAsset - totalLiability;
-  // প্রতি সদস্যের অংশীদারিত্ব
-  const perMemberShare = members.length ? netAsset/members.length : 0;
+      <button class="btn btn-g" onclick="addAssetFromBalance()">✅ সম্পদ যোগ করুন</button>
+    </div></div>`:"";
 
   return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div><div class="section-title">⚖️ ব্যালেন্স শিট</div></div>
+      <div><div class="section-title">⚖️ ব্যালেন্স শিট</div><div class="section-sub">সম্পদ = দায় + মূলধন</div></div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm" style="background:#1a8a00;color:#fff" onclick="xlDownload('balance')">📊 Excel</button>
         <button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="pdfDownload('balance')">📄 PDF</button>
       </div>
     </div>
 
+    ${assetForm}
     ${liabForm}
 
     <div class="card" style="margin-bottom:14px">
-      ${ch("⚖️","ব্যালেন্স শিট","স্বপ্নঘুড়ি — "+new Date().getFullYear(),"b")}
+      ${ch("⚖️","ব্যালেন্স শিট","স্বপ্নঘুড়ি সংগঠন — "+ds(new Date().toISOString().slice(0,10)),"b")}
       <div class="cb">
 
         <!-- ১. সম্পদ -->
-        <div style="font-weight:800;font-size:14px;color:#1a8a00;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #dcfce7">📋 সম্পদ (Assets)</div>
+        <div style="font-weight:800;font-size:14px;color:#1a8a00;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #dcfce7">📋 সম্পদ (Assets) — "আমার কাছে কী আছে?"</div>
 
-        <div style="margin-bottom:10px">
-          <div style="font-weight:700;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">স্থাবর সম্পদ</div>
-          ${assets.filter(a=>a.category==="স্থাবর সম্পদ").map(a=>rw(a.name,fmt(a.value))).join("")||rw("কোনো স্থাবর সম্পদ নেই","৳ ০")}
-          ${rw("উপমোট",fmt(fixedAssetTotal),"hi")}
+        ${rw("নগদ/ব্যাংক ব্যালেন্স (তহবিল)",fmt(Math.max(0,cashBalance)),"hi")}
+        ${rw("আদায়যোগ্য ঋণ (সদস্যদের দেওয়া)",fmt(totalLoanOut))}
+        ${rw("বিনিয়োগ",fmt(totalInvest))}
+        ${rw("বকেয়া চাঁদা (আদায়যোগ্য)",fmt(totalDueChadaB))}
+
+        <div style="margin-top:10px;margin-bottom:6px">
+          <div style="font-weight:700;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">স্থাবর সম্পদ (বিস্তারিত)</div>
+          ${assets.filter(a=>a.category==="স্থাবর সম্পদ").map(a=>rw(a.name,fmt(a.value))).join("")||`<div style="padding:6px 0;font-size:12px;color:#94a3b8">কোনো স্থাবর সম্পদ যোগ করা হয়নি</div>`}
         </div>
-
-        <div style="margin-bottom:10px">
-          <div style="font-weight:700;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">চলতি সম্পদ</div>
-          ${assets.filter(a=>a.category==="চলতি সম্পদ").map(a=>rw(a.name,fmt(a.value))).join("")||rw("কোনো চলতি সম্পদ নেই","৳ ০")}
-          ${rw("বিতরণকৃত ঋণ (আদায়যোগ্য)",fmt(totalLoanOut))}
-          ${rw("বকেয়া চাঁদা (আদায়যোগ্য)",fmt(totalDueChadaB))}
-          ${rw("উপমোট",fmt(currentAssetTotal+totalLoanOut+totalDueChadaB),"hi")}
+        <div style="margin-bottom:6px">
+          <div style="font-weight:700;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">চলতি সম্পদ (বিস্তারিত)</div>
+          ${assets.filter(a=>a.category==="চলতি সম্পদ").map(a=>rw(a.name,fmt(a.value))).join("")||`<div style="padding:6px 0;font-size:12px;color:#94a3b8">কোনো চলতি সম্পদ যোগ করা হয়নি</div>`}
         </div>
+        ${otherAssetTotal>0?`<div style="margin-bottom:6px">
+          <div style="font-weight:700;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.5px">অন্যান্য সম্পদ</div>
+          ${assets.filter(a=>a.category!=="স্থাবর সম্পদ"&&a.category!=="চলতি সম্পদ").map(a=>rw(a.name,fmt(a.value))).join("")}
+        </div>`:""}
 
-        <div style="margin-bottom:10px">
-          <div style="font-weight:700;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">বিনিয়োগ সম্পদ</div>
-          ${investments.map(i=>rw(i.title,fmt(i.amount))).join("")||rw("কোনো বিনিয়োগ নেই","৳ ০")}
-          ${rw("উপমোট",fmt(totalInvest),"hi")}
-        </div>
-
-        <div style="margin-bottom:10px">
-          <div style="font-weight:700;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">মূলধন ও আয়</div>
-          ${rw("সদস্যদের মোট চাঁদা",fmt(totalChada))}
-          ${rw("অন্যান্য আয়",fmt(totalOtherInc))}
-          ${rw("মোট ব্যয় (বিয়োগ)","-"+fmt(totalExp),"rd-row")}
-          ${rw("নিট তহবিল (ব্যাংক/নগদ)",fmt(Math.max(0,fund)),"hi")}
-        </div>
-
-        <div style="background:#1a8a00;border-radius:9px;padding:12px 16px;margin-bottom:18px">
+        <div style="background:#1a8a00;border-radius:9px;padding:12px 16px;margin:14px 0 20px">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-weight:800;font-size:15px;color:#fff">সর্বমোট সম্পদ</span>
-            <span style="font-weight:800;font-size:18px;color:#fff">${fmt(totalGrossAsset)}</span>
+            <span style="font-weight:800;font-size:15px;color:#fff">মোট সম্পদ</span>
+            <span style="font-weight:800;font-size:18px;color:#fff">${fmt(totalAsset)}</span>
           </div>
         </div>
 
-        <!-- ২. বাহ্যিক দায় -->
-        <div style="font-weight:800;font-size:14px;color:#dc2626;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #fee2e2">🔴 বাহ্যিক দায় (Liabilities)</div>
-        ${liabilities.length?liabilities.map(l=>rw(l.name+" ("+l.type+")",fmt(l.amount))).join(""):rw("কোনো বাহ্যিক দায় নেই","৳ ০")}
-        ${rw("মোট বাহ্যিক দায়",fmt(totalLiability),"rd-row")}
+        <!-- ২. দায় -->
+        <div style="font-weight:800;font-size:14px;color:#dc2626;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #fee2e2">🔴 দায় (Liabilities) — "কার কাছে কত দেনা?"</div>
 
-        <div style="background:#dc2626;border-radius:9px;padding:12px 16px;margin-bottom:18px;margin-top:8px">
+        ${liabilities.length?liabilities.map(l=>rw(l.name+" ("+(l.type||"")+")",fmt(l.amount))).join(""):`<div style="padding:6px 0;font-size:12px;color:#94a3b8">কোনো ম্যানুয়াল দায় যোগ করা হয়নি</div>`}
+        ${totalFormerMemberDue>0?rw("পূর্ব সদস্যদের ফেরতযোগ্য পাওনা",fmt(totalFormerMemberDue)):""}
+
+        <div style="background:#dc2626;border-radius:9px;padding:12px 16px;margin:14px 0 20px">
           <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-weight:800;font-size:15px;color:#fff">নিট সম্পদ (সম্পদ − দায়)</span>
-            <span style="font-weight:800;font-size:18px;color:#fff">${fmt(netAsset)}</span>
+            <span style="font-weight:800;font-size:15px;color:#fff">মোট দায়</span>
+            <span style="font-weight:800;font-size:18px;color:#fff">${fmt(totalLiability)}</span>
           </div>
         </div>
 
-        <!-- ৩. সদস্যভিত্তিক অংশীদারিত্ব -->
-        <div style="font-weight:800;font-size:14px;color:#7c3aed;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #ede9fe">👥 সদস্যভিত্তিক অংশীদারিত্ব</div>
-        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">নিট সম্পদ (${fmt(netAsset)}) ÷ ${members.length} জন সদস্য</div>
+        <!-- ৩. মূলধন -->
+        <div style="font-weight:800;font-size:14px;color:#7c3aed;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #ede9fe">💜 মূলধন (Equity) — "সদস্যদের প্রকৃত অংশ"</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">মূলধন = মোট সম্পদ − মোট দায় (স্বয়ংক্রিয়ভাবে গণনাকৃত)</div>
+        ${rw("মোট সম্পদ",fmt(totalAsset))}
+        ${rw("বিয়োগ: মোট দায়","-"+fmt(totalLiability),"rd-row")}
+
+        <div style="background:linear-gradient(135deg,#5b21b6,#7c3aed);border-radius:9px;padding:12px 16px;margin:14px 0 20px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-weight:800;font-size:15px;color:#fff">নিট মূলধন</span>
+            <span style="font-weight:800;font-size:18px;color:#fff">${fmt(totalEquity)}</span>
+          </div>
+        </div>
+
+        <!-- যাচাইকরণ -->
+        <div style="background:${Math.abs(totalAsset-(totalLiability+totalEquity))<1?"#f0fdf4":"#fff1f2"};border:1.5px solid ${Math.abs(totalAsset-(totalLiability+totalEquity))<1?"#86efac":"#fecaca"};border-radius:9px;padding:12px 16px;margin-bottom:20px;text-align:center">
+          <div style="font-size:12px;color:${Math.abs(totalAsset-(totalLiability+totalEquity))<1?"#16a34a":"#dc2626"};font-weight:700">
+            ${Math.abs(totalAsset-(totalLiability+totalEquity))<1?"✅ যাচাই সফল":"⚠️ অসামঞ্জস্য"} — সম্পদ (${fmt(totalAsset)}) = দায় (${fmt(totalLiability)}) + মূলধন (${fmt(totalEquity)})
+          </div>
+        </div>
+
+        <!-- ৪. আয়-ব্যয়ের রেফারেন্স তথ্য -->
+        <div style="font-weight:800;font-size:14px;color:#64748b;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #f1f5f9">ℹ️ রেফারেন্স তথ্য (আয়-ব্যয়)</div>
+        ${rw("সদস্যদের মোট চাঁদা (এ যাবৎ)",fmt(totalChada))}
+        ${rw("অন্যান্য আয়",fmt(totalOtherInc))}
+        ${rw("মোট পরিচালন ব্যয়","-"+fmt(totalExp),"rd-row")}
+        <div style="font-size:10px;color:#94a3b8;margin-top:6px;padding:8px;background:#f8fafc;border-radius:6px">
+          📌 মনে রাখবেন: ঋণ বিতরণ ব্যয় নয় (সম্পদ স্থানান্তর), ঋণ আদায় আয় নয় (সম্পদ পুনরুদ্ধার)। শুধু পরিচালন ব্যয় (অফিস ভাড়া, বেতন ইত্যাদি) ব্যয় হিসেবে গণ্য হয়।
+        </div>
+
+        <!-- ৫. সদস্যভিত্তিক অংশীদারিত্ব -->
+        <div style="font-weight:800;font-size:14px;color:#7c3aed;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid #ede9fe">👥 সদস্যভিত্তিক অংশীদারিত্ব</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:8px">নিট মূলধন (${fmt(totalEquity)}) ÷ ${members.length} জন সদস্য</div>
         ${members.map(m=>rw(m.name,fmt(perMemberShare))).join("")||rw("কোনো সদস্য নেই","৳ ০")}
         <div style="background:linear-gradient(135deg,#5b21b6,#7c3aed);border-radius:9px;padding:12px 16px;margin-top:8px">
           <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1727,9 +1785,22 @@ function pgBalance(){
     <div style="background:linear-gradient(135deg,#006400,#1a8a00);border-radius:13px;padding:16px 18px">
       <div style="color:rgba(255,255,255,.7);font-size:12px;margin-bottom:10px;font-weight:700">📊 সারসংক্ষেপ</div>
       <div class="grid3">
-        ${[["সর্বমোট সম্পদ",fmt(totalGrossAsset),"#fff"],["মোট দায় (−)",fmt(totalLiability),"#fca5a5"],["নিট সম্পদ",fmt(netAsset),"#bbf7d0"]].map(([l,v,c])=>`<div><div style="color:rgba(255,255,255,.6);font-size:10px;margin-bottom:3px">${l}</div><div style="color:${c};font-weight:800;font-size:15px">${v}</div></div>`).join("")}
+        ${[["মোট সম্পদ",fmt(totalAsset),"#fff"],["মোট দায় (−)",fmt(totalLiability),"#fca5a5"],["নিট মূলধন",fmt(totalEquity),"#bbf7d0"]].map(([l,v,c])=>`<div><div style="color:rgba(255,255,255,.6);font-size:10px;margin-bottom:3px">${l}</div><div style="color:${c};font-weight:800;font-size:15px">${v}</div></div>`).join("")}
       </div>
     </div>`;
+}
+
+function addAssetFromBalance(){
+  const name=document.getElementById("ba-name").value.trim();
+  const val=Number(document.getElementById("ba-val").value);
+  if(!name||!val){toast("⚠️ নাম ও মূল্য দিন","#d97706");return;}
+  D.assets=[...(D.assets||[]),{
+    id:Date.now(),name,value:val,
+    category:document.getElementById("ba-cat").value,
+    date:document.getElementById("ba-date").value
+  }];
+  logActivity("asset",`নতুন সম্পদ যোগ হয়েছে: ${name} — ${fmt(val)}`);
+  sv();toast("✅ সম্পদ যোগ হয়েছে");goTab("balance");
 }
 
 function addLiability(){
@@ -1892,6 +1963,7 @@ function pgMembers(){
           ${isA()?`<div style="display:flex;gap:5px">
             <button onclick="editMember(${m.id})" style="background:#eff6ff;border:none;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px">✏️</button>
             <button onclick="sendDueNotif(${m.id})" style="background:#fffbeb;border:none;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px" title="WhatsApp">📱</button>
+            <button onclick="moveToFormerMember(${m.id})" style="background:#fef3c7;border:none;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px" title="পূর্ব সদস্যে স্থানান্তর">🚪</button>
             <button onclick="delMember(${m.id})" style="background:#fff1f2;border:none;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px;color:#dc2626">🗑</button>
           </div>`:""}
         </div>
@@ -2337,6 +2409,90 @@ function delMember(id){
   sv();toast("🗑","#dc2626");goTab("members");
 }
 
+// ══════════════════════════════════════════
+// পূর্ব সদস্য ব্যবস্থাপনা
+// ══════════════════════════════════════════
+function moveToFormerMember(id){
+  const m=(D.members||[]).find(x=>x.id===id);
+  if(!m){toast("সদস্য পাওয়া যায়নি","#d97706");return;}
+  const totalPaid=(D.payments||[]).filter(p=>p.mid==id).reduce((s,p)=>s+p.amount,0);
+  const totalLoanOut=(D.loans||[]).filter(l=>l.mid==id).reduce((s,l)=>s+l.remaining,0);
+  const msg=`"${m.name}" কে পূর্ব সদস্য তালিকায় স্থানান্তর করতে চান?\n\nমোট জমা দিয়েছেন: ৳${totalPaid.toLocaleString("bn-BD")}\nবকেয়া ঋণ: ৳${totalLoanOut.toLocaleString("bn-BD")}\n\nতিনি বর্তমান সদস্য তালিকা থেকে সরে যাবেন।`;
+  if(!confirm(msg))return;
+  if(!D.formerMembers) D.formerMembers=[];
+  D.formerMembers.push({
+    id:m.id,
+    name:m.name,
+    phone:m.phone||"",
+    role:m.role||"সদস্য",
+    joinDate:m.joinDate||"",
+    leftDate:new Date().toISOString().slice(0,10),
+    totalPaid,
+    totalLoanOutstanding:totalLoanOut,
+    refundDue:0, // অ্যাডমিন ম্যানুয়ালি বসাবে কত টাকা ফেরতযোগ্য
+    refunded:false,
+    note:""
+  });
+  D.members=(D.members||[]).filter(x=>x.id!==id);
+  logActivity("member",`${m.name} কে পূর্ব সদস্য তালিকায় স্থানান্তর করা হয়েছে`);
+  sv();toast("✅ পূর্ব সদস্য তালিকায় স্থানান্তরিত হয়েছে","#1a8a00");
+  goTab("members");
+}
+
+function pgFormerMembers(){
+  const fm=D.formerMembers||[];
+  const isAd=isA();
+  const rows=fm.map(m=>`
+    <div class="card" style="margin-bottom:10px">
+      <div style="padding:14px 16px">
+        <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-weight:700;font-size:14px">${m.name}</div>
+            <div style="font-size:11px;color:var(--muted)">${m.role||"সদস্য"} ${m.phone?(" · "+m.phone):""}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:3px">যোগদান: ${m.joinDate||"—"} · বহির্গমন: ${m.leftDate||"—"}</div>
+          </div>
+          ${m.refunded?`<span style="background:#dcfce7;color:#16a34a;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">✅ ফেরত দেওয়া হয়েছে</span>`:`<span style="background:#fee2e2;color:#dc2626;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">⏳ ফেরত বাকি</span>`}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+          <div style="background:var(--bg);border-radius:8px;padding:8px 10px">
+            <div style="font-size:10px;color:var(--muted)">মোট জমা দিয়েছেন</div>
+            <div style="font-weight:700;font-size:13px;color:#16a34a">${fmt(m.totalPaid||0)}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:8px;padding:8px 10px">
+            <div style="font-size:10px;color:var(--muted)">বকেয়া ঋণ ছিল</div>
+            <div style="font-weight:700;font-size:13px;color:#dc2626">${fmt(m.totalLoanOutstanding||0)}</div>
+          </div>
+        </div>
+        ${isAd?`
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input type="number" id="refund-${m.id}" placeholder="ফেরতযোগ্য পরিমাণ" value="${m.refundDue||""}" style="flex:1;min-width:120px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;font-family:inherit">
+          <button onclick="setRefundDue(${m.id})" class="btn btn-sm btn-outline">💾 সেভ</button>
+          ${!m.refunded?`<button onclick="markRefunded(${m.id})" class="btn btn-sm btn-g">✅ ফেরত দেওয়া হয়েছে চিহ্নিত করুন</button>`:`<button onclick="markRefunded(${m.id},false)" class="btn btn-sm btn-outline">↺ পুনরায় বাকি করুন</button>`}
+        </div>`:m.refundDue?`<div style="margin-top:8px;font-size:12px;color:#dc2626;font-weight:700">দায় (ফেরতযোগ্য): ${fmt(m.refundDue)}</div>`:""}
+      </div>
+    </div>`).join("");
+
+  return `
+    <div class="section-title">🚪 পূর্ব সদস্য তালিকা</div>
+    <div class="section-sub">যারা সংগঠন ছেড়ে চলে গেছেন তাদের ইতিহাস ও বকেয়া দায়</div>
+    <div style="margin-top:14px">
+      ${rows||`<div style="padding:40px;text-align:center;color:var(--muted)">কোনো পূর্ব সদস্য নেই</div>`}
+    </div>`;
+}
+
+function setRefundDue(id){
+  const val=Number(document.getElementById("refund-"+id).value)||0;
+  D.formerMembers=(D.formerMembers||[]).map(m=>m.id===id?{...m,refundDue:val}:m);
+  sv();toast("✅ ফেরতযোগ্য পরিমাণ সেভ হয়েছে");goTab("formermembers");
+}
+
+function markRefunded(id,val=true){
+  D.formerMembers=(D.formerMembers||[]).map(m=>m.id===id?{...m,refunded:val}:m);
+  const m=D.formerMembers.find(x=>x.id===id);
+  if(m) logActivity("member",`${m.name} — ${val?"ফেরত প্রদান সম্পন্ন":"ফেরত প্রদান বাতিল করা হয়েছে"}`);
+  sv();toast(val?"✅ ফেরত দেওয়া হয়েছে চিহ্নিত হলো":"↺ পুনরায় বাকি করা হলো");goTab("formermembers");
+}
+
 
 
 // ══════════════════
@@ -2530,15 +2686,38 @@ function xlDownload(type){
 
   } else if(type==="balance"){
     fn="ব্যালেন্স_শিট";
-    const totI=income.reduce((s,i)=>s+i.amount,0)+payments.reduce((s,p)=>s+p.amount,0);
-    const totE=expenses.reduce((s,e)=>s+e.amount,0);
+    const cashBalance=calcFund();
+    const totalLoanOut=loans.reduce((s,l)=>s+l.remaining,0);
+    const totalInvest=investments.reduce((s,i)=>s+i.amount,0);
+    const duesListX=getDuesList();
+    const totalDueChadaX=duesListX.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
+    const fixedAssetX=assets.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0);
+    const currentAssetX=assets.filter(a=>a.category==="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+    const otherAssetX=assets.filter(a=>a.category!=="স্থাবর সম্পদ"&&a.category!=="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+    const totalAssetX=Math.max(0,cashBalance)+totalLoanOut+totalInvest+fixedAssetX+currentAssetX+otherAssetX+totalDueChadaX;
+    const liabilitiesX=D.liabilities||[];
+    const formerMembersX=D.formerMembers||[];
+    const totalManualLiabX=liabilitiesX.reduce((s,l)=>s+l.amount,0);
+    const totalFormerDueX=formerMembersX.filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
+    const totalLiabilityX=totalManualLiabX+totalFormerDueX;
+    const totalEquityX=totalAssetX-totalLiabilityX;
+
     csv="বিবরণ,পরিমাণ\n";
-    csv+="=== সম্পদ ===,\n";
+    csv+="=== সম্পদ (Assets) ===,\n";
+    csv+=`নগদ/ব্যাংক ব্যালেন্স (তহবিল),${Math.max(0,cashBalance)}\n`;
+    csv+=`আদায়যোগ্য ঋণ,${totalLoanOut}\n`;
+    csv+=`বিনিয়োগ,${totalInvest}\n`;
+    csv+=`বকেয়া চাঁদা (আদায়যোগ্য),${totalDueChadaX}\n`;
     assets.forEach(a=>{ csv+=`"${a.name} (${a.category})",${a.value}\n`; });
-    csv+=`বিতরণকৃত ঋণ,${loans.reduce((s,l)=>s+l.remaining,0)}\n`;
-    investments.forEach(i=>{ csv+=`"${i.title} (বিনিয়োগ)",${i.amount}\n`; });
-    csv+="\n=== দায় ও মূলধন ===,\n";
-    csv+=`মোট আয়,${totI}\nমোট ব্যয়,-${totE}\nনিট তহবিল,${totI-totE}\n`;
+    csv+=`মোট সম্পদ,${totalAssetX}\n`;
+    csv+="\n=== দায় (Liabilities) ===,\n";
+    liabilitiesX.forEach(l=>{ csv+=`"${l.name} (${l.type||""})",${l.amount}\n`; });
+    if(totalFormerDueX>0) csv+=`পূর্ব সদস্যদের ফেরতযোগ্য পাওনা,${totalFormerDueX}\n`;
+    csv+=`মোট দায়,${totalLiabilityX}\n`;
+    csv+="\n=== মূলধন (Equity) ===,\n";
+    csv+=`মূলধন (সম্পদ - দায়),${totalEquityX}\n`;
+    csv+="\n=== যাচাই ===,\n";
+    csv+=`সম্পদ = দায় + মূলধন,${totalAssetX} = ${totalLiabilityX} + ${totalEquityX}\n`;
   }
 
   const blob=new Blob([bom+csv],{type:"text/csv;charset=utf-8;"});
@@ -2812,21 +2991,39 @@ function pdfDownload(type){
     </tbody></table>`;
   } else if(type==="balance"){
     title="ব্যালেন্স শিট";
-    const totI=income.reduce((s,i)=>s+i.amount,0)+payments.reduce((s,p)=>s+p.amount,0);
-    const totE=expenses.reduce((s,e)=>s+e.amount,0);
-    const totA=assets.reduce((s,a)=>s+a.value,0);
-    const totL=loans.reduce((s,l)=>s+l.remaining,0);
-    const totInv=investments.reduce((s,i)=>s+i.amount,0);
+    const cashBalanceP=calcFund();
+    const totalLoanOutP=loans.reduce((s,l)=>s+l.remaining,0);
+    const totalInvestP=investments.reduce((s,i)=>s+i.amount,0);
+    const duesListP=getDuesList();
+    const totalDueChadaP=duesListP.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
+    const fixedAssetP=assets.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0);
+    const currentAssetP=assets.filter(a=>a.category==="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+    const otherAssetP=assets.filter(a=>a.category!=="স্থাবর সম্পদ"&&a.category!=="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+    const totalAssetP=Math.max(0,cashBalanceP)+totalLoanOutP+totalInvestP+fixedAssetP+currentAssetP+otherAssetP+totalDueChadaP;
+    const liabilitiesP=D.liabilities||[];
+    const formerMembersP=D.formerMembers||[];
+    const totalManualLiabP=liabilitiesP.reduce((s,l)=>s+l.amount,0);
+    const totalFormerDueP=formerMembersP.filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
+    const totalLiabilityP=totalManualLiabP+totalFormerDueP;
+    const totalEquityP=totalAssetP-totalLiabilityP;
+
     tableHTML=`<table><thead><tr><th style="text-align:left">বিবরণ</th><th>পরিমাণ</th></tr></thead><tbody>
-      <tr style="background:#f0fdf4"><td colspan="2" style="text-align:left;font-weight:800;color:#006400">📋 সম্পদ</td></tr>
+      <tr style="background:#f0fdf4"><td colspan="2" style="text-align:left;font-weight:800;color:#006400">📋 সম্পদ (Assets)</td></tr>
+      <tr><td style="text-align:left;padding-left:16px">নগদ/ব্যাংক ব্যালেন্স (তহবিল)</td><td>${fmtBn(Math.max(0,cashBalanceP))}</td></tr>
+      <tr><td style="text-align:left;padding-left:16px">আদায়যোগ্য ঋণ</td><td>${fmtBn(totalLoanOutP)}</td></tr>
+      <tr><td style="text-align:left;padding-left:16px">বিনিয়োগ</td><td>${fmtBn(totalInvestP)}</td></tr>
+      <tr><td style="text-align:left;padding-left:16px">বকেয়া চাঁদা (আদায়যোগ্য)</td><td>${fmtBn(totalDueChadaP)}</td></tr>
       ${assets.map(a=>`<tr><td style="text-align:left;padding-left:16px">${a.name} (${a.category})</td><td>${fmtBn(a.value)}</td></tr>`).join("")}
-      <tr><td style="text-align:left;padding-left:16px">বিতরণকৃত ঋণ</td><td>${fmtBn(totL)}</td></tr>
-      ${investments.map(i=>`<tr><td style="text-align:left;padding-left:16px">${i.title}</td><td>${fmtBn(i.amount)}</td></tr>`).join("")}
-      <tr style="font-weight:800;background:#dcfce7"><td style="text-align:left">সর্বমোট সম্পদ</td><td>${fmtBn(totA+totL+totInv)}</td></tr>
-      <tr style="background:#fff1f2"><td colspan="2" style="text-align:left;font-weight:800;color:#dc2626">📋 দায় ও মূলধন</td></tr>
-      <tr><td style="text-align:left;padding-left:16px">মোট আয়</td><td>${fmtBn(totI)}</td></tr>
-      <tr><td style="text-align:left;padding-left:16px">মোট ব্যয়</td><td style="color:#dc2626">-${fmtBn(totE)}</td></tr>
-      <tr style="font-weight:800;background:#dcfce7"><td style="text-align:left">নিট তহবিল</td><td>${fmtBn(totI-totE)}</td></tr>
+      <tr style="font-weight:800;background:#dcfce7"><td style="text-align:left">মোট সম্পদ</td><td>${fmtBn(totalAssetP)}</td></tr>
+      <tr style="background:#fff1f2"><td colspan="2" style="text-align:left;font-weight:800;color:#dc2626">🔴 দায় (Liabilities)</td></tr>
+      ${liabilitiesP.map(l=>`<tr><td style="text-align:left;padding-left:16px">${l.name} (${l.type||""})</td><td>${fmtBn(l.amount)}</td></tr>`).join("")||`<tr><td style="text-align:left;padding-left:16px;color:#94a3b8">কোনো ম্যানুয়াল দায় নেই</td><td>—</td></tr>`}
+      ${totalFormerDueP>0?`<tr><td style="text-align:left;padding-left:16px">পূর্ব সদস্যদের ফেরতযোগ্য পাওনা</td><td>${fmtBn(totalFormerDueP)}</td></tr>`:""}
+      <tr style="font-weight:800;background:#fee2e2"><td style="text-align:left">মোট দায়</td><td>${fmtBn(totalLiabilityP)}</td></tr>
+      <tr style="background:#f5f3ff"><td colspan="2" style="text-align:left;font-weight:800;color:#7c3aed">💜 মূলধন (Equity)</td></tr>
+      <tr><td style="text-align:left;padding-left:16px">মোট সম্পদ</td><td>${fmtBn(totalAssetP)}</td></tr>
+      <tr><td style="text-align:left;padding-left:16px">বিয়োগ: মোট দায়</td><td style="color:#dc2626">-${fmtBn(totalLiabilityP)}</td></tr>
+      <tr style="font-weight:800;background:#ede9fe"><td style="text-align:left">নিট মূলধন</td><td>${fmtBn(totalEquityP)}</td></tr>
+      <tr style="background:#f8fafc"><td style="text-align:left;font-size:11px;color:#64748b" colspan="2">✅ যাচাই: সম্পদ (${fmtBn(totalAssetP)}) = দায় (${fmtBn(totalLiabilityP)}) + মূলধন (${fmtBn(totalEquityP)})</td></tr>
     </tbody></table>`;
   }
 
@@ -2986,6 +3183,7 @@ function pgVisitors(){
 // ══════════════════════════════════════════
 function pgPayment(){
   if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
+    if(!D.formerMembers) D.formerMembers=[];
   const {bank,mobile}=D.paymentInfo;
   const mobileIcons={"বিকাশ":"🩷","নগদ":"🧡","রকেট":"💜","উপায়":"💙","অন্যান্য":"📱"};
 
@@ -3085,6 +3283,7 @@ function addBankInfo(){
   const owner=document.getElementById("pi-bowner").value.trim();
   if(!name||!number||!owner){toast("⚠️ ব্যাংকের নাম, নম্বর ও অ্যাকাউন্টের নাম দিন","#d97706");return;}
   if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
+    if(!D.formerMembers) D.formerMembers=[];
   D.paymentInfo.bank.push({id:Date.now(),name,number,owner,
     branch:document.getElementById("pi-branch").value.trim(),
     routing:document.getElementById("pi-routing").value.trim()});
@@ -3098,6 +3297,7 @@ function addMobileInfo(){
   const owner=document.getElementById("pi-mowner").value.trim();
   if(!number||!owner){toast("⚠️ নম্বর ও নাম দিন","#d97706");return;}
   if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
+    if(!D.formerMembers) D.formerMembers=[];
   D.paymentInfo.mobile.push({id:Date.now(),type,number,owner,
     actype:document.getElementById("pi-mactype").value});
   logActivity("payment","নতুন মোবাইল ব্যাংকিং যোগ হয়েছে: "+type+" "+number);
@@ -5076,7 +5276,7 @@ window.addEventListener("DOMContentLoaded",function(){
       D=LS.get(SK)||JSON.parse(JSON.stringify(SEED));
       if(!D.rateHistory)D.rateHistory=[];
       if(!D.activityLog)D.activityLog=[];
-      if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};
+      if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];
       document.getElementById("ls").style.display="none";
       document.getElementById("app").style.display="flex";
       document.getElementById("fab-btn").classList.add("show");
