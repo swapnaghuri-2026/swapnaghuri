@@ -909,6 +909,7 @@ function pgHome(){
   const totalInc=(D.income||[]).reduce((s,i)=>s+i.amount,0)+(payments||[]).reduce((s,p)=>s+p.amount,0);
   const totalExp=(D.expenses||[]).reduce((s,e)=>s+e.amount,0);
   const fund=totalInc-totalExp;
+  const cashFund=calcFund();
   const thisM=payments.filter(p=>p.month===curMon);
   const paidIds=new Set(thisM.map(p=>p.mid));
   const totalInvest=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
@@ -924,7 +925,7 @@ function pgHome(){
 
   const kpis=[
     ["👥",members.length,"মোট সদস্য","#1a8a00","#f0fdf4",""],
-    ["💰",fmt(fund),"তহবিল ব্যালেন্স","#1a8a00","#f0fdf4",""],
+    ["💰",fmt(cashFund),"নগদ তহবিল",cashFund<0?"#dc2626":"#1a8a00",cashFund<0?"#fff1f2":"#f0fdf4",""],
     ["🏛️",fmt(totalNetAsset),"মোট সম্পদ","#1a8a00","#f0fdf4",""],
     ["📈",fmt(totalInvest),"মোট বিনিয়োগ","#d97706","#fffbeb",""],
     ["⚠️",fmt(totalDue),"বকেয়া ঋণ","#dc2626","#fff1f2",""],
