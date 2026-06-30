@@ -3596,17 +3596,36 @@ function sendAllDueNotif(via){
   }
 }
 
+function buildGroupDueMsg(){
+  const duesList=getDuesList().filter(m=>m.totalDue>0);
+  const today=new Date().toLocaleDateString("bn-BD");
+  if(!duesList.length){
+    return `আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nসবার চাঁদা ও ঋণ যথাসময়ে পরিশোধ করা হয়েছে। সবাইকে ধন্যবাদ! ✅\n\nতারিখ: ${today}\nস্বপ্নঘুড়ি সংগঠন`;
+  }
+  const lines=duesList.map((m,i)=>`${i+1}. ${m.name} — ৳${Number(m.totalDue).toLocaleString("bn-BD")}`).join("\n");
+  return `আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nনিম্নলিখিত সদস্যদের চাঁদা/ঋণ বকেয়া রয়েছে। অনুগ্রহ করে দ্রুত পরিশোধ করুন:\n\n${lines}\n\nবিস্তারিত দেখুন:\nhttps://swapnaghuri-2026.github.io/swapnaghuri\n\nতারিখ: ${today}\nধন্যবাদ 🪁\nস্বপ্নঘুড়ি সংগঠন`;
+}
+
 function showMsgPanel(){
   const duesList=getDuesList().filter(m=>m.totalDue>0);
   const members=D.members||[];
-  const html=`<div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.remove()">
-    <div style="background:#fff;border-radius:16px;padding:20px;max-width:420px;width:100%;max-height:80vh;overflow-y:auto">
-      <div style="font-weight:800;font-size:16px;margin-bottom:14px;color:#006400">📱 মেসেজ পাঠান</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
-        <button onclick="sendAllDueNotif('whatsapp');this.closest('[onclick]').remove()" style="background:#25D366;color:#fff;border:none;border-radius:10px;padding:12px;font-family:inherit;font-weight:700;cursor:pointer;font-size:13px">📲 সবাইকে WhatsApp</button>
-        <button onclick="sendAllDueNotif('sms');this.closest('[onclick]').remove()" style="background:#1a8a00;color:#fff;border:none;border-radius:10px;padding:12px;font-family:inherit;font-weight:700;cursor:pointer;font-size:13px">💬 সবাইকে SMS</button>
+  const groupMsg=buildGroupDueMsg();
+  const html=`<div id="msgpanel-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.remove()">
+    <div style="background:#fff;border-radius:16px;padding:20px;max-width:460px;width:100%;max-height:85vh;overflow-y:auto">
+      <div style="font-weight:800;font-size:16px;margin-bottom:4px;color:#006400">📱 মেসেজ পাঠান</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:14px">গ্রুপে পাঠানোর আগে মেসেজ দেখে নিন ও প্রয়োজনে সম্পাদনা করুন</div>
+
+      <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:12px;color:#006400;margin-bottom:8px">👁️ গ্রুপ মেসেজ প্রিভিউ (${duesList.length} জন বকেয়া)</div>
+        <textarea id="group-msg-box" rows="9" style="width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:10px;font-family:inherit;font-size:12.5px;line-height:1.7;resize:vertical;background:#fff;color:#0f172a">${groupMsg}</textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="copyGroupMsg()" style="flex:1;background:#006400;color:#fff;border:none;border-radius:9px;padding:10px;font-family:inherit;font-weight:700;cursor:pointer;font-size:13px">📋 কপি করুন</button>
+          <button onclick="document.getElementById('group-msg-box').value=buildGroupDueMsg()" style="background:#f1f5f9;color:#475569;border:none;border-radius:9px;padding:10px 12px;font-family:inherit;cursor:pointer;font-size:13px">↺ রিসেট</button>
+        </div>
+        <div style="font-size:11px;color:#16a34a;margin-top:6px">✅ কপি করার পর আপনার সংগঠনের WhatsApp গ্রুপে পেস্ট করে পাঠান — সবাই একসাথে দেখতে পারবে</div>
       </div>
-      <div style="font-weight:700;font-size:12px;color:#64748b;margin-bottom:8px">আলাদাভাবে পাঠান (${duesList.length} জন বকেয়া):</div>
+
+      <div style="font-weight:700;font-size:12px;color:#64748b;margin:14px 0 8px">অথবা একজনকে আলাদাভাবে পাঠান:</div>
       ${duesList.map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:9px;background:#f8fafc;margin-bottom:6px">
         <div>
           <div style="font-weight:600;font-size:13px">${m.name}</div>
@@ -3627,7 +3646,21 @@ function showMsgPanel(){
           <button onclick="sendSMSNotif(${m.id})" style="background:#1a8a00;color:#fff;border:none;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px">💬</button>
         </div>
       </div>`).join("")}
-      <button onclick="this.closest('div[style*=\"fixed\"]').remove()" style="width:100%;margin-top:10px;background:#f1f5f9;border:none;border-radius:10px;padding:10px;font-family:inherit;cursor:pointer;font-weight:600">বন্ধ করুন</button>
+      <button onclick="document.getElementById('msgpanel-overlay').remove()" style="width:100%;margin-top:10px;background:#f1f5f9;border:none;border-radius:10px;padding:10px;font-family:inherit;cursor:pointer;font-weight:600">বন্ধ করুন</button>
+    </div></div>`;
+  document.body.insertAdjacentHTML("beforeend",html);
+}
+
+function copyGroupMsg(){
+  const ta=document.getElementById("group-msg-box");
+  const text=ta.value;
+  navigator.clipboard.writeText(text).then(()=>{
+    toast("📋 কপি হয়েছে! WhatsApp গ্রুপে পেস্ট করুন");
+  }).catch(()=>{
+    ta.select();document.execCommand("copy");
+    toast("📋 কপি হয়েছে!");
+  });
+}
     </div>
   </div>`;
   document.body.insertAdjacentHTML("beforeend",html);
