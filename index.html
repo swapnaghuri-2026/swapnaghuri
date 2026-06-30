@@ -2168,7 +2168,7 @@ function memberProfilePDF(mid){
   const totalLoanDue=loans.reduce((s,l)=>s+l.remaining,0);
   const fundShare=calcFund()/Math.max(1,(D.members||[]).length);
   const curRate=getApplicableRate(mid,curMon);
-  const r=(label,val)=>`<tr><td style="padding:7px 10px;border:1px solid #e2e8f0;color:#64748b;font-size:12px;width:40%">${label}</td><td style="padding:7px 10px;border:1px solid #e2e8f0;font-weight:600;font-size:12px">${val||"—"}</td></tr>`;
+  const r=(label,val)=>`<tr><td style="padding:7px 10px;border:1px solid #e2e8f0;color:#64748b;font-size:12px;width:40%;text-align:left">${label}</td><td style="padding:7px 10px;border:1px solid #e2e8f0;font-weight:600;font-size:12px;text-align:left">${val||"—"}</td></tr>`;
   const sec=(title)=>`<tr><td colspan="2" style="background:#006400;color:#fff;padding:8px 10px;font-weight:700;font-size:13px">${title}</td></tr>`;
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfStyle}table{width:100%;border-collapse:collapse;margin-bottom:16px}.kpi{display:inline-block;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin:4px;text-align:center}.kv{font-size:16px;font-weight:800;color:#006400}.kl{font-size:10px;color:#64748b}</style></head><body>
   ${pdfWM()}${pdfBtn()}
