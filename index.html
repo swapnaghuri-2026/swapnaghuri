@@ -3564,13 +3564,26 @@ function buildDueMsg(m){
     +`📊 সর্বমোট: *${fmt(chadaDue+loanDue)}*\n\nঅনুগ্রহ করে দ্রুত পরিশোধ করুন।\n🔗 https://swapnaghuri-2026.github.io/swapnaghuri`;
 }
 
+function cleanPhone(phone){
+  // শুধু সংখ্যা রাখি, ড্যাশ/স্পেস/+ সব বাদ
+  let p=(phone||"").replace(/[^\d]/g,"");
+  // যদি already 88 দিয়ে শুরু হয়
+  if(p.startsWith("88")&&p.length===13) return p;
+  // যদি 0 দিয়ে শুরু হয় (০১৭...)
+  if(p.startsWith("0")) return "88"+p;
+  // যদি শুধু 1 দিয়ে শুরু হয় (017...)
+  if(p.startsWith("1")&&p.length===10) return "88"+"0"+p.slice(1);
+  return "88"+p;
+}
+
 function sendDueNotif(mid){
   const m=(D.members||[]).find(x=>x.id==mid);
   if(!m){toast("সদস্য পাওয়া যায়নি","#d97706");return;}
   if(!m.phone){toast("⚠️ ফোন নম্বর নেই! সদস্য সেকশনে যোগ করুন","#d97706");return;}
   const msg=buildDueMsg(m);
   if(!msg){toast("✅ এই সদস্যের কোনো বকেয়া নেই","#1a8a00");return;}
-  window.open(`https://wa.me/88${m.phone}?text=${encodeURIComponent(msg)}`,"_blank");
+  const cleanedPhone=cleanPhone(m.phone);
+  window.open(`https://wa.me/${cleanedPhone}?text=${encodeURIComponent(msg)}`,"_blank");
 }
 
 function sendSMSNotif(mid){
@@ -3579,7 +3592,8 @@ function sendSMSNotif(mid){
   if(!m.phone){toast("⚠️ ফোন নম্বর নেই","#d97706");return;}
   const msg=buildDueMsg(m);
   if(!msg){toast("✅ কোনো বকেয়া নেই","#1a8a00");return;}
-  window.open(`sms:+88${m.phone}?body=${encodeURIComponent(msg)}`,"_blank");
+  const cleanedPhone=cleanPhone(m.phone);
+  window.open(`sms:+${cleanedPhone}?body=${encodeURIComponent(msg)}`,"_blank");
 }
 
 function sendAllDueNotif(via){
