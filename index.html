@@ -3653,11 +3653,15 @@ function sendAllDueNotif(via){
 function buildGroupDueMsg(){
   const duesList=getDuesList().filter(m=>m.totalDue>0);
   const today=new Date().toLocaleDateString("bn-BD");
+  const fullMonthNames=["জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর"];
+  const now=new Date();
+  const curMonthName=fullMonthNames[now.getMonth()]+" "+now.getFullYear().toLocaleString("bn-BD").replace(/[0-9]/g,d=>"০১২৩৪৫৬৭৮৯"[d]);
+  const curMonthBn=fullMonthNames[now.getMonth()]+" "+String(now.getFullYear()).replace(/[0-9]/g,d=>"০১২৩৪৫৬৭৮৯"[d]);
   if(!duesList.length){
     return `আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nসবার চাঁদা ও ঋণ যথাসময়ে পরিশোধ করা হয়েছে। সবাইকে ধন্যবাদ! ✅\n\nতারিখ: ${today}\nস্বপ্নঘুড়ি সংগঠন`;
   }
   const lines=duesList.map((m,i)=>`${i+1}. ${m.name} — ৳${Number(m.totalDue).toLocaleString("bn-BD")}`).join("\n");
-  return `আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nনিম্নলিখিত সদস্যদের চাঁদা/ঋণ বকেয়া রয়েছে। অনুগ্রহ করে দ্রুত পরিশোধ করুন:\n\n${lines}\n\nবিস্তারিত দেখুন:\nhttps://swapnaghuri-2026.github.io/swapnaghuri\n\nতারিখ: ${today}\nধন্যবাদ 🪁\nস্বপ্নঘুড়ি সংগঠন`;
+  return `আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nনিম্নলিখিত সদস্যদের ${curMonthBn} মাস পর্যন্ত চাঁদা/ঋণ বকেয়া রয়েছে। অনুগ্রহ করে দ্রুত পরিশোধ করুন:\n\n${lines}\n\nবিস্তারিত দেখুন:\nhttps://swapnaghuri-2026.github.io/swapnaghuri\n\nতারিখ: ${today}\nধন্যবাদ 🪁\nস্বপ্নঘুড়ি সংগঠন`;
 }
 
 function showMsgPanel(){
@@ -4632,6 +4636,7 @@ function pgMsgTemplate(){
             <button onclick="saveTemplate()" class="btn btn-g">💾 সংরক্ষণ করুন</button>
             <button onclick="insertVar('[সদস্যের নাম]')" class="btn btn-sm btn-outline">👤 নাম যোগ</button>
             <button onclick="insertVar('[তারিখ]')" class="btn btn-sm btn-outline">📅 তারিখ যোগ</button>
+            <button onclick="insertVar('[মাস]')" class="btn btn-sm btn-outline">🗓️ মাস যোগ</button>
             <button onclick="insertVar('${siteUrl}')" class="btn btn-sm btn-outline">🔗 লিংক যোগ</button>
             <button onclick="insertVar('[পরিমাণ]')" class="btn btn-sm btn-outline">৳ পরিমাণ যোগ</button>
           </div>
@@ -4668,18 +4673,25 @@ function saveTemplate(){
   goTab("msgtemplate");
 }
 
+function getCurMonthBn(){
+  const fullMonthNames=["জানুয়ারি","ফেব্রুয়ারি","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টেম্বর","অক্টোবর","নভেম্বর","ডিসেম্বর"];
+  const now=new Date();
+  return fullMonthNames[now.getMonth()]+" "+String(now.getFullYear()).replace(/[0-9]/g,d=>"০১২৩৪৫৬৭৮৯"[d]);
+}
+
 function copyTemplate(id){
   const siteUrl="https://swapnaghuri-2026.github.io/swapnaghuri";
+  const curMonthBn=getCurMonthBn();
   const defaults=[
     {id:"default1",title:"ওয়েবসাইট ভিজিট অনুরোধ",category:"সাধারণ",body:`আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nআমাদের স্বপ্নঘুড়ি সংগঠনের নতুন ডিজিটাল প্ল্যাটফর্ম চালু হয়েছে। এখন থেকে সঞ্চয়, ঋণ, আয়-ব্যয়সহ সংগঠনের সকল তথ্য অনলাইনে দেখা যাবে।\n\n🔗 ওয়েবসাইট লিংক:\n${siteUrl}\n\nঅনুগ্রহ করে একবার ভিজিট করুন এবং আপনার মূল্যবান মতামত জানান।\n\nধন্যবাদ 🪁\nস্বপ্নঘুড়ি পরিবার`},
-    {id:"default2",title:"মাসিক চাঁদা পরিশোধের অনুরোধ",category:"চাঁদা",body:`আসসালামু আলাইকুম,\n\nপ্রিয় সদস্য,\n\nএই মাসের চাঁদা এখনো পরিশোধ হয়নি। অনুগ্রহ করে দ্রুত পরিশোধ করুন।\n\nবিস্তারিত দেখুন:\n${siteUrl}\n\nধন্যবাদ।\nস্বপ্নঘুড়ি সংগঠন`},
+    {id:"default2",title:"মাসিক চাঁদা পরিশোধের অনুরোধ",category:"চাঁদা",body:`আসসালামু আলাইকুম,\n\nপ্রিয় সদস্য,\n\n${curMonthBn} মাসের চাঁদা এখনো পরিশোধ হয়নি। অনুগ্রহ করে দ্রুত পরিশোধ করুন।\n\nবিস্তারিত দেখুন:\n${siteUrl}\n\nধন্যবাদ।\nস্বপ্নঘুড়ি সংগঠন`},
     {id:"default3",title:"মিটিং এর নোটিশ",category:"মিটিং",body:`আসসালামু আলাইকুম,\n\nসকল সদস্যকে জানানো যাচ্ছে যে আগামী মিটিং অনুষ্ঠিত হবে। সবাইকে যথাসময়ে উপস্থিত থাকার অনুরোধ করা হচ্ছে।\n\nবিস্তারিত জানতে:\n${siteUrl}\n\nধন্যবাদ।\nস্বপ্নঘুড়ি সংগঠন`},
   ];
   const all=[...defaults,...(D.msgTemplates||[])];
   const t=all.find(x=>x.id===id);
   if(!t)return;
   const today=new Date().toLocaleDateString("bn-BD");
-  const text=t.body.replace(/\[তারিখ\]/g,today);
+  const text=t.body.replace(/\[তারিখ\]/g,today).replace(/\[মাস\]/g,curMonthBn);
   navigator.clipboard.writeText(text).then(()=>toast("📋 কপি হয়েছে! WhatsApp-এ পেস্ট করুন")).catch(()=>{
     const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);toast("📋 কপি হয়েছে!");
   });
