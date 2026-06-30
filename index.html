@@ -303,6 +303,7 @@ const firebaseConfig = {
         <div>
           <div style="font-size:17px;font-weight:800" id="pt">হোম</div>
           <div style="font-size:11px;color:var(--muted)" id="ps"></div>
+          <div id="sync-badge" style="margin-top:2px"></div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
@@ -441,12 +442,50 @@ const gn=id=>((D.members||[]).find(m=>m.id==id)||{}).name||"অজানা";
 const isA=()=>role==="admin";
 const sv=()=>{
   LS.set(SK,D);
+  updateSyncStatus("saving");
   try{
     if(typeof firebase!=='undefined'&&firebase.apps&&firebase.apps.length){
-      firebase.database().ref('sg_data').set(JSON.stringify(D));
+      firebase.database().ref('sg_data').set(JSON.stringify(D)).then(()=>{
+        updateSyncStatus("synced");
+      }).catch(()=>{
+        updateSyncStatus("error");
+      });
+    }else{
+      updateSyncStatus("offline");
     }
-  }catch(e){}
+  }catch(e){
+    updateSyncStatus("error");
+  }
 };
+
+function updateSyncStatus(status){
+  window._syncStatus=status;
+  window._syncTime=new Date();
+  renderSyncBadge();
+}
+
+function renderSyncBadge(){
+  const el=document.getElementById("sync-badge");
+  if(!el)return;
+  const status=window._syncStatus||"unknown";
+  const time=window._syncTime?window._syncTime.toLocaleTimeString("bn-BD",{hour:'2-digit',minute:'2-digit'}):"";
+  const map={
+    saving:{icon:"⏳",text:"সেভ হচ্ছে...",color:"#d97706"},
+    synced:{icon:"☁️✅",text:"ক্লাউডে সেভ হয়েছে",color:"#16a34a"},
+    offline:{icon:"📴",text:"অফলাইন (লোকাল সেভ)",color:"#64748b"},
+    error:{icon:"⚠️",text:"ক্লাউড সিঙ্ক ব্যর্থ",color:"#dc2626"},
+    unknown:{icon:"❓",text:"যাচাই হয়নি",color:"#94a3b8"}
+  };
+  const s=map[status]||map.unknown;
+  el.innerHTML=`<span title="শেষ আপডেট: ${time}" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:${s.color};font-weight:600;cursor:pointer" onclick="showSyncDetail()">${s.icon} ${s.text}</span>`;
+}
+
+function showSyncDetail(){
+  const status=window._syncStatus||"unknown";
+  const time=window._syncTime?window._syncTime.toLocaleString("bn-BD"):"কখনো না";
+  const fbConnected=typeof firebase!=="undefined"&&firebase.apps&&firebase.apps.length>0;
+  alert(`📊 সিঙ্ক স্ট্যাটাস তথ্য\n\nFirebase সংযুক্ত: ${fbConnected?"✅ হ্যাঁ":"❌ না"}\nবর্তমান অবস্থা: ${status}\nশেষ আপডেট: ${time}\n\n${fbConnected?"আপনার ডাটা স্বয়ংক্রিয়ভাবে ক্লাউডে (Firebase) সংরক্ষিত হচ্ছে। ইন্টারনেট থাকলে সব ডিভাইসে একই ডাটা দেখাবে।":"⚠️ ক্লাউড সংযোগ নেই। ডাটা শুধু এই ফোনে/ব্রাউজারে আছে। ইন্টারনেট চেক করুন।"}`);
+}
 
 function toast(m,c="#1a8a00"){const t=document.getElementById("toast");t.textContent=m;t.style.background=c;t.style.display="block";t.style.animation="fadeUp .3s ease";setTimeout(()=>t.style.display="none",2800);}
 const bdg=(t,c,bg,s=11)=>`<span class="badge" style="color:${c};background:${bg};font-size:${s}px">${t}</span>`;
@@ -641,6 +680,7 @@ function buildNav(){
   const msgBtn=document.getElementById("msg-btn");
   if(msgBtn) msgBtn.style.display=isAd?"block":"none";
   renderNotifBell();
+  renderSyncBadge();
   updHdr();
 }
 function toggleSbSec(sec){
@@ -4991,6 +5031,7 @@ pdfDownload=function(type){
           });
         }
         if(window.role && window.D){
+          updateSyncStatus("synced");
           firebase.database().ref('sg_data').once('value').then(function(snap){
             if(snap.exists()){
               try{
@@ -5003,7 +5044,7 @@ pdfDownload=function(type){
             if(snap.exists()&&window.role){
               try{
                 var fbData=JSON.parse(snap.val());
-                if(fbData&&fbData.members){ window.D=fbData; if(window.curTab)window.goTab(window.curTab); }
+                if(fbData&&fbData.members){ window.D=fbData; if(window.curTab)window.goTab(window.curTab); updateSyncStatus("synced"); }
               }catch(e){}
             }
           });
