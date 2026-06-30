@@ -275,8 +275,6 @@ const firebaseConfig = {
     </div>
     <nav class="sb-nav" id="sb-nav"></nav>
     <div class="sb-footer">
-      <div style="color:rgba(255,255,255,.4);font-size:10px">নগদ তহবিল (হাতে থাকা)</div>
-      <div id="sb-fund" style="color:#fff;font-weight:800;font-size:18px;margin:2px 0 4px">৳০</div>
       <div style="color:rgba(255,255,255,.4);font-size:10px">মোট বকেয়া</div>
       <div id="sb-due" style="color:#f87171;font-weight:700;font-size:15px;margin:2px 0 10px">৳০</div>
       <div id="sb-backup-restore" style="display:none;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
@@ -315,10 +313,6 @@ const firebaseConfig = {
         </div>
         <button id="msg-btn" onclick="showMsgPanel()" style="display:none;background:#25D366;border:none;border-radius:9px;padding:6px 10px;cursor:pointer;font-size:16px" title="মেসেজ পাঠান">📲</button>
         <div id="tb-badge"></div>
-        <div style="text-align:right;cursor:pointer" onclick="explainFund()">
-          <div style="font-size:9px;color:var(--muted)">নগদ তহবিল ℹ️</div>
-          <div id="tb-fund" style="font-weight:800;font-size:14px;color:var(--g2)">৳০</div>
-        </div>
       </div>
     </div>
     <div class="content" id="content"></div>
@@ -434,7 +428,7 @@ const SEED = {
 // STATE
 // ══════════════════
 let role=sessionStorage.getItem("sg_role")||null, curTab="home", D=null;
-const LS={get:k=>{try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v))};
+const LS={get:k=>{try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){console.error("storage save failed",e);return false;}}};
 const fmt=n=>"৳"+Number(n||0).toLocaleString("bn-BD");
 const now=new Date();
 const curMon=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
@@ -443,7 +437,11 @@ const ds=d=>{try{const x=new Date(d);return `${x.getDate()} ${BNM[x.getMonth()]}
 const gn=id=>((D.members||[]).find(m=>m.id==id)||{}).name||"অজানা";
 const isA=()=>role==="admin";
 const sv=()=>{
-  LS.set(SK,D);
+  const okLocal=LS.set(SK,D);
+  if(!okLocal){
+    toast("⚠️ স্টোরেজ পূর্ণ হয়ে গেছে! ডেটা সেভ হয়নি — পুরনো/বড় ছবি মুছে আবার চেষ্টা করুন","#dc2626");
+    updateSyncStatus("error");
+  }
   updateSyncStatus("saving");
   try{
     if(typeof firebase!=='undefined'&&firebase.apps&&firebase.apps.length){
@@ -453,7 +451,7 @@ const sv=()=>{
         updateSyncStatus("error");
       });
     }else{
-      updateSyncStatus("offline");
+      updateSyncStatus(okLocal?"offline":"error");
     }
   }catch(e){
     updateSyncStatus("error");
@@ -693,9 +691,8 @@ function toggleSbSec(sec){
 function updHdr(){
   const fund=calcFund();
   const due=(D.loans||[]).reduce((s,l)=>s+l.remaining,0);
-  document.getElementById("sb-fund").textContent=fmt(fund);
-  document.getElementById("sb-due").textContent=fmt(due);
-  document.getElementById("tb-fund").textContent=fmt(fund);
+  const sbDue=document.getElementById("sb-due");
+  if(sbDue) sbDue.textContent=fmt(due);
 }
 function calcFund(){
   // নিট নগদ তহবিল = (চাঁদা + অন্যান্য আয়) − পরিচালন ব্যয় − বিতরণকৃত ঋণ (নিট) − বিনিয়োগ
@@ -2332,15 +2329,34 @@ function memberProfilePDF(mid){
   toast("📄 PDF প্রস্তুত হচ্ছে");
 }
 
+function compressImage(file,maxW,cb,quality){
+  quality=quality||0.72;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.width,h=img.height;
+      if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
+      const canvas=document.createElement("canvas");
+      canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext("2d");
+      ctx.drawImage(img,0,0,w,h);
+      try{cb(canvas.toDataURL("image/jpeg",quality));}catch(err){cb(e.target.result);}
+    };
+    img.onerror=()=>cb(e.target.result);
+    img.src=e.target.result;
+  };
+  reader.onerror=()=>cb(null);
+  reader.readAsDataURL(file);
+}
 function changeMemberPhoto(mid,input){
   const f=input.files[0];if(!f)return;
   if(f.size>2097152){toast("⚠️ ছবি ২ MB-র কম হতে হবে","#d97706");return;}
-  const r=new FileReader();
-  r.onload=e=>{
+  compressImage(f,260,dataUrl=>{
+    if(!dataUrl){toast("⚠️ ছবি প্রসেস করা যায়নি","#dc2626");return;}
     const m=(D.members||[]).find(x=>x.id==mid);
-    if(m){m.photo=e.target.result;sv();toast("✅ ছবি আপডেট হয়েছে");closeMemberProfile();openMemberProfile(mid);}
-  };
-  r.readAsDataURL(f);
+    if(m){m.photo=dataUrl;sv();toast("✅ ছবি আপডেট হয়েছে");closeMemberProfile();openMemberProfile(mid);}
+  });
 }
 
 function uploadMemberDoc(mid,field,input){
