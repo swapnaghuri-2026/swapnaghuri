@@ -366,8 +366,8 @@ const firebaseConfig = {
 <div class="fab-menu" id="fab-menu">
   <button onclick="goTab('members');closeFab()">👤 নতুন সদস্য</button>
   <button onclick="goTab('savings');closeFab()">💰 চাঁদা যোগ</button>
-  <button onclick="goTab('expenses');closeFab()">📥 আয় যোগ</button>
-  <button onclick="goTab('expenses');closeFab()">📤 ব্যয় যোগ</button>
+  <button onclick="window._expFocus='income';goTab('expenses');closeFab()">📥 আয় যোগ</button>
+  <button onclick="window._expFocus='expense';goTab('expenses');closeFab()">📤 ব্যয় যোগ</button>
   <button onclick="goTab('meeting');closeFab()">📅 মিটিং যোগ</button>
 </div>
 
@@ -436,27 +436,54 @@ const BNM=["জানু","ফেব্রু","মার্চ","এপ্র�
 const ds=d=>{try{const x=new Date(d);return `${x.getDate()} ${BNM[x.getMonth()]} ${x.getFullYear()}`;}catch(e){return d;}};
 const gn=id=>((D.members||[]).find(m=>m.id==id)||{}).name||"অজানা";
 const isA=()=>role==="admin";
+// ── সিঙ্ক ট্র্যাকিং ──
+// _dirty: true মানে local-এ unsaved পরিবর্তন আছে যা Firebase-এ যায়নি
+window._dirty = false;
+window._syncRetries = 0;
+const MAX_SYNC_RETRIES = 3;
+const SYNC_RETRY_DELAYS = [3000, 8000, 20000]; // 3s, 8s, 20s
+
 const sv=()=>{
   const okLocal=LS.set(SK,D);
   if(!okLocal){
-    toast("⚠️ স্টোরেজ পূর্ণ হয়ে গেছে! ডেটা সেভ হয়নি — পুরনো/বড় ছবি মুছে আবার চেষ্টা করুন","#dc2626");
+    toast("⚠️ স্টোরেজ পূর্ণ! ডেটা সেভ হয়নি — পুরনো/বড় ছবি মুছে আবার চেষ্টা করুন","#dc2626");
     updateSyncStatus("error");
+    return;
   }
+  window._dirty = true;
   updateSyncStatus("saving");
+  _syncToFirebase(0);
+};
+
+function _syncToFirebase(attempt){
   try{
     if(typeof firebase!=='undefined'&&firebase.apps&&firebase.apps.length){
-      firebase.database().ref('sg_data').set(JSON.stringify(D)).then(()=>{
-        updateSyncStatus("synced");
-      }).catch(()=>{
-        updateSyncStatus("error");
-      });
-    }else{
+      firebase.database().ref('sg_data').set(JSON.stringify(D))
+        .then(()=>{
+          window._dirty = false;
+          window._syncRetries = 0;
+          updateSyncStatus("synced");
+        })
+        .catch(err=>{
+          console.warn("Firebase sync error (attempt "+(attempt+1)+"):", err);
+          if(attempt < MAX_SYNC_RETRIES - 1){
+            const delay = SYNC_RETRY_DELAYS[attempt]||20000;
+            updateSyncStatus("retrying");
+            setTimeout(()=>_syncToFirebase(attempt+1), delay);
+          } else {
+            window._syncRetries++;
+            updateSyncStatus("error");
+            toast("⚠️ ক্লাউড সিঙ্ক ব্যর্থ — ডেটা লোকালে সেভ আছে, ইন্টারনেট চেক করুন","#dc2626");
+          }
+        });
+    } else {
       updateSyncStatus(okLocal?"offline":"error");
     }
   }catch(e){
+    console.error("Firebase sync exception:", e);
     updateSyncStatus("error");
   }
-};
+}
 
 function updateSyncStatus(status){
   window._syncStatus=status;
@@ -471,6 +498,7 @@ function renderSyncBadge(){
   const time=window._syncTime?window._syncTime.toLocaleTimeString("bn-BD",{hour:'2-digit',minute:'2-digit'}):"";
   const map={
     saving:{icon:"⏳",text:"সেভ হচ্ছে...",color:"#d97706"},
+    retrying:{icon:"🔄",text:"পুনরায় চেষ্টা হচ্ছে...",color:"#d97706"},
     synced:{icon:"☁️✅",text:"ক্লাউডে সেভ হয়েছে",color:"#16a34a"},
     offline:{icon:"📴",text:"অফলাইন (লোকাল সেভ)",color:"#64748b"},
     error:{icon:"⚠️",text:"ক্লাউড সিঙ্ক ব্যর্থ",color:"#dc2626"},
@@ -502,8 +530,82 @@ const ch=(ic,ti,su="",g="g")=>`<div class="ch" style="background:${GR[g]}"><span
 const rw=(l,v,cls="")=>`<div class="row ${cls}"><span class="rl">${l}</span><span class="rv">${v}</span></div>`;
 
 // ══════════════════════════════════════════
-// কার্যক্রম লগ (Activity / Audit Log)
+// সংগঠনের শুরুর তারিখ — সব জায়গায় এটাই ব্যবহার হবে
+// নতুন সদস্যের join date না থাকলে এই তারিখ থেকে হিসাব শুরু হবে
 // ══════════════════════════════════════════
+const ORG_START = new Date(2021,10,1); // নভেম্বর ২০২১
+
+
+// সব ফর্মের validation এখান থেকে হয়
+// ══════════════════════════════════════════
+
+// ── Helpers ──
+const PHONE_RE = /^(?:\+88)?01[3-9]\d{8}$/;         // BD mobile: 01X-XXXXXXXX
+const NID_RE   = /^\d{10}$|^\d{13}$|^\d{17}$/;       // BD NID: 10, 13, বা 17 সংখ্যা
+
+function validatePhone(p){
+  if(!p) return null; // phone optional
+  const cleaned = p.replace(/[\s\-]/g,"");
+  return PHONE_RE.test(cleaned) ? null : "মোবাইল নম্বর সঠিক নয় (01X-XXXXXXXX)";
+}
+function validateNID(n){
+  if(!n) return null; // NID optional
+  const cleaned = n.replace(/[\s\-]/g,"");
+  return NID_RE.test(cleaned) ? null : "NID সঠিক নয় (১০, ১৩ বা ১৭ সংখ্যা)";
+}
+function validateAmount(a, label="পরিমাণ"){
+  const n = Number(a);
+  if(!a && a!==0) return label+" দিন";
+  if(isNaN(n)||n<=0) return label+" অবশ্যই শূন্যের বেশি হতে হবে";
+  if(n>999999999) return label+" অস্বাভাবিক বেশি — যাচাই করুন";
+  return null;
+}
+function validateDate(d, label="তারিখ"){
+  if(!d) return label+" দিন";
+  const dt = new Date(d);
+  if(isNaN(dt.getTime())) return label+" সঠিক নয়";
+  if(dt.getFullYear() < 2000 || dt.getFullYear() > 2100) return label+" পরিসীমার বাইরে";
+  return null;
+}
+function validateRequired(v, label){
+  return (v===undefined||v===null||String(v).trim()==="") ? label+" দিতে হবে" : null;
+}
+
+// ── Duplicate checks ──
+function checkDuplicateMember(name, phone, excludeId=null){
+  const members = D.members||[];
+  const nameMatch = members.find(m=>
+    m.id!=excludeId && m.name.trim().toLowerCase()===name.trim().toLowerCase()
+  );
+  if(nameMatch) return `"${name}" নামে আগেই একজন সদস্য আছেন`;
+  if(phone){
+    const cleaned = phone.replace(/[\s\-]/g,"");
+    const phoneMatch = members.find(m=>
+      m.id!=excludeId && m.phone && m.phone.replace(/[\s\-]/g,"")=== cleaned
+    );
+    if(phoneMatch) return `এই মোবাইল নম্বরে আগেই "${phoneMatch.name}" সদস্য হিসেবে আছেন`;
+  }
+  return null;
+}
+function checkDuplicateDues(mid, month){
+  const exists = (D.payments||[]).find(p=> p.mid==mid && p.month===month);
+  if(exists){
+    const m = (D.members||[]).find(x=>x.id==mid);
+    return `${m?m.name:"এই সদস্য"}-এর ${month} মাসের চাঁদা আগেই দেওয়া আছে (৳${Number(exists.amount).toLocaleString("bn-BD")})`;
+  }
+  return null;
+}
+
+// ── Toast validation error helper ──
+// errors: array of [condition, message] — প্রথম error-টাই দেখাবে
+function showValidationErrors(checks){
+  for(const [condition, msg] of checks){
+    if(condition){ toast("⚠️ "+msg,"#d97706"); return false; }
+  }
+  return true;
+}
+
+
 function logActivity(type, text){
   D.activityLog = [...(D.activityLog||[]), {
     id: Date.now()+"_"+Math.random().toString(36).slice(2,7),
@@ -582,9 +684,19 @@ function login(r){
             try{
               if(snap.exists()&&role){
                 var fd=JSON.parse(snap.val());
-                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];LS.set(SK,D);if(curTab)goTab(curTab);}
+                if(fd&&fd.members){
+                  // Conflict detection: local-এ unsaved পরিবর্তন থাকলে সতর্ক করো
+                  if(window._dirty){
+                    toast("⚠️ ক্লাউড থেকে নতুন ডেটা এসেছে — লোকাল পরিবর্তন মার্জ হচ্ছে","#d97706");
+                  }
+                  D=fd;
+                  if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];
+                  window._dirty=false;
+                  LS.set(SK,D);
+                  if(curTab)goTab(curTab);
+                }
               }
-            }catch(e){}
+            }catch(e){console.error("Firebase listener error:",e);}
           });
         }
       }catch(e){}
@@ -718,27 +830,42 @@ function explainFund(){
 }
 function calcHealthScore(){
   const members=D.members||[], payments=D.payments||[], loans=D.loans||[], goals=D.goals||[];
-  const allMonthsH=[];let dh=new Date(2021,10,1);const nowH=new Date();
-  while(dh<=nowH){allMonthsH.push(`${dh.getFullYear()}-${String(dh.getMonth()+1).padStart(2,"0")}`);dh=new Date(dh.getFullYear(),dh.getMonth()+1,1);}
+
+  // চাঁদা আদায়ের হার — প্রতিটি সদস্যের join date থেকে হিসাব
   const totalExp2=members.reduce((s,m)=>{
     const spM=(D.specialMonths||[]).filter(x=>x.mid==m.id);
-    return s+allMonthsH.reduce((s2,mon)=>{
+    const memberMonths=[];
+    let startDate=new Date(ORG_START);
+    const jRaw=m.join||m.joinDate||"";
+    if(jRaw){const parts=jRaw.split("-");if(parts.length>=2){const jd=new Date(Number(parts[0]),Number(parts[1])-1,1);if(!isNaN(jd.getTime())&&jd>startDate)startDate=jd;}}
+    let dh=new Date(startDate.getFullYear(),startDate.getMonth(),1);const nowH=new Date();
+    while(dh<=nowH){memberMonths.push(`${dh.getFullYear()}-${String(dh.getMonth()+1).padStart(2,"0")}`);dh=new Date(dh.getFullYear(),dh.getMonth()+1,1);}
+    return s+memberMonths.reduce((s2,mon)=>{
       const sp=spM.find(x=>x.month===mon);
       return s2+getApplicableRate(m.id,mon)+(sp?sp.amount:0);
     },0);
   },0);
   const totalPaid2=payments.reduce((s,p)=>s+p.amount,0);
   const collectionRate=totalExp2?Math.round(totalPaid2/totalExp2*100):0;
+
   const loanDueTotal=loans.reduce((s,l)=>s+l.remaining,0);
   const loanTotal=loans.reduce((s,l)=>s+l.principal,0);
   const loanRecovery=loanTotal?Math.round((loanTotal-loanDueTotal)/loanTotal*100):100;
-  const fund=calcFund();
+
+  // লক্ষ্যমাত্রার অগ্রগতি — মোট সম্পদের ভিত্তিতে (শুধু নগদ নয়)
+  const cashFund=calcFund();
+  const totalInvestAll=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
+  const totalAssetAll=(D.assets||[]).reduce((s,a)=>s+a.value,0);
+  const totalLoanReceivable=loans.reduce((s,l)=>s+l.remaining,0);
+  const totalNetAsset=totalAssetAll+totalInvestAll+totalLoanReceivable+Math.max(0,cashFund);
+
   const mainGoal=goals[0];
-  const goalProgress=mainGoal?Math.round(fund/mainGoal.target*100):0;
+  const goalProgress=mainGoal&&mainGoal.target>0?Math.round(totalNetAsset/mainGoal.target*100):0;
+
   const score=Math.round((collectionRate*0.4)+(loanRecovery*0.3)+(Math.min(goalProgress,100)*0.3));
   const scoreColor=score>=80?"#16a34a":score>=60?"#d97706":"#dc2626";
   const scoreLabel=score>=80?"🟢 চমৎকার":score>=60?"🟡 মোটামুটি":"🔴 উদ্বেগজনক";
-  return {score,scoreColor,scoreLabel,collectionRate,loanRecovery,goalProgress};
+  return {score,scoreColor,scoreLabel,collectionRate,loanRecovery,goalProgress,totalNetAsset};
 }
 function goTab(id){
   curTab=id;
@@ -754,7 +881,29 @@ function goTab(id){
   const c=document.getElementById("content");
   c.className="content pa";c.innerHTML="";
   const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate,formermembers:pgFormerMembers};
-  if(pages[id])c.innerHTML=pages[id]();
+  if(pages[id]){
+    try{
+      c.innerHTML=pages[id]();
+    }catch(err){
+      console.error("Page render error ["+id+"]:",err);
+      c.innerHTML=`<div style="background:#fff1f2;border:2px solid #fca5a5;border-radius:13px;padding:24px;text-align:center;margin-top:24px">
+        <div style="font-size:32px;margin-bottom:10px">⚠️</div>
+        <div style="font-weight:700;font-size:15px;color:#dc2626;margin-bottom:6px">পেজ লোড করতে সমস্যা হয়েছে</div>
+        <div style="font-size:12px;color:#9f1239;margin-bottom:14px">${err.message||"অজানা সমস্যা"}</div>
+        <button class="btn btn-g" onclick="goTab('${id}')">🔄 পুনরায় চেষ্টা করুন</button>
+        <button class="btn btn-outline" style="margin-left:8px" onclick="goTab('home')">🏠 হোমে যান</button>
+      </div>`;
+      // Error log-এ রেকর্ড করো
+      try{
+        D.activityLog=[...(D.activityLog||[]),{
+          id:Date.now()+"_err",type:"error",
+          text:"Page render error ["+id+"]: "+err.message,
+          by:isA()?"অ্যাডমিন":"ভিউয়ার",
+          at:new Date().toISOString()
+        }];
+      }catch(e2){}
+    }
+  }
   buildNav();
   updHdr();
 }
@@ -910,8 +1059,11 @@ function pgHome(){
   const thisM=payments.filter(p=>p.month===curMon);
   const paidIds=new Set(thisM.map(p=>p.mid));
   const totalInvest=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
-  // মোট দায় (বাহ্যিক)
-  const totalLiability=(D.liabilities||[]).reduce((s,l)=>s+l.amount,0);
+  // মোট দায় (বাহ্যিক) = ম্যানুয়াল দায় + পূর্ব সদস্যদের ফেরত পাওনা (যা এখনো ফেরত দেওয়া হয়নি)
+  // ব্যালেন্স শিট পেজের সূত্রের সাথে মিল রাখার জন্য former members-এর দায়ও যোগ করা হলো
+  const totalManualLiability=(D.liabilities||[]).reduce((s,l)=>s+l.amount,0);
+  const totalFormerMemberDue=(D.formerMembers||[]).filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
+  const totalLiability=totalManualLiability+totalFormerMemberDue;
 
   const pinned=(D.notices||[]).find(n=>n.pinned);
   const duesList=getDuesList();
@@ -1131,9 +1283,17 @@ function pgSavings(){
     </div>`;
 }
 function addPayment(){
-  const mid=document.getElementById("pMem").value,amt=Number(document.getElementById("pAmt").value);
-  if(!mid||!amt)return;
+  const mid=document.getElementById("pMem").value;
+  const amt=Number(document.getElementById("pAmt").value);
   const mon=document.getElementById("pMon").value;
+
+  if(!showValidationErrors([
+    [!mid, "সদস্য বেছে নিন"],
+    [!!validateAmount(amt,"চাঁদার পরিমাণ"), validateAmount(amt,"চাঁদার পরিমাণ")||""],
+    [!mon, "মাস বেছে নিন"],
+    [!!checkDuplicateDues(mid,mon), checkDuplicateDues(mid,mon)||""],
+  ])) return;
+
   D.payments=[...(D.payments||[]),{id:Date.now(),mid:Number(mid),amount:amt,month:mon,note:document.getElementById("pNote").value}];
   logActivity("payment",`${gn(mid)} — ${mon} মাসের চাঁদা ${fmt(amt)} জমা দিয়েছেন`);
   sv();toast("✅ চাঁদা সেভ হয়েছে");goTab("savings");
@@ -1151,14 +1311,17 @@ function delPay(id){
 function pgLoans(){
   const loans=D.loans||[], members=D.members||[];
   const total=loans.reduce((s,l)=>s+l.principal,0),rem=loans.reduce((s,l)=>s+l.remaining,0);
-  const totalInt=loans.reduce((s,l)=>s+(l.principal-l.remaining)*l.rate/100,0);
+  const totalInt=loans.reduce((s,l)=>{
+    const paidInterest=(l.repayments||[]).reduce((rs,r)=>rs+(r.interest||0),0);
+    return s+paidInterest;
+  },0);
 
   const form=isA()?`<div class="card">${ch("📝","নতুন ঋণ যোগ করুন")}<div class="cb">
     <div class="field"><label>সদস্য</label><select id="lMem"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>
     <div class="grid3">
       <div class="field"><label>মূল ঋণ (৳)</label><input type="number" id="lAmt" placeholder="0"></div>
-      <div class="field"><label>সুদের হার %</label><input type="number" id="lRate" value="10"></div>
-      <div class="field"><label>মাসিক কিস্তি</label><input type="number" id="lInst" placeholder="0"></div>
+      <div class="field"><label>মুনাফার হার % <span style="font-size:10px;color:#94a3b8">(ঐচ্ছিক)</span></label><input type="number" id="lRate" value="0" min="0" max="100"></div>
+      <div class="field"><label>মাসিক কিস্তি (৳)</label><input type="number" id="lInst" placeholder="0"></div>
     </div>
     <div class="grid2">
       <div class="field"><label>তারিখ</label><input type="date" id="lDate" value="${new Date().toISOString().slice(0,10)}"></div>
@@ -1171,21 +1334,38 @@ function pgLoans(){
     const pct=Math.min(100,Math.round(((l.principal-l.remaining)/l.principal)*100));
     const status=l.remaining===0?"পরিশোধিত":l.remaining<l.principal?"আংশিক":"বাকি";
     const sc=l.remaining===0?"#1a8a00":l.remaining<l.principal?"#d97706":"#dc2626";
-    const intAmt=Math.round((l.principal-l.remaining)*l.rate/100);
+    const intAmt=Math.round((l.repayments||[]).reduce((s,r)=>s+(r.interest||0),0));
+    const repayCount=(l.repayments||[]).length;
+    // মুনাফার হার থেকে স্বয়ংক্রিয় পরামর্শ (অ্যাডমিন পরিবর্তন করতে পারবেন)
+    const suggestedMunaafa=l.rate>0?Math.round(l.remaining*(l.rate/100)/12):0;
     return `<div class="card"><div style="padding:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:11px">
-        <div style="display:flex;align-items:center;gap:10px">${av(gn(l.mid),40,"linear-gradient(135deg,#006400,#1a8a00)",l.mid)}<div><div style="font-weight:700;font-size:15px">${gn(l.mid)}</div><div style="font-size:11px;color:#94a3b8">${l.date} · সুদ ${l.rate}%${l.note?" · "+l.note:""}</div></div></div>
+        <div style="display:flex;align-items:center;gap:10px">${av(gn(l.mid),40,"linear-gradient(135deg,#006400,#1a8a00)",l.mid)}<div><div style="font-weight:700;font-size:15px">${gn(l.mid)}</div><div style="font-size:11px;color:#94a3b8">${l.date}${l.rate>0?` · মুনাফার হার ${l.rate}%`:" · মুনাফা নির্ধারিত নয়"}${l.note?" · "+l.note:""}</div></div></div>
         ${bdg(status,sc,sc+"18")}
       </div>
       <div class="grid3" style="margin-bottom:11px">
-        ${[["মূল ঋণ",fmt(l.principal),"#64748b"],["বকেয়া",fmt(l.remaining),"#dc2626"],["সুদ আয়",fmt(intAmt),"#1a8a00"]].map(([lb,v,c])=>`<div class="stat-box"><div class="sv" style="color:${c}">${v}</div><div class="sl">${lb}</div></div>`).join("")}
+        ${[["মূল ঋণ",fmt(l.principal),"#64748b"],["বকেয়া",fmt(l.remaining),"#dc2626"],["মোট মুনাফা",fmt(intAmt),"#1a8a00"]].map(([lb,v,c])=>`<div class="stat-box"><div class="sv" style="color:${c}">${v}</div><div class="sl">${lb}</div></div>`).join("")}
       </div>
       <div class="grid2" style="margin-bottom:11px">
         ${[["পরিশোধিত",fmt(l.principal-l.remaining),"#006400"],["মাসিক কিস্তি",fmt(l.installment||0),"#1a8a00"]].map(([lb,v,c])=>`<div class="stat-box"><div class="sv" style="color:${c}">${v}</div><div class="sl">${lb}</div></div>`).join("")}
       </div>
       ${pb(pct,pct===100?"#006400":pct>50?"#1a8a00":"#d97706",10)}
-      <div style="font-size:10px;color:#94a3b8;text-align:right;margin-top:4px;margin-bottom:${isA()&&l.remaining>0?"11px":"0"}">${pct}% পরিশোধিত</div>
-      ${isA()?`<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">${l.remaining>0?`<input type="number" id="rp${l.id}" placeholder="কিস্তির পরিমাণ" style="flex:1;min-width:120px;padding:9px 12px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;outline:none"><button class="btn btn-g btn-sm" onclick="repay(${l.id})">✓ পরিশোধ</button>`:""}<button class="btn btn-sm" style="background:#eff6ff;color:#2563eb;border:none;padding:6px 12px" onclick="editLoan(${l.id})">✏️ সম্পাদনা</button><button class="btn btn-sm" style="background:#fff1f2;color:#dc2626;border:none;padding:6px 12px" onclick="delLoan(${l.id})">🗑 মুছুন</button></div>`:""}
+      <div style="font-size:10px;color:#94a3b8;text-align:right;margin-top:4px;margin-bottom:${isA()&&l.remaining>0?"11px":"0"}">${pct}% পরিশোধিত${repayCount>0?` · ${repayCount} কিস্তি`:""}
+      </div>
+      ${isA()?`<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
+        ${l.remaining>0?`
+          <input type="number" id="rp${l.id}" placeholder="মূলধন কিস্তি (৳)"
+            style="flex:1;min-width:100px;padding:9px 12px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;outline:none">
+          <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:110px">
+            <input type="number" id="mu${l.id}" placeholder="মুনাফা (৳)" value="${suggestedMunaafa||""}"
+              style="padding:9px 12px;border-radius:9px;border:1.5px solid #d97706;font-size:13px;font-family:inherit;outline:none;width:100%;box-sizing:border-box">
+            ${suggestedMunaafa>0?`<div style="font-size:10px;color:#d97706;padding-left:4px">পরামর্শ: ${fmt(suggestedMunaafa)} (${l.rate}% বার্ষিক)</div>`:`<div style="font-size:10px;color:#94a3b8;padding-left:4px">মুনাফা না থাকলে ০ দিন</div>`}
+          </div>
+          <button class="btn btn-g btn-sm" onclick="repay(${l.id})">✓ পরিশোধ</button>
+        `:""}
+        <button class="btn btn-sm" style="background:#eff6ff;color:#2563eb;border:none;padding:6px 12px" onclick="editLoan(${l.id})">✏️ সম্পাদনা</button>
+        <button class="btn btn-sm" style="background:#fff1f2;color:#dc2626;border:none;padding:6px 12px" onclick="delLoan(${l.id})">🗑 মুছুন</button>
+      </div>`:""}
     </div></div>`;}).join("");
 
   return `
@@ -1198,7 +1378,7 @@ function pgLoans(){
       </div>
     </div>
     <div class="grid4" style="margin-bottom:14px">
-      ${[["🤝","মোট বিতরণ",fmt(total),"#071a07","#f8fafc"],["⚠️","মোট বকেয়া",fmt(rem),"#dc2626","#fff1f2"],["✅","আদায়",fmt(total-rem),"#1a8a00","#f0fdf4"],["💵","সুদ আয়",fmt(totalInt),"#d97706","#fffbeb"]].map(([i,l,v,c,bg])=>`<div class="kpi" style="background:${bg};text-align:center"><div class="ki">${i}</div><div class="kv" style="color:${c};font-size:17px">${v}</div><div class="kl">${l}</div></div>`).join("")}
+      ${[["🤝","মোট বিতরণ",fmt(total),"#071a07","#f8fafc"],["⚠️","মোট বকেয়া",fmt(rem),"#dc2626","#fff1f2"],["✅","আদায়",fmt(total-rem),"#1a8a00","#f0fdf4"],["💵","মুনাফা আয়",fmt(totalInt),"#d97706","#fffbeb"]].map(([i,l,v,c,bg])=>`<div class="kpi" style="background:${bg};text-align:center"><div class="ki">${i}</div><div class="kv" style="color:${c};font-size:17px">${v}</div><div class="kl">${l}</div></div>`).join("")}
     </div>
     ${form}<div class="gauto">${cards}</div>
 
@@ -1221,7 +1401,7 @@ function pgLoans(){
           </div>
         </div>
         <div class="grid2">
-          <div class="field"><label>সুদের হার %</label>
+          <div class="field"><label>মুনাফার হার % <span style="font-size:10px;color:#94a3b8">(ঐচ্ছিক)</span></label>
             <input type="number" id="el-rate" style="width:100%;padding:9px 12px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
           </div>
           <div class="field"><label>মাসিক কিস্তি (৳)</label>
@@ -1244,10 +1424,28 @@ function pgLoans(){
     </div>`;
 }
 function addLoan(){
-  const mid=document.getElementById("lMem").value,amt=Number(document.getElementById("lAmt").value);
-  if(!mid||!amt)return;
-  D.loans=[...(D.loans||[]),{id:Date.now(),mid:Number(mid),principal:amt,remaining:amt,rate:Number(document.getElementById("lRate").value),installment:Number(document.getElementById("lInst").value||0),date:document.getElementById("lDate").value,note:document.getElementById("lNote").value}];
-  logActivity("loan",`${gn(mid)} — নতুন ঋণ ${fmt(amt)} টাকা বিতরণ করা হয়েছে`);
+  const mid=document.getElementById("lMem").value;
+  const amt=Number(document.getElementById("lAmt").value);
+  const rate=Number(document.getElementById("lRate").value);
+  const inst=Number(document.getElementById("lInst").value||0);
+  const date=document.getElementById("lDate").value;
+
+  if(!showValidationErrors([
+    [!mid, "সদস্য বেছে নিন"],
+    [!!validateAmount(amt,"মূল ঋণের পরিমাণ"), validateAmount(amt,"মূল ঋণের পরিমাণ")||""],
+    [isNaN(rate)||rate<0||rate>100, "মুনাফার হার ০–১০০% এর মধ্যে হতে হবে"],
+    [inst<0, "মাসিক কিস্তি ঋণাত্মক হতে পারে না"],
+    [inst>amt, "মাসিক কিস্তি মূল ঋণের চেয়ে বেশি হতে পারে না"],
+    [!!validateDate(date,"তারিখ"), validateDate(date,"তারিখ")||""],
+  ])) return;
+
+  D.loans=[...(D.loans||[]),{
+    id:Date.now(),mid:Number(mid),
+    principal:amt,remaining:amt,
+    rate,installment:inst,
+    date,note:document.getElementById("lNote").value
+  }];
+  logActivity("loan",`${gn(mid)} — নতুন ঋণ ${fmt(amt)} টাকা বিতরণ${rate>0?` (মুনাফার হার ${rate}%)`:""}`);
   sv();toast("✅ ঋণ যোগ হয়েছে");goTab("loans");
 }
 function delLoan(id){
@@ -1258,11 +1456,49 @@ function delLoan(id){
   sv();toast("🗑 ঋণ মুছে গেছে","#dc2626");goTab("loans");
 }
 function repay(id){
-  const amt=Number(document.getElementById("rp"+id).value);if(!amt)return;
+  const amt=Number(document.getElementById("rp"+id).value);
+  const munaafaInput=document.getElementById("mu"+id);
+  // অ্যাডমিন নির্ধারিত মুনাফা — field খালি থাকলে ০
+  const munaafa=munaafaInput?Math.max(0,Number(munaafaInput.value)||0):0;
   const l=(D.loans||[]).find(x=>x.id===id);
-  D.loans=(D.loans||[]).map(l=>l.id===id?{...l,remaining:Math.max(0,l.remaining-amt)}:l);
-  if(l) logActivity("loan",`${gn(l.mid)} — ঋণের কিস্তি ${fmt(amt)} পরিশোধ করেছেন`);
-  sv();toast("✅ কিস্তি পরিশোধ হয়েছে");goTab("loans");
+  if(!l) return;
+
+  if(!showValidationErrors([
+    [!!validateAmount(amt,"কিস্তির পরিমাণ"), validateAmount(amt,"কিস্তির পরিমাণ")||""],
+    [amt>l.remaining, `কিস্তি বকেয়ার (${fmt(l.remaining)}) চেয়ে বেশি হতে পারে না`],
+    [munaafa<0, "মুনাফা ঋণাত্মক হতে পারে না"],
+  ])) return;
+
+  // ১. ঋণের বকেয়া কমাও (মূলধন কিস্তি)
+  D.loans=(D.loans||[]).map(x=>x.id===id?{
+    ...x,
+    remaining:Math.max(0, x.remaining - amt),
+    repayments:[...(x.repayments||[]),{
+      date:new Date().toISOString().slice(0,10),
+      amount:amt,
+      principal:amt,
+      interest:munaafa
+    }]
+  }:x);
+
+  // ২. অ্যাডমিন নির্ধারিত মুনাফা income-এ যোগ করো
+  if(munaafa > 0){
+    D.income=[...(D.income||[]),{
+      id:Date.now(),
+      title:`মুনাফা — ${gn(l.mid)}`,
+      amount:munaafa,
+      category:"মুনাফা আয়",
+      date:new Date().toISOString().slice(0,10),
+      note:`ঋণ কিস্তি ${fmt(amt)} | অ্যাডমিন নির্ধারিত মুনাফা`,
+      autoGenerated:true
+    }];
+  }
+
+  const msg=munaafa>0
+    ? `✅ কিস্তি ${fmt(amt)} + মুনাফা ${fmt(munaafa)} আয়ে যোগ হয়েছে`
+    : `✅ কিস্তি ${fmt(amt)} পরিশোধ হয়েছে`;
+  logActivity("loan",`${gn(l.mid)} — কিস্তি ${fmt(amt)}${munaafa>0?`, মুনাফা ${fmt(munaafa)}`:""}`);
+  sv();toast(msg);goTab("loans");
 }
 function editLoan(id){
   const l=(D.loans||[]).find(x=>x.id===id);if(!l)return;
@@ -1379,9 +1615,17 @@ function pgInvest(){
     ${editModal}`;
 }
 function addInvest(){
-  const t=document.getElementById("iTitle").value,a=Number(document.getElementById("iAmt").value);
-  if(!t||!a)return;
-  D.investments=[...(D.investments||[]),{id:Date.now(),title:t,amount:a,type:document.getElementById("iType").value,returnRate:Number(document.getElementById("iRet").value||0),date:document.getElementById("iDate").value,note:document.getElementById("iNote").value,status:"সক্রিয়"}];
+  const t=document.getElementById("iTitle").value.trim();
+  const a=Number(document.getElementById("iAmt").value);
+  const ret=Number(document.getElementById("iRet").value||0);
+  const date=document.getElementById("iDate").value;
+  if(!showValidationErrors([
+    [!t, "বিনিয়োগের বিবরণ দিন"],
+    [!!validateAmount(a,"বিনিয়োগের পরিমাণ"), validateAmount(a,"বিনিয়োগের পরিমাণ")||""],
+    [ret<0||ret>500, "রিটার্ন হার ০–৫০০% এর মধ্যে হতে হবে"],
+    [!!validateDate(date), validateDate(date)||""],
+  ])) return;
+  D.investments=[...(D.investments||[]),{id:Date.now(),title:t,amount:a,type:document.getElementById("iType").value,returnRate:ret,date,note:document.getElementById("iNote").value,status:"সক্রিয়"}];
   logActivity("invest",`নতুন বিনিয়োগ যোগ হয়েছে: ${t} — ${fmt(a)}`);
   sv();toast("✅ বিনিয়োগ যোগ হয়েছে");goTab("invest");
 }
@@ -1407,18 +1651,44 @@ function saveInvestEdit(){
   const id=Number(document.getElementById("ei-id").value);
   const t=document.getElementById("ei-title").value.trim();
   const a=Number(document.getElementById("ei-amt").value);
-  if(!t||!a){toast("⚠️ সব তথ্য দিন","#d97706");return;}
+  const newStatus=document.getElementById("ei-status").value;
+  const ret=Number(document.getElementById("ei-ret").value||0);
+  if(!showValidationErrors([
+    [!t, "বিনিয়োগের বিবরণ দিন"],
+    [!!validateAmount(a,"পরিমাণ"), validateAmount(a,"পরিমাণ")||""],
+  ])) return;
+
+  const oldInvest=(D.investments||[]).find(i=>i.id===id);
+  const oldStatus=oldInvest?oldInvest.status:"";
+
   D.investments=(D.investments||[]).map(i=>i.id===id?{...i,
-    title:t,
-    type:document.getElementById("ei-type").value,
-    amount:a,
-    returnRate:Number(document.getElementById("ei-ret").value||0),
+    title:t,type:document.getElementById("ei-type").value,amount:a,
+    returnRate:ret,
     date:document.getElementById("ei-date").value,
-    status:document.getElementById("ei-status").value,
+    status:newStatus,
     note:document.getElementById("ei-note").value
   }:i);
-  logActivity("invest",`বিনিয়োগ সম্পাদনা হয়েছে: ${t}`);
-  sv();toast("✅ আপডেট হয়েছে");document.getElementById("invest-edit-modal").style.display="none";goTab("invest");
+
+  // status নতুন করে "মুনাফা প্রাপ্ত" হলে return amount স্বয়ংক্রিয়ভাবে income-এ যোগ করো
+  // (আগে থেকেই "মুনাফা প্রাপ্ত" থাকলে duplicate এড়াতে আবার যোগ হবে না)
+  if(newStatus==="মুনাফা প্রাপ্ত" && oldStatus!=="মুনাফা প্রাপ্ত" && ret>0){
+    const returnAmt=Math.round(a*ret/100);
+    D.income=[...(D.income||[]),{
+      id:Date.now(),
+      title:`বিনিয়োগ মুনাফা — ${t}`,
+      amount:returnAmt,
+      category:"বিনিয়োগ আয়",
+      date:new Date().toISOString().slice(0,10),
+      note:`মূল বিনিয়োগ ${fmt(a)} | রিটার্ন ${ret}%`,
+      autoGenerated:true
+    }];
+    toast(`✅ বিনিয়োগ আপডেট | মুনাফা ${fmt(returnAmt)} আয়ে যোগ হয়েছে`);
+  } else {
+    toast("✅ আপডেট হয়েছে");
+  }
+
+  logActivity("invest",`বিনিয়োগ সম্পাদনা হয়েছে: ${t}${newStatus==="মুনাফা প্রাপ্ত"&&oldStatus!=="মুনাফা প্রাপ্ত"?" (মুনাফা আয়ে যোগ হয়েছে)":""}`);
+  sv();document.getElementById("invest-edit-modal").style.display="none";goTab("invest");
 }
 
 // ══════════════════
@@ -1498,9 +1768,15 @@ function pgAssets(){
     ${form}${catSummary}`;
 }
 function addAsset(){
-  const n=document.getElementById("aName").value,v=Number(document.getElementById("aVal").value);
-  if(!n||!v)return;
-  D.assets=[...(D.assets||[]),{id:Date.now(),name:n,category:document.getElementById("aCat").value,value:v,date:document.getElementById("aDate").value,note:document.getElementById("aNote").value}];
+  const n=document.getElementById("aName").value.trim();
+  const v=Number(document.getElementById("aVal").value);
+  const date=document.getElementById("aDate").value;
+  if(!showValidationErrors([
+    [!n, "সম্পদের নাম দিন"],
+    [!!validateAmount(v,"সম্পদের মূল্য"), validateAmount(v,"সম্পদের মূল্য")||""],
+    [!!validateDate(date), validateDate(date)||""],
+  ])) return;
+  D.assets=[...(D.assets||[]),{id:Date.now(),name:n,category:document.getElementById("aCat").value,value:v,date,note:document.getElementById("aNote").value}];
   logActivity("asset",`নতুন সম্পদ যোগ হয়েছে: ${n} — ${fmt(v)}`);
   sv();toast("✅ সম্পদ যোগ হয়েছে");goTab("assets");
 }
@@ -1520,11 +1796,11 @@ function pgExpenses(){
   const totalInc=income.reduce((s,i)=>s+i.amount,0)+payments.reduce((s,p)=>s+p.amount,0);
   const totalExp=expenses.reduce((s,e)=>s+e.amount,0);
   const profit=totalInc-totalExp;
-  const incCats=["সদস্য চাঁদা","সুদ আয়","বিনিয়োগ আয়","জমি বিক্রয়","অনুদান","অন্যান্য"];
+  const incCats=["সদস্য চাঁদা","মুনাফা আয়","বিনিয়োগ আয়","জমি বিক্রয়","অনুদান","অন্যান্য"];
   const expCats=["পরিচালন ব্যয়","ঋণ বিতরণ","জমি ক্রয়","অফিস","যাতায়াত","বিবিধ"];
 
   const iForm=isA()?`<div class="card">${ch("📥","আয় যোগ করুন","","teal")}<div class="cb">
-    <div class="field"><label>বিবরণ</label><input id="iDesc" placeholder="যেমন: সুদ আয়"></div>
+    <div class="field"><label>বিবরণ</label><input id="iDesc" placeholder="যেমন: মুনাফা আয়"></div>
     <div class="grid3">
       <div class="field"><label>পরিমাণ</label><input type="number" id="iAmt2" placeholder="0"></div>
       <div class="field"><label>ক্যাটাগরি</label><select id="iCat">${incCats.map(c=>`<option>${c}</option>`).join("")}</select></div>
@@ -1562,24 +1838,46 @@ function pgExpenses(){
       ${[["📥","মোট আয়",fmt(totalInc),"#1a8a00","#f0fdf4"],["📤","মোট ব্যয়",fmt(totalExp),"#dc2626","#fff1f2"],["💰","নিট উদ্বৃত্ত",fmt(profit),profit>=0?"#1a8a00":"#dc2626",profit>=0?"#f0fdf4":"#fff1f2"],["📊","আয়-ব্যয় অনুপাত",totalInc>0?Math.round((profit/totalInc)*100)+"%":"—","#1a8a00","#f0fdf4"]].map(([i,l,v,c,bg])=>`<div class="kpi" style="background:${bg};text-align:center"><div class="ki">${i}</div><div class="kv" style="color:${c};font-size:17px">${v}</div><div class="kl">${l}</div></div>`).join("")}
     </div>
     <div class="grid2">${iForm}${eForm}</div>
-    <div class="card">${ch("📥","আয়ের বিবরণী","","teal")}${rw("মোট আয়",fmt(totalInc),"hi")}
+    <div class="card" id="exp-income-section">${ch("📥","আয়ের বিবরণী","","teal")}${rw("মোট আয়",fmt(totalInc),"hi")}
       <div style="overflow-x:auto;padding:0 16px 14px"><table class="tbl"><thead><tr><th>বিবরণ</th><th>তারিখ</th><th>পরিমাণ</th><th>ক্যাটাগরি</th><th></th></tr></thead><tbody>${iRows}</tbody></table></div>
     </div>
-    <div class="card">${ch("📤","ব্যয়ের বিবরণী","","r")}${rw("মোট ব্যয়",fmt(totalExp),"rd-row")}
+    <div class="card" id="exp-expense-section">${ch("📤","ব্যয়ের বিবরণী","","r")}${rw("মোট ব্যয়",fmt(totalExp),"rd-row")}
       <div style="overflow-x:auto;padding:0 16px 14px"><table class="tbl"><thead><tr><th>বিবরণ</th><th>তারিখ</th><th>পরিমাণ</th><th>ক্যাটাগরি</th>${isA()?"<th></th>":""}</tr></thead><tbody>${eRows||`<tr><td colspan="5" style="text-align:center;color:#94a3b8">কোনো ব্যয় নেই</td></tr>`}</tbody></table></div>
-    </div>`;
+    </div>
+    <script>
+      (function(){
+        var focus=window._expFocus;
+        if(focus){
+          window._expFocus=null;
+          var el=document.getElementById(focus==="income"?"exp-income-section":"exp-expense-section");
+          if(el) setTimeout(function(){el.scrollIntoView({behavior:"smooth",block:"start"});},150);
+        }
+      })();
+    <\/script>`;
 }
 function addIncome(){
-  const t=document.getElementById("iDesc").value,a=Number(document.getElementById("iAmt2").value);
-  if(!t||!a)return;
-  D.income=[...(D.income||[]),{id:Date.now(),title:t,amount:a,category:document.getElementById("iCat").value,date:document.getElementById("iDate2").value,note:document.getElementById("iNote2").value}];
+  const t=document.getElementById("iDesc").value.trim();
+  const a=Number(document.getElementById("iAmt2").value);
+  const date=document.getElementById("iDate2").value;
+  if(!showValidationErrors([
+    [!t, "আয়ের বিবরণ দিন"],
+    [!!validateAmount(a,"পরিমাণ"), validateAmount(a,"পরিমাণ")||""],
+    [!!validateDate(date), validateDate(date)||""],
+  ])) return;
+  D.income=[...(D.income||[]),{id:Date.now(),title:t,amount:a,category:document.getElementById("iCat").value,date,note:document.getElementById("iNote2").value}];
   logActivity("income",`নতুন আয় যোগ হয়েছে: ${t} — ${fmt(a)}`);
   sv();toast("✅ আয় যোগ হয়েছে");goTab("expenses");
 }
 function addExpense(){
-  const t=document.getElementById("eDesc").value,a=Number(document.getElementById("eAmt2").value);
-  if(!t||!a)return;
-  D.expenses=[...(D.expenses||[]),{id:Date.now(),title:t,amount:a,category:document.getElementById("eCat").value,date:document.getElementById("eDate2").value,note:document.getElementById("eNote2").value}];
+  const t=document.getElementById("eDesc").value.trim();
+  const a=Number(document.getElementById("eAmt2").value);
+  const date=document.getElementById("eDate2").value;
+  if(!showValidationErrors([
+    [!t, "ব্যয়ের বিবরণ দিন"],
+    [!!validateAmount(a,"পরিমাণ"), validateAmount(a,"পরিমাণ")||""],
+    [!!validateDate(date), validateDate(date)||""],
+  ])) return;
+  D.expenses=[...(D.expenses||[]),{id:Date.now(),title:t,amount:a,category:document.getElementById("eCat").value,date,note:document.getElementById("eNote2").value}];
   logActivity("expense",`নতুন ব্যয় যোগ হয়েছে: ${t} — ${fmt(a)}`);
   sv();toast("✅ ব্যয় যোগ হয়েছে");goTab("expenses");
 }
@@ -1793,11 +2091,16 @@ function pgBalance(){
 function addAssetFromBalance(){
   const name=document.getElementById("ba-name").value.trim();
   const val=Number(document.getElementById("ba-val").value);
-  if(!name||!val){toast("⚠️ নাম ও মূল্য দিন","#d97706");return;}
+  const date=document.getElementById("ba-date").value;
+  if(!showValidationErrors([
+    [!name, "সম্পদের নাম দিন"],
+    [!!validateAmount(val,"সম্পদের মূল্য"), validateAmount(val,"সম্পদের মূল্য")||""],
+    [!!validateDate(date), validateDate(date)||""],
+  ])) return;
   D.assets=[...(D.assets||[]),{
     id:Date.now(),name,value:val,
     category:document.getElementById("ba-cat").value,
-    date:document.getElementById("ba-date").value
+    date
   }];
   logActivity("asset",`নতুন সম্পদ যোগ হয়েছে: ${name} — ${fmt(val)}`);
   sv();toast("✅ সম্পদ যোগ হয়েছে");goTab("balance");
@@ -1806,12 +2109,16 @@ function addAssetFromBalance(){
 function addLiability(){
   const name=document.getElementById("lb-name").value.trim();
   const amt=Number(document.getElementById("lb-amt").value);
-  if(!name||!amt){toast("⚠️ নাম ও পরিমাণ দিন","#d97706");return;}
+  const date=document.getElementById("lb-date").value;
+  if(!showValidationErrors([
+    [!name, "পাওনাদারের নাম দিন"],
+    [!!validateAmount(amt,"দায়ের পরিমাণ"), validateAmount(amt,"দায়ের পরিমাণ")||""],
+    [!!validateDate(date), validateDate(date)||""],
+  ])) return;
   D.liabilities=[...(D.liabilities||[]),{
     id:Date.now(),name,amount:amt,
     type:document.getElementById("lb-type").value,
-    date:document.getElementById("lb-date").value,
-    note:document.getElementById("lb-note").value
+    date,note:document.getElementById("lb-note").value
   }];
   logActivity("liability",`নতুন দায় যোগ হয়েছে: ${name} — ${fmt(amt)}`);
   sv();toast("✅ দায় যোগ হয়েছে");goTab("balance");
@@ -1854,8 +2161,15 @@ function pgNotice(){
   return form+list;
 }
 function addNotice(){
-  const t=document.getElementById("ntT").value,b=document.getElementById("ntB").value;if(!t||!b)return;
-  D.notices=[...(D.notices||[]),{id:Date.now(),title:t,body:b,type:document.getElementById("ntTy").value,date:document.getElementById("ntD").value,pinned:document.getElementById("ntP").checked}];
+  const t=document.getElementById("ntT").value.trim();
+  const b=document.getElementById("ntB").value.trim();
+  const date=document.getElementById("ntD").value;
+  if(!showValidationErrors([
+    [!t, "নোটিশের শিরোনাম দিন"],
+    [!b, "নোটিশের বিবরণ দিন"],
+    [!!validateDate(date), validateDate(date)||""],
+  ])) return;
+  D.notices=[...(D.notices||[]),{id:Date.now(),title:t,body:b,type:document.getElementById("ntTy").value,date,pinned:document.getElementById("ntP").checked}];
   logActivity("notice",`নতুন নোটিশ প্রকাশিত হয়েছে: ${t}`);
   sv();toast("✅ নোটিশ প্রকাশিত");goTab("notice");
 }
@@ -1890,7 +2204,18 @@ function pgNews(){
   const list=news.slice().reverse().map(n=>`<div class="card"><div style="padding:16px"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px"><span class="badge" style="color:${cC[n.category]||"#1a8a00"};background:${cC[n.category]||"#1a8a00"}18">${n.category}</span><div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:#94a3b8">${ds(n.date)}</span>${isA()?`<button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delNews(${n.id})">🗑</button>`:""}</div></div><div style="font-weight:700;font-size:16px;margin-bottom:7px;line-height:1.4">${n.title}</div><div style="font-size:13px;color:var(--muted);line-height:1.75">${n.body}</div></div></div>`).join("")||`<div style="text-align:center;padding:40px;color:#94a3b8">📰 কোনো খবর নেই</div>`;
   return form+list;
 }
-function addNews(){const t=document.getElementById("nwT").value,b=document.getElementById("nwB").value;if(!t||!b)return;D.news=[...(D.news||[]),{id:Date.now(),title:t,body:b,category:document.getElementById("nwC").value,date:document.getElementById("nwD").value}];sv();toast("✅ প্রকাশিত হয়েছে");goTab("news");}
+function addNews(){
+  const t=document.getElementById("nwT").value.trim();
+  const b=document.getElementById("nwB").value.trim();
+  const date=document.getElementById("nwD").value;
+  if(!showValidationErrors([
+    [!t, "খবরের শিরোনাম দিন"],
+    [!b, "খবরের বিবরণ দিন"],
+    [!!validateDate(date), validateDate(date)||""],
+  ])) return;
+  D.news=[...(D.news||[]),{id:Date.now(),title:t,body:b,category:document.getElementById("nwC").value,date}];
+  sv();toast("✅ প্রকাশিত হয়েছে");goTab("news");
+}
 function delNews(id){D.news=(D.news||[]).filter(n=>n.id!==id);sv();toast("🗑","#dc2626");goTab("news");}
 
 function pgGoals(){
@@ -1913,7 +2238,19 @@ function pgGoals(){
   return form+cards;
 }
 function setGIcon(ic,btn){document.getElementById("gIc").value=ic;document.querySelectorAll(".gi-btn").forEach(b=>{b.style.background="transparent";b.style.borderColor="var(--border)"});btn.style.background="#f0fdf4";btn.style.borderColor="#1a8a00";}
-function addGoal(){const t=document.getElementById("gT").value,tg=Number(document.getElementById("gTg").value);if(!t||!tg)return;D.goals=[...(D.goals||[]),{id:Date.now(),title:t,target:tg,current:Number(document.getElementById("gCu").value||0),deadline:document.getElementById("gDl").value,icon:document.getElementById("gIc").value}];sv();toast("✅ লক্ষ্য যোগ হয়েছে");goTab("goals");}
+function addGoal(){
+  const t=document.getElementById("gT").value.trim();
+  const tg=Number(document.getElementById("gTg").value);
+  const cu=Number(document.getElementById("gCu").value||0);
+  if(!showValidationErrors([
+    [!t, "লক্ষ্যমাত্রার বিবরণ দিন"],
+    [!!validateAmount(tg,"লক্ষ্যমাত্রার পরিমাণ"), validateAmount(tg,"লক্ষ্যমাত্রার পরিমাণ")||""],
+    [cu<0, "বর্তমান অগ্রগতি ঋণাত্মক হতে পারে না"],
+    [cu>tg, "বর্তমান অগ্রগতি লক্ষ্যমাত্রার চেয়ে বেশি হতে পারে না"],
+  ])) return;
+  D.goals=[...(D.goals||[]),{id:Date.now(),title:t,target:tg,current:cu,deadline:document.getElementById("gDl").value,icon:document.getElementById("gIc").value}];
+  sv();toast("✅ লক্ষ্য যোগ হয়েছে");goTab("goals");
+}
 function updGoal(id){const v=document.getElementById("gp"+id).value;D.goals=(D.goals||[]).map(g=>g.id===id?{...g,current:Number(v)}:g);sv();toast("✅ আপডেট হয়েছে");goTab("goals");}
 function delGoal(id){D.goals=(D.goals||[]).filter(g=>g.id!==id);sv();toast("🗑","#dc2626");goTab("goals");}
 
@@ -2374,13 +2711,23 @@ function uploadMemberDoc(mid,field,input){
 
 function addMember(){
   const n=document.getElementById("mNm").value.trim();
-  if(!n){toast("⚠️ নাম লিখুন","#d97706");return;}
+  const ph=document.getElementById("mPh").value.trim();
+  const jn=document.getElementById("mJn").value;
+  const rt=Number(document.getElementById("mRt").value||2000);
+
+  if(!showValidationErrors([
+    [!n, "সদস্যের নাম দিতে হবে"],
+    [!!validatePhone(ph), validatePhone(ph)||""],
+    [rt<=0||isNaN(rt), "মাসিক হার সঠিক নয়"],
+    [!!checkDuplicateMember(n,ph), checkDuplicateMember(n,ph)||""],
+  ])) return;
+
   D.members=[...(D.members||[]),{
     id:Date.now(),name:n,
-    phone:document.getElementById("mPh").value,
+    phone:ph,
     role:document.getElementById("mRl").value,
-    join:document.getElementById("mJn").value,
-    monthlyRate:Number(document.getElementById("mRt").value||2000),
+    join:jn,
+    monthlyRate:rt,
     createdAt:new Date().toISOString(),
     status:"সক্রিয়"
   }];
@@ -2404,10 +2751,17 @@ function editMember(id){
 function saveMemberEdit(){
   const id=Number(document.getElementById("em-id").value);
   const name=document.getElementById("em-name").value.trim();
-  if(!name){toast("⚠️ নাম লিখুন","#d97706");return;}
+  const phone=document.getElementById("em-phone").value.trim();
+
+  if(!showValidationErrors([
+    [!name, "নাম দিতে হবে"],
+    [!!validatePhone(phone), validatePhone(phone)||""],
+    [!!checkDuplicateMember(name,phone,id), checkDuplicateMember(name,phone,id)||""],
+  ])) return;
+
   D.members=(D.members||[]).map(m=>m.id==id?{
     ...m,name,
-    phone:document.getElementById("em-phone").value,
+    phone,
     role:document.getElementById("em-role").value,
     join:document.getElementById("em-join").value,
     monthlyRate:Number(document.getElementById("em-rate").value||2000),
@@ -2768,7 +3122,9 @@ function fullExcelDownload(){
   const totAsset=assets.reduce((s,a)=>s+a.value,0);
   const totLoanOut=loans.reduce((s,l)=>s+l.remaining,0);
   const totDueChada=duesList.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
-  const totLiability=liabilities.reduce((s,l)=>s+l.amount,0);
+  const totManualLiability=liabilities.reduce((s,l)=>s+l.amount,0);
+  const totFormerMemberDue=(D.formerMembers||[]).filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
+  const totLiability=totManualLiability+totFormerMemberDue;
   const totNetAsset=totAsset+totInvest+totLoanOut+totDueChada+Math.max(0,cashFund);
 
   csv+="স্বপ্নঘুড়ি — সম্পূর্ণ আর্থিক প্রতিবেদন\n";
@@ -2807,7 +3163,7 @@ function fullExcelDownload(){
   csv+="=== ৩. চাঁদার ইতিহাস ===\n";
   csv+="সদস্য,মাস,নিয়মিত চাঁদা,বিশেষ চাঁদা,মোট নির্ধারিত,পরিশোধ,বকেয়া,অবস্থা\n";
   const allMonths=[];
-  let d=new Date(2021,10,1);
+  let d=new Date(ORG_START);
   while(d<=new Date()){allMonths.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d=new Date(d.getFullYear(),d.getMonth()+1,1);}
   members.forEach(m=>{
     allMonths.forEach(mon=>{
@@ -2902,7 +3258,9 @@ function fullPDFDownload(){
   const totLoanOut=loans.reduce((s,l)=>s+l.remaining,0);
   const duesList=getDuesList();
   const totDueChada=duesList.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
-  const totLiability=liabilities.reduce((s,l)=>s+l.amount,0);
+  const totManualLiability=liabilities.reduce((s,l)=>s+l.amount,0);
+  const totFormerMemberDue=(D.formerMembers||[]).filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
+  const totLiability=totManualLiability+totFormerMemberDue;
   const totNetAsset=totAsset+totInvest+totLoanOut+totDueChada+Math.max(0,cashFund);
   const now2=new Date().toLocaleDateString("bn-BD");
 
@@ -3357,7 +3715,10 @@ function pgDuesSheet() {
   }
 
   const years = [...new Set(months.map(m=>m.year))];
-  const selYear = window._dsYear || years[years.length-1];
+  // _dsYear যদি বৈধ না হয় বা list-এ না থাকে তাহলে বর্তমান বছর বা শেষ বছর ব্যবহার করো
+  const selYear = (window._dsYear && years.includes(Number(window._dsYear)))
+    ? Number(window._dsYear)
+    : (years.includes(now2.getFullYear()) ? now2.getFullYear() : (years[years.length-1]||now2.getFullYear()));
   const filtMonths = months.filter(m => m.year == selYear);
 
   const yearBtns = years.map(y=>`
@@ -3774,23 +4135,41 @@ function getDuesList() {
   const payments = D.payments||[];
   const now2 = new Date();
 
-  const months = [];
-  let d = new Date(2021,10,1); // Nov 2021
-  while(d <= now2){
-    months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
-    d = new Date(d.getFullYear(),d.getMonth()+1,1);
+  // প্রতিটি সদস্যের জন্য তাদের নিজস্ব join date থেকে মাস গণনা শুরু
+  // join date না থাকলে সংগঠনের শুরু (নভেম্বর ২০২১) ব্যবহার করো
+  // ORG_START গ্লোবাল কনস্ট্যান্ট ব্যবহার করা হচ্ছে
+
+  function getMonthsForMember(m){
+    let startDate = ORG_START;
+    const jRaw = m.join||m.joinDate||"";
+    if(jRaw){
+      // "YYYY-MM" বা "YYYY-MM-DD" উভয় format সমর্থন
+      const parts = jRaw.split("-");
+      if(parts.length>=2){
+        const jDate = new Date(Number(parts[0]), Number(parts[1])-1, 1);
+        if(!isNaN(jDate.getTime()) && jDate > ORG_START) startDate = jDate;
+      }
+    }
+    const months = [];
+    let d = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    while(d <= now2){
+      months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+      d = new Date(d.getFullYear(), d.getMonth()+1, 1);
+    }
+    return months;
   }
 
   return members.map(m => {
+    const memberMonths = getMonthsForMember(m);
     const specialMonths = (D.specialMonths||[]).filter(s=>s.mid==m.id);
     let totalExpected = 0;
-    months.forEach(mon => {
+    memberMonths.forEach(mon => {
       const sp = specialMonths.find(s=>s.mid==m.id&&s.month===mon);
       totalExpected += getApplicableRate(m.id, mon) + (sp ? sp.amount : 0);
     });
     const totalPaid = payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
     const totalDue = totalExpected - totalPaid;
-    return { ...m, totalExpected, totalPaid, totalDue, months: months.length };
+    return { ...m, totalExpected, totalPaid, totalDue, months: memberMonths.length };
   }).filter(m => m.totalDue > 0).sort((a,b) => b.totalDue - a.totalDue);
 }
 
@@ -3979,7 +4358,7 @@ function downloadReport(type, year){
   if(type==="dues"){
     // নভেম্বর ২০২১ থেকে সব মাস
     const allMonths = [];
-    let d = new Date(2021,10,1);
+    let d = new Date(ORG_START);
     const now2 = new Date();
     while(d<=now2){
       const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -4080,12 +4459,28 @@ function pgMemberStat(){
   const specialMonths=(D.specialMonths||[]).filter(s=>s.mid==m.id);
 
   const allMonths=[];
-  let d=new Date(2021,10,1);
+  // সদস্যের join date থেকে মাস গণনা শুরু করো
+  let memberStart=new Date(ORG_START);
+  const jRaw2=m.join||m.joinDate||"";
+  if(jRaw2){const parts=jRaw2.split("-");if(parts.length>=2){const jd=new Date(Number(parts[0]),Number(parts[1])-1,1);if(!isNaN(jd.getTime())&&jd>memberStart)memberStart=jd;}}
+  let d=new Date(memberStart.getFullYear(),memberStart.getMonth(),1);
   const now2=new Date();
   while(d<=now2){
     allMonths.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
     d=new Date(d.getFullYear(),d.getMonth()+1,1);
   }
+
+  // Equity-based member share: মোট নিট সম্পদ ÷ সদস্য সংখ্যা
+  const totalMembers=Math.max(1,(D.members||[]).length);
+  const cashFund2=calcFund();
+  const totalInvestAll2=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
+  const totalAssetAll2=(D.assets||[]).reduce((s,a)=>s+a.value,0);
+  const totalLoanRecv2=(D.loans||[]).reduce((s,l)=>s+l.remaining,0);
+  const totalNetAsset2=totalAssetAll2+totalInvestAll2+totalLoanRecv2+Math.max(0,cashFund2);
+  const totalManualLiab2=(D.liabilities||[]).reduce((s,l)=>s+l.amount,0);
+  const totalFormerDue2=(D.formerMembers||[]).filter(x=>!x.refunded).reduce((s,x)=>s+(x.refundDue||0),0);
+  const netEquity=Math.max(0,totalNetAsset2-totalManualLiab2-totalFormerDue2);
+  const memberShare=Math.round(netEquity/totalMembers);
 
   let totalExp=0;
   allMonths.forEach(mon=>{
@@ -4164,7 +4559,7 @@ function pgMemberStat(){
         ${av(m.name,56,"linear-gradient(135deg,#006400,#1a8a00)",m.id)}
         <div>
           <div style="font-weight:800;font-size:18px">${m.name}</div>
-          <div style="font-size:13px;color:#64748b">${m.role||"সদস্য"} · যোগদান: ${m.joinDate||"নভে ২০২১"}</div>
+          <div style="font-size:13px;color:#64748b">${m.role||"সদস্য"} · যোগদান: ${m.join||m.joinDate||"নভে ২০২১"}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
             ${bdg(m.role||"সদস্য","#fff","#006400")}
             ${totalDue>0?bdg("বকেয়া আছে","#dc2626","#fee2e2"):bdg("বকেয়া নেই","#16a34a","#dcfce7")}
@@ -4178,6 +4573,11 @@ function pgMemberStat(){
             <div style="font-weight:800;font-size:16px;color:${c}">${v}</div>
             <div style="font-size:11px;color:#94a3b8">${l}</div>
           </div>`).join("")}
+      </div>
+      <!-- Equity-based member share -->
+      <div style="background:#f0fdf4;border-top:1px solid #bbf7d0;padding:12px 16px;border-radius:0 0 13px 13px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:13px;color:#166534">💎 মোট সম্পদে আপনার হিস্যা <span style="font-size:11px;color:#64748b">(নিট মূলধন ÷ ${totalMembers} জন সদস্য)</span></div>
+        <div style="font-weight:900;font-size:17px;color:#006400">${fmt(memberShare)}</div>
       </div>
     </div>
 
@@ -4238,7 +4638,7 @@ function memberStatPDF(mid){
   const loans=(D.loans||[]).filter(l=>l.mid==mid);
   const specialMonths=(D.specialMonths||[]).filter(s=>s.mid==mid);
   const allMonths=[];
-  let d=new Date(2021,10,1);
+  let d=new Date(ORG_START);
   while(d<=new Date()){
     allMonths.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
     d=new Date(d.getFullYear(),d.getMonth()+1,1);
@@ -4293,7 +4693,7 @@ function memberStatXL(mid){
   const loans=(D.loans||[]).filter(l=>l.mid==mid);
   const specialMonths=(D.specialMonths||[]).filter(s=>s.mid==mid);
   const allMonths=[];
-  let d=new Date(2021,10,1);
+  let d=new Date(ORG_START);
   while(d<=new Date()){allMonths.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d=new Date(d.getFullYear(),d.getMonth()+1,1);}
   const bom="\uFEFF";
   let csv=`স্বপ্নঘুড়ি — ${m.name} — সদস্য স্টেটমেন্ট\n\n`;
@@ -4524,9 +4924,12 @@ function pgMeeting(){
 }
 
 function addMeeting(){
-  const title=document.getElementById("mt-title").value;
+  const title=document.getElementById("mt-title").value.trim();
   const date=document.getElementById("mt-date").value;
-  if(!title){toast("⚠️ বিষয় লিখুন","#d97706");return;}
+  if(!showValidationErrors([
+    [!title, "মিটিংয়ের বিষয় দিন"],
+    [!!validateDate(date,"মিটিংয়ের তারিখ"), validateDate(date,"মিটিংয়ের তারিখ")||""],
+  ])) return;
   D.meetings=[...(D.meetings||[]),{id:Date.now(),title,date,place:document.getElementById("mt-place").value,type:document.getElementById("mt-type").value,agenda:document.getElementById("mt-agenda").value,attendance:{},minutes:""}];
   logActivity("meeting",`নতুন মিটিং যোগ হয়েছে: ${title}`);
   sv();toast("✅ মিটিং যোগ হয়েছে");goTab("meeting");
@@ -4599,7 +5002,7 @@ function pgHealth(){
     {label:"মোট সদস্য",value:members.length+" জন",score:100,color:"#7c3aed"},
   ];
 
-  const allMonths2=[];let d2=new Date(2021,10,1);const now3=new Date();
+  const allMonths2=[];let d2=new Date(ORG_START);const now3=new Date();
   while(d2<=now3){allMonths2.push(`${d2.getFullYear()}-${String(d2.getMonth()+1).padStart(2,"0")}`);d2=new Date(d2.getFullYear(),d2.getMonth()+1,1);}
 
   return `
@@ -5049,16 +5452,7 @@ function runGSearch(q){
     });
   });
   body.innerHTML=html;
-  // attach click events after render
-  results.slice(0,60).forEach((r,ri)=>{
-    Object.entries(groups).forEach(([cat,items])=>{
-      items.slice(0,8).forEach((item,idx)=>{
-        const el=document.getElementById("gsr-"+(cat+idx).replace(/\W/g,""));
-        if(el&&item===r){el.onclick=r.action;}
-      });
-    });
-  });
-  // safer: re-attach by index
+  // ── click events: flat index দিয়ে সরাসরি attach করা হচ্ছে — duplicate binding নেই ──
   let flat=[];Object.values(groups).forEach(arr=>arr.slice(0,8).forEach(r=>flat.push(r)));
   document.querySelectorAll(".gsearch-item").forEach((el,i)=>{if(flat[i])el.onclick=flat[i].action;});
 }
@@ -5163,7 +5557,7 @@ const _oldPdfDl=pdfDownload;
 pdfDownload=function(type){
   if(type==="members"){
     const members=D.members||[];const payments=D.payments||[];const loans=D.loans||[];
-    const allMonths4=[];let d4=new Date(2021,10,1);while(d4<=new Date()){allMonths4.push(`${d4.getFullYear()}-${String(d4.getMonth()+1).padStart(2,"0")}`);d4=new Date(d4.getFullYear(),d4.getMonth()+1,1);}
+    const allMonths4=[];let d4=new Date(ORG_START);while(d4<=new Date()){allMonths4.push(`${d4.getFullYear()}-${String(d4.getMonth()+1).padStart(2,"0")}`);d4=new Date(d4.getFullYear(),d4.getMonth()+1,1);}
     const duesList=getDuesList();
     const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfStyle}</style></head><body>
     ${pdfWM()}${pdfBtn()}
