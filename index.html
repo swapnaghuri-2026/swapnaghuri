@@ -852,12 +852,17 @@ function calcHealthScore(){
   const loanTotal=loans.reduce((s,l)=>s+l.principal,0);
   const loanRecovery=loanTotal?Math.round((loanTotal-loanDueTotal)/loanTotal*100):100;
 
-  // লক্ষ্যমাত্রার অগ্রগতি — মোট সম্পদের ভিত্তিতে (শুধু নগদ নয়)
+  // লক্ষ্যমাত্রার অগ্রগতি — ব্যালেন্স শিটের মতো হুবহু একই সূত্র
   const cashFund=calcFund();
   const totalInvestAll=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
-  const totalAssetAll=(D.assets||[]).reduce((s,a)=>s+a.value,0);
+  const assetsAll=D.assets||[];
+  const fixedA2=assetsAll.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0);
+  const curA2=assetsAll.filter(a=>a.category==="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+  const othA2=assetsAll.filter(a=>a.category!=="স্থাবর সম্পদ"&&a.category!=="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
   const totalLoanReceivable=loans.reduce((s,l)=>s+l.remaining,0);
-  const totalNetAsset=totalAssetAll+totalInvestAll+totalLoanReceivable+Math.max(0,cashFund);
+  const duesH=getDuesList();
+  const totalDueChadaH=duesH.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
+  const totalNetAsset=Math.max(0,cashFund)+totalLoanReceivable+totalInvestAll+fixedA2+curA2+othA2+totalDueChadaH;
 
   const mainGoal=goals[0];
   const goalProgress=mainGoal&&mainGoal.target>0?Math.round(totalNetAsset/mainGoal.target*100):0;
@@ -1069,10 +1074,12 @@ function pgHome(){
   const duesList=getDuesList();
   const totalDueChada=duesList.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
 
-  // মোট সম্পদ = সম্পদ + বিনিয়োগ + বিতরণকৃত ঋণ + বকেয়া চাঁদা + নিট তহবিল
-  // লক্ষ্য করুন: cashFund (calcFund()) ব্যবহার করা হচ্ছে, কারণ এটি ইতিমধ্যে বিতরণকৃত ঋণ ও বিনিয়োগ বাদ দিয়ে রাখে।
-  // gross "fund" (আয়-ব্যয়) ব্যবহার করলে ঋণ/বিনিয়োগের টাকা দুইবার গণনা হয়ে যেত — এটি ব্যালেন্স শিটের হিসাবের সাথে গরমিলের কারণ ছিল।
-  const totalNetAsset=totalAsset+totalInvest+totalDue+totalDueChada+Math.max(0,cashFund);
+  // ══ মোট সম্পদ — ব্যালেন্স শিট পেজের মতো হুবহু একই সূত্র ══
+  // ব্যালেন্স শিট: cashBalance + loanOut + invest + fixedAsset + currentAsset + otherAsset + চাঁদা
+  const fixedAssetTotal2=assets.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0);
+  const currentAssetTotal2=assets.filter(a=>a.category==="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+  const otherAssetTotal2=assets.filter(a=>a.category!=="স্থাবর সম্পদ"&&a.category!=="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+  const totalNetAsset=Math.max(0,cashFund)+totalDue+totalInvest+fixedAssetTotal2+currentAssetTotal2+otherAssetTotal2+totalDueChada;
 
   const kpis=[
     ["👥",members.length,"মোট সদস্য","#1a8a00","#f0fdf4",""],
@@ -1111,17 +1118,15 @@ function pgHome(){
     </div>`).join("")||`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো বকেয়া চাঁদা নেই 🎉</div>`;
 
   // ── বিস্তৃত পাই চার্ট: নগদ/ব্যাংক, বিনিয়োগ, বকেয়া চাঁদা, বকেয়া ঋণ, স্থাবর সম্পদ, অন্যান্য সম্পদ, মোট দায় ──
-  const fixedAsset=assets.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0);
-  const otherAsset=Math.max(0,totalAsset-fixedAsset);
   const pieSlices=[
     {label:"নগদ/ব্যাংক ব্যালেন্স",value:Math.max(0,cashFund),color:"#1a8a00"},
     {label:"বিনিয়োগ",value:totalInvest,color:"#0d9488"},
     {label:"বকেয়া চাঁদা",value:totalDueChada,color:"#d97706"},
     {label:"বকেয়া ঋণ",value:totalDue,color:"#dc2626"},
-    {label:"স্থাবর সম্পদ",value:fixedAsset,color:"#7c3aed"},
-    {label:"অন্যান্য সম্পদ",value:otherAsset,color:"#2563eb"},
-    {label:"মোট দায় (−)",value:totalLiability,color:"#be123c"},
-  ];
+    {label:"স্থাবর সম্পদ",value:fixedAssetTotal2,color:"#7c3aed"},
+    {label:"চলতি সম্পদ",value:currentAssetTotal2,color:"#db2777"},
+    {label:"অন্যান্য সম্পদ",value:otherAssetTotal2,color:"#2563eb"},
+  ].filter(s=>s.value>0);
   const pieGrand=Math.max(1,totalNetAsset);
   let cum=0;
   const gradParts=pieSlices.map(s=>{
@@ -2026,8 +2031,16 @@ function pgBalance(){
         <!-- ২. দায় -->
         <div style="font-weight:800;font-size:14px;color:#dc2626;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid #fee2e2">🔴 দায় (Liabilities) — "কার কাছে কত দেনা?"</div>
 
-        ${liabilities.length?liabilities.map(l=>rw(l.name+" ("+(l.type||"")+")",fmt(l.amount))).join(""):`<div style="padding:6px 0;font-size:12px;color:#94a3b8">কোনো ম্যানুয়াল দায় যোগ করা হয়নি</div>`}
+        ${liabilities.length?liabilities.map(l=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9">
+            <span style="font-size:13px;color:#374151">${l.name}${l.type?" ("+l.type+")":""}</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-weight:700;color:#dc2626">${fmt(l.amount)}</span>
+              ${isA()?`<button onclick="delLiability(${l.id})" style="background:#fff1f2;color:#dc2626;border:1px solid #fecaca;border-radius:7px;padding:3px 9px;font-size:12px;cursor:pointer">🗑 মুছুন</button>`:""}
+            </div>
+          </div>`).join(""):`<div style="padding:6px 0;font-size:12px;color:#94a3b8">কোনো ম্যানুয়াল দায় যোগ করা হয়নি</div>`}
         ${totalFormerMemberDue>0?rw("পূর্ব সদস্যদের ফেরতযোগ্য পাওনা",fmt(totalFormerMemberDue)):""}
+
 
         <div style="background:#dc2626;border-radius:9px;padding:12px 16px;margin:14px 0 20px">
           <div style="display:flex;justify-content:space-between;align-items:center">
@@ -4473,10 +4486,15 @@ function pgMemberStat(){
   // Equity-based member share: মোট নিট সম্পদ ÷ সদস্য সংখ্যা
   const totalMembers=Math.max(1,(D.members||[]).length);
   const cashFund2=calcFund();
+  const assetsAll2=D.assets||[];
+  const fixedA3=assetsAll2.filter(a=>a.category==="স্থাবর সম্পদ").reduce((s,a)=>s+a.value,0);
+  const curA3=assetsAll2.filter(a=>a.category==="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
+  const othA3=assetsAll2.filter(a=>a.category!=="স্থাবর সম্পদ"&&a.category!=="চলতি সম্পদ").reduce((s,a)=>s+a.value,0);
   const totalInvestAll2=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
-  const totalAssetAll2=(D.assets||[]).reduce((s,a)=>s+a.value,0);
   const totalLoanRecv2=(D.loans||[]).reduce((s,l)=>s+l.remaining,0);
-  const totalNetAsset2=totalAssetAll2+totalInvestAll2+totalLoanRecv2+Math.max(0,cashFund2);
+  const duesMS=getDuesList();
+  const totalDueChadaMS=duesMS.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
+  const totalNetAsset2=Math.max(0,cashFund2)+totalLoanRecv2+totalInvestAll2+fixedA3+curA3+othA3+totalDueChadaMS;
   const totalManualLiab2=(D.liabilities||[]).reduce((s,l)=>s+l.amount,0);
   const totalFormerDue2=(D.formerMembers||[]).filter(x=>!x.refunded).reduce((s,x)=>s+(x.refundDue||0),0);
   const netEquity=Math.max(0,totalNetAsset2-totalManualLiab2-totalFormerDue2);
