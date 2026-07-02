@@ -281,7 +281,10 @@ const firebaseConfig = {
     <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px">
       <div style="font-size:11px;color:rgba(255,255,255,.4);text-align:center;margin-bottom:10px">👑 অ্যাডমিন লগইন</div>
       <div class="field"><input type="email" id="admEmail" placeholder="ইমেইল" autocomplete="username" style="background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.18);color:#fff;margin-bottom:8px"></div>
-      <div class="field"><input type="password" id="pw" placeholder="পাসওয়ার্ড" autocomplete="current-password" style="background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.18);color:#fff" onkeydown="if(event.key==='Enter')login('admin')"></div>
+      <div class="field" style="position:relative">
+        <input type="password" id="pw" placeholder="পাসওয়ার্ড" autocomplete="current-password" style="background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.18);color:#fff;padding-right:40px" onkeydown="if(event.key==='Enter')login('admin')">
+        <button type="button" onclick="togglePwView()" id="pwEyeBtn" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px" title="পাসওয়ার্ড দেখুন/লুকান">👁️</button>
+      </div>
       <div id="pwerr" style="color:#f87171;font-size:12px;text-align:center;margin:8px 0;display:none">❌ ভুল পাসওয়ার্ড</div>
       <button class="btn btn-g btn-full" id="adminLoginBtn" onclick="login('admin')">🔐 অ্যাডমিন প্রবেশ</button>
     </div>
@@ -877,6 +880,27 @@ function subscribeFirebaseData(){
     });
   }catch(e){}
 }
+function authErrorMsg(err){
+  const code=err&&err.code||"";
+  const map={
+    "auth/wrong-password":"❌ পাসওয়ার্ড ভুল",
+    "auth/invalid-credential":"❌ ইমেইল অথবা পাসওয়ার্ড ভুল",
+    "auth/user-not-found":"❌ এই ইমেইলে কোনো অ্যাকাউন্ট নেই — Firebase Console-এ ইমেইলটা আবার মিলিয়ে দেখুন",
+    "auth/invalid-email":"❌ ইমেইল ফরম্যাট সঠিক না",
+    "auth/user-disabled":"⛔ এই অ্যাকাউন্ট নিষ্ক্রিয় করা আছে",
+    "auth/too-many-requests":"⏳ অনেকবার ভুল চেষ্টা হয়েছে — কিছুক্ষণ পর আবার চেষ্টা করুন",
+    "auth/network-request-failed":"📴 ইন্টারনেট সংযোগ সমস্যা",
+    "auth/unauthorized-domain":"⛔ এই ওয়েবসাইট ডোমেইন Firebase Authorized domains-এ যোগ করা নেই",
+    "auth/operation-not-allowed":"⛔ Email/Password লগইন Firebase Console-এ এখনো চালু করা হয়নি"
+  };
+  return map[code] || ("❌ Firebase error: "+(code||err.message||String(err)));
+}
+function togglePwView(){
+  const inp=document.getElementById("pw");
+  const btn=document.getElementById("pwEyeBtn");
+  if(inp.type==="password"){ inp.type="text"; btn.textContent="🙈"; }
+  else{ inp.type="password"; btn.textContent="👁️"; }
+}
 async function login(r){
   try{
     const errEl=document.getElementById("pwerr");
@@ -896,19 +920,29 @@ async function login(r){
       }
       const btn=document.getElementById("adminLoginBtn");
       if(btn){btn.disabled=true;btn.textContent="⏳ যাচাই হচ্ছে...";}
+      let cred;
       try{
-        const cred=await firebase.auth().signInWithEmailAndPassword(email,p);
+        cred=await firebase.auth().signInWithEmailAndPassword(email,p);
+      }catch(authErr){
+        console.error("Firebase auth error:",authErr);
+        errEl.textContent=authErrorMsg(authErr);
+        errEl.style.display="block";
+        if(btn){btn.disabled=false;btn.textContent="🔐 অ্যাডমিন প্রবেশ";}
+        return;
+      }
+      try{
         const roleSnap=await firebase.database().ref('roles/'+cred.user.uid).once('value');
         if(roleSnap.val()!=="admin"){
           await firebase.auth().signOut();
-          errEl.textContent="⛔ এই অ্যাকাউন্টের অ্যাডমিন অনুমতি নেই";
+          errEl.textContent="⛔ এই অ্যাকাউন্টের অ্যাডমিন অনুমতি নেই (roles/"+cred.user.uid+" এ 'admin' পাওয়া যায়নি)";
           errEl.style.display="block";
           if(btn){btn.disabled=false;btn.textContent="🔐 অ্যাডমিন প্রবেশ";}
           return;
         }
-      }catch(authErr){
-        console.error("Firebase auth error:",authErr);
-        errEl.textContent="❌ ভুল ইমেইল অথবা পাসওয়ার্ড";
+      }catch(dbErr){
+        console.error("Firebase role-check error:",dbErr);
+        await firebase.auth().signOut().catch(()=>{});
+        errEl.textContent="❌ লগইন হয়েছে কিন্তু roles যাচাইয়ে সমস্যা: "+(dbErr.code||dbErr.message||dbErr);
         errEl.style.display="block";
         if(btn){btn.disabled=false;btn.textContent="🔐 অ্যাডমিন প্রবেশ";}
         return;
