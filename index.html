@@ -186,6 +186,21 @@ html[data-theme="dark"] .btn-outline{border-color:var(--border);color:var(--mute
 html[data-theme="dark"] .fab-menu button{background:var(--white);color:var(--ink);border-color:var(--border)}
 html[data-theme="dark"] .stat-box{background:var(--white)}
 html[data-theme="dark"] .stat-box .sl{color:var(--muted)}
+/* Dark mode: catch-all for inline hardcoded colors used across dynamically rendered pages */
+html[data-theme="dark"] [style*="background:#f8fafc"]{background:#1a241c!important}
+html[data-theme="dark"] [style*="background:#fafafa"]{background:#1a241c!important}
+html[data-theme="dark"] [style*="color:#64748b"]{color:var(--muted)!important}
+html[data-theme="dark"] [style*="color:#94a3b8"]{color:var(--muted)!important}
+html[data-theme="dark"] [style*="color:#071a07"]{color:var(--ink)!important}
+html[data-theme="dark"] [style*="color:#334155"]{color:var(--ink)!important}
+html[data-theme="dark"] [style*="color:#475569"]{color:var(--muted)!important}
+html[data-theme="dark"] [style*="color:#374151"]{color:var(--ink)!important}
+html[data-theme="dark"] [style*="color:#1e293b"]{color:var(--ink)!important}
+html[data-theme="dark"] [style*="border:1px solid #e2e8f0"]{border-color:var(--border)!important}
+html[data-theme="dark"] [style*="border-right:2px solid #e2e8f0"]{border-color:var(--border)!important}
+html[data-theme="dark"] [style*="border-bottom:1px solid #e2e8f0"]{border-color:var(--border)!important}
+html[data-theme="dark"] [style*="border-bottom:1px solid #f1f5f9"]{border-color:var(--border)!important}
+html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{color-scheme:dark}
 
 /* AI Report modal */
 .ai-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9990;display:none;align-items:center;justify-content:center}
@@ -265,9 +280,10 @@ const firebaseConfig = {
     </button>
     <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px">
       <div style="font-size:11px;color:rgba(255,255,255,.4);text-align:center;margin-bottom:10px">👑 অ্যাডমিন লগইন</div>
-      <div class="field"><input type="password" id="pw" placeholder="পাসওয়ার্ড" style="background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.18);color:#fff" onkeydown="if(event.key==='Enter')login('admin')"></div>
-      <div id="pwerr" style="color:#f87171;font-size:12px;text-align:center;margin-bottom:8px;display:none">❌ ভুল পাসওয়ার্ড</div>
-      <button class="btn btn-g btn-full" onclick="login('admin')">🔐 অ্যাডমিন প্রবেশ</button>
+      <div class="field"><input type="email" id="admEmail" placeholder="ইমেইল" autocomplete="username" style="background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.18);color:#fff;margin-bottom:8px"></div>
+      <div class="field"><input type="password" id="pw" placeholder="পাসওয়ার্ড" autocomplete="current-password" style="background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.18);color:#fff" onkeydown="if(event.key==='Enter')login('admin')"></div>
+      <div id="pwerr" style="color:#f87171;font-size:12px;text-align:center;margin:8px 0;display:none">❌ ভুল পাসওয়ার্ড</div>
+      <button class="btn btn-g btn-full" id="adminLoginBtn" onclick="login('admin')">🔐 অ্যাডমিন প্রবেশ</button>
     </div>
   </div>
   <div style="color:rgba(255,255,255,.2);font-size:11px;margin-top:18px;text-align:center">সকল সদস্য ব্যবহার করতে পারবেন</div>
@@ -389,7 +405,8 @@ const firebaseConfig = {
 // ══════════════════
 // CONFIG
 // ══════════════════
-const PW = "swapnghuri2026";
+// পাসওয়ার্ড আর ক্লায়েন্ট-সাইড কোডে রাখা হয় না — Firebase Authentication (email/password)
+// দিয়ে যাচাই হয়, এবং অ্যাডমিন-অনুমতি Realtime Database-এর roles/{uid} নোড দিয়ে নিশ্চিত হয়।
 const SK = "sg_full_v2";
 
 const TABS = [
@@ -443,7 +460,7 @@ const SEED = {
 // ══════════════════
 // STATE
 // ══════════════════
-let role=sessionStorage.getItem("sg_role")||null, curTab="home", D=null;
+let role=(localStorage.getItem("sg_role")==="viewer"?"viewer":null), curTab="home", D=null;
 const LS={get:k=>{try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){console.error("storage save failed",e);return false;}}};
 const fmt=n=>"৳"+Number(n||0).toLocaleString("bn-BD");
 const now=new Date();
@@ -532,7 +549,27 @@ function showSyncDetail(){
   alert(`📊 সিঙ্ক স্ট্যাটাস তথ্য\n\nFirebase সংযুক্ত: ${fbConnected?"✅ হ্যাঁ":"❌ না"}\nবর্তমান অবস্থা: ${status}\nশেষ আপডেট: ${time}\n\n${fbConnected?"আপনার ডাটা স্বয়ংক্রিয়ভাবে ক্লাউডে (Firebase) সংরক্ষিত হচ্ছে। ইন্টারনেট থাকলে সব ডিভাইসে একই ডাটা দেখাবে।":"⚠️ ক্লাউড সংযোগ নেই। ডাটা শুধু এই ফোনে/ব্রাউজারে আছে। ইন্টারনেট চেক করুন।"}`);
 }
 
-function toast(m,c="#1a8a00"){const t=document.getElementById("toast");t.textContent=m;t.style.background=c;t.style.display="block";t.style.animation="fadeUp .3s ease";setTimeout(()=>t.style.display="none",2800);}
+function toast(m,c="#1a8a00"){
+  if(!window._toastQueue) window._toastQueue=[];
+  // একই মেসেজ পরপর জমা হলে ডুপ্লিকেট বাদ দাও
+  const last=window._toastQueue[window._toastQueue.length-1];
+  if(last&&last.m===m&&last.c===c)return;
+  window._toastQueue.push({m,c});
+  if(!window._toastShowing) _showNextToast();
+}
+function _showNextToast(){
+  const q=window._toastQueue||[];
+  if(!q.length){window._toastShowing=false;return;}
+  window._toastShowing=true;
+  const {m,c}=q.shift();
+  const t=document.getElementById("toast");
+  t.textContent=m;t.style.background=c;t.style.display="block";t.style.animation="fadeUp .3s ease";
+  clearTimeout(window._toastTimer);
+  window._toastTimer=setTimeout(()=>{
+    t.style.display="none";
+    window._toastGap=setTimeout(_showNextToast,220);
+  },2800);
+}
 const bdg=(t,c,bg,s=11)=>`<span class="badge" style="color:${c};background:${bg};font-size:${s}px">${t}</span>`;
 const av=(n,sz=40,g="linear-gradient(135deg,#006400,#1a8a00)",mid=null)=>{
   if(mid){const mem=(D.members||[]).find(m=>m.id==mid);if(mem&&mem.photo)return `<img src="${mem.photo}" style="width:${sz}px;height:${sz}px;border-radius:50%;object-fit:cover;flex-shrink:0">`;}
@@ -780,71 +817,126 @@ function getApplicableRate(mid, monthKey){
 
 
 // ══════════════════
-// AUTH
+// AUTH (Firebase Authentication + Role-Based Access Control)
 // ══════════════════
-function login(r){
+// অ্যাডমিন হওয়ার জন্য দুইটা শর্ত লাগে:
+//  ১) Firebase Authentication-এ বৈধ ইমেইল/পাসওয়ার্ড দিয়ে সাইন-ইন করা
+//  ২) Realtime Database-এর roles/{uid} নোডে মান "admin" থাকা
+// প্রকৃত নিরাপত্তা Firebase Security Rules দিয়ে নিশ্চিত হয় (সার্ভার-সাইড) — এই কোড শুধু UI নিয়ন্ত্রণ করে।
+function enterApp(r){
+  role=r;
+  if(r==="viewer") localStorage.setItem("sg_role","viewer"); // ভিউয়ার = কোনো অনুমতি নেই, তাই লোকাল মনে রাখা নিরাপদ
+  try{ D=LS.get(SK)||JSON.parse(JSON.stringify(SEED)); }catch(e){ D=JSON.parse(JSON.stringify(SEED)); }
+  if(!D.rateHistory) D.rateHistory=[];if(!D.liabilities) D.liabilities=[];
+  if(!D.activityLog) D.activityLog=[];
+  if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
+  if(!D.formerMembers) D.formerMembers=[];if(!D.trash) D.trash=[];
+  try{ maybeAutoBackup(); }catch(e){}
+  document.getElementById("ls").style.display="none";
+  document.getElementById("app").style.display="flex";
+  document.getElementById("fab-btn").classList.add("show");
+  document.getElementById("vbar").style.display = r!=="admin" ? "block" : "none";
+  // back button trap — history stack-এ entry যোগ করো
+  history.pushState({tab:"home",role:r},"","");
+  buildNav();
+  trackVisitor();
+  goTab("home");
+  subscribeFirebaseData();
+}
+// ক্লাউড ডেটা সিঙ্ক — একবারই সাবস্ক্রাইব হবে (আগে login()-এর ভেতরে ও পেজের নিচে দুই জায়গায় ডুপ্লিকেট হতো)
+function subscribeFirebaseData(){
   try{
-    if(r==="admin"){
-      var p=document.getElementById("pw").value;
-      if(p!==PW){
-        document.getElementById("pwerr").style.display="block";
-        return;
-      }
-    }
-    role=r;
-    localStorage.setItem("sg_role",r);
-    try{ D=LS.get(SK)||JSON.parse(JSON.stringify(SEED)); }catch(e){ D=JSON.parse(JSON.stringify(SEED)); }
-    if(!D.rateHistory) D.rateHistory=[];if(!D.liabilities) D.liabilities=[];
-    if(!D.activityLog) D.activityLog=[];
-    if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
-    if(!D.formerMembers) D.formerMembers=[];if(!D.trash) D.trash=[];
-    try{ maybeAutoBackup(); }catch(e){}
-    document.getElementById("ls").style.display="none";
-    document.getElementById("app").style.display="flex";
-    document.getElementById("fab-btn").classList.add("show");
-    if(r!=="admin") document.getElementById("vbar").style.display="block";
-    // back button trap — history stack-এ entry যোগ করো
-    history.pushState({tab:"home",role:r},"","");
-    buildNav();
-    trackVisitor();
-    goTab("home");
-    setTimeout(function(){
+    if(window._fbSubscribed) return;
+    if(typeof firebase==="undefined"||!firebase.apps||!firebase.apps.length||!firebase.database) return;
+    window._fbSubscribed=true;
+    firebase.database().ref('sg_data').once('value').then(function(snap){
       try{
-        if(typeof firebase!=="undefined"&&firebase.apps&&firebase.apps.length){
-          firebase.database().ref('sg_data').once('value').then(function(snap){
-            try{
-              if(snap.exists()){
-                var fd=JSON.parse(snap.val());
-                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];LS.set(SK,D);if(curTab)goTab(curTab);}
-              }
-            }catch(e){}
-          });
-          firebase.database().ref('sg_data').on('value',function(snap){
-            try{
-              if(snap.exists()&&role){
-                var fd=JSON.parse(snap.val());
-                if(fd&&fd.members){
-                  // Conflict detection: local-এ unsaved পরিবর্তন থাকলে সতর্ক করো
-                  if(window._dirty){
-                    toast("⚠️ ক্লাউড থেকে নতুন ডেটা এসেছে — লোকাল পরিবর্তন মার্জ হচ্ছে","#d97706");
-                  }
-                  D=fd;
-                  if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];
-                  window._dirty=false;
-                  LS.set(SK,D);
-                  if(curTab)goTab(curTab);
-                }
-              }
-            }catch(e){console.error("Firebase listener error:",e);}
-          });
+        if(snap.exists()){
+          var fd=JSON.parse(snap.val());
+          if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];LS.set(SK,D);if(curTab)goTab(curTab);}
         }
       }catch(e){}
-    },3000);
+    });
+    firebase.database().ref('sg_data').on('value',function(snap){
+      try{
+        if(snap.exists()&&role){
+          var fd=JSON.parse(snap.val());
+          if(fd&&fd.members){
+            // Conflict detection: local-এ unsaved পরিবর্তন থাকলে সতর্ক করো
+            if(window._dirty){
+              toast("⚠️ ক্লাউড থেকে নতুন ডেটা এসেছে — লোকাল পরিবর্তন মার্জ হচ্ছে","#d97706");
+            }
+            D=fd;
+            if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];
+            window._dirty=false;
+            LS.set(SK,D);
+            if(curTab)goTab(curTab);
+          }
+        }
+      }catch(e){console.error("Firebase listener error:",e);}
+    });
+  }catch(e){}
+}
+async function login(r){
+  try{
+    const errEl=document.getElementById("pwerr");
+    errEl.style.display="none";
+    if(r==="admin"){
+      const email=(document.getElementById("admEmail").value||"").trim();
+      const p=document.getElementById("pw").value;
+      if(!email||!p){
+        errEl.textContent="❌ ইমেইল ও পাসওয়ার্ড দুটোই দিন";
+        errEl.style.display="block";
+        return;
+      }
+      if(typeof firebase==="undefined"||!firebase.auth){
+        errEl.textContent="⏳ নিরাপত্তা মডিউল লোড হচ্ছে — কয়েক সেকেন্ড পর আবার চেষ্টা করুন";
+        errEl.style.display="block";
+        return;
+      }
+      const btn=document.getElementById("adminLoginBtn");
+      if(btn){btn.disabled=true;btn.textContent="⏳ যাচাই হচ্ছে...";}
+      try{
+        const cred=await firebase.auth().signInWithEmailAndPassword(email,p);
+        const roleSnap=await firebase.database().ref('roles/'+cred.user.uid).once('value');
+        if(roleSnap.val()!=="admin"){
+          await firebase.auth().signOut();
+          errEl.textContent="⛔ এই অ্যাকাউন্টের অ্যাডমিন অনুমতি নেই";
+          errEl.style.display="block";
+          if(btn){btn.disabled=false;btn.textContent="🔐 অ্যাডমিন প্রবেশ";}
+          return;
+        }
+      }catch(authErr){
+        console.error("Firebase auth error:",authErr);
+        errEl.textContent="❌ ভুল ইমেইল অথবা পাসওয়ার্ড";
+        errEl.style.display="block";
+        if(btn){btn.disabled=false;btn.textContent="🔐 অ্যাডমিন প্রবেশ";}
+        return;
+      }
+      if(btn){btn.disabled=false;btn.textContent="🔐 অ্যাডমিন প্রবেশ";}
+    }else{
+      // ভিউয়ার — পাসওয়ার্ড লাগে না; ঐচ্ছিকভাবে anonymous auth (Firebase Console-এ Anonymous sign-in চালু থাকলে)
+      try{ if(typeof firebase!=="undefined"&&firebase.auth&&!firebase.auth().currentUser){ await firebase.auth().signInAnonymously(); } }catch(e){}
+    }
+    enterApp(r);
   }catch(err){
     alert("Error: "+err.message);
   }
 }
-function logout(){role=null;localStorage.removeItem("sg_role");document.getElementById("ls").style.display="flex";document.getElementById("app").style.display="none";document.getElementById("vbar").style.display="none";document.getElementById("pw").value="";document.getElementById("pwerr").style.display="none";document.getElementById("fab-btn").classList.remove("show");closeFab();}
+function logout(){
+  try{ if(typeof firebase!=="undefined"&&firebase.auth){ firebase.auth().signOut(); } }catch(e){}
+  role=null;
+  localStorage.removeItem("sg_role");
+  window._fbSubscribed=false;
+  document.getElementById("ls").style.display="flex";
+  document.getElementById("app").style.display="none";
+  document.getElementById("vbar").style.display="none";
+  document.getElementById("pw").value="";
+  const emailEl=document.getElementById("admEmail"); if(emailEl) emailEl.value="";
+  document.getElementById("pwerr").style.display="none";
+  document.getElementById("fab-btn").classList.remove("show");
+  closeFab();
+}
 
 // Back button — logout হবে না, home-এ যাবে
 window.addEventListener("popstate",function(e){
@@ -1017,8 +1109,13 @@ function buildNav(){
   document.getElementById("sb-nav").innerHTML=html;
 
   const allItems=TABS.flatMap(s=>s.items.filter(t=>!t.adminOnly||isAd));
-  const mnItems=[...allItems.slice(0,4),{id:"more",icon:"☰",label:"আরো"}];
-  document.getElementById("mn").innerHTML=mnItems.map(t=>`<button class="mn${t.id===curTab?" on":""}" onclick="${t.id==="more"?"toggleSB()":"goTab('"+t.id+"')"}" id="mn-${t.id}"><span class="mi">${t.icon}</span><span class="ml">${t.label}</span><div class="md"></div></button>`).join("");
+  const mnMainItems=allItems.slice(0,4);
+  const isInMore=!mnMainItems.some(t=>t.id===curTab);
+  const mnItems=[...mnMainItems,{id:"more",icon:"☰",label:"আরো"}];
+  document.getElementById("mn").innerHTML=mnItems.map(t=>{
+    const isOn=t.id==="more"?isInMore:t.id===curTab;
+    return `<button class="mn${isOn?" on":""}" onclick="${t.id==="more"?"toggleSB()":"goTab('"+t.id+"')"}" id="mn-${t.id}"><span class="mi">${t.icon}</span><span class="ml">${t.label}</span><div class="md"></div></button>`;
+  }).join("");
 
   const brEl=document.getElementById("sb-backup-restore");
   if(brEl) brEl.style.display = isAd ? "grid" : "none";
@@ -1292,7 +1389,7 @@ function renderNotifBell(){
   if(!pop)return;
   if(!items.length){pop.innerHTML=`<div style="padding:24px;text-align:center;color:#94a3b8;font-size:12px">কোনো নোটিফিকেশন নেই</div>`;return;}
   pop.innerHTML=
-    `<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f1f5f9;position:sticky;top:0;background:#fff;z-index:1">
+    `<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f1f5f9;position:sticky;top:0;background:var(--white);z-index:1">
       <b style="font-size:13px;color:#071a07">🔔 নোটিফিকেশন (${unread.length} অপঠিত)</b>
       ${unread.length?`<span onclick="markAllNotifRead()" style="font-size:11px;color:#1a8a00;cursor:pointer;font-weight:600">সব পড়া হয়েছে ✓</span>`:""}
     </div>`+
@@ -1410,7 +1507,7 @@ function pgHome(){
   const pieChart=`
     <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:center;padding:8px 0">
       <div style="width:150px;height:150px;border-radius:50%;background:conic-gradient(${gradParts});position:relative;flex-shrink:0">
-        <div style="position:absolute;inset:16px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <div style="position:absolute;inset:16px;background:var(--white);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center">
           <div style="font-size:10px;color:#94a3b8">মোট সম্পদ</div>
           <div style="font-size:12px;font-weight:800;color:#071a07">${fmt(totalNetAsset)}</div>
         </div>
@@ -1473,7 +1570,7 @@ function pgHome(){
       <div style="font-size:12px;opacity:.7;margin-bottom:16px">📢 নতুন নোটিশ: ${(D.notices||[]).length} টি &nbsp;•&nbsp; ⚠️ বকেয়া সদস্য: ${duesList.filter(m=>m.totalDue>0).length} জন</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         ${[["মোট সম্পদ",fmt(totalNetAsset)],["নগদ তহবিল",fmt(cashFund)],["বকেয়া ঋণ",fmt(totalDue)],["বকেয়া চাঁদা",fmt(totalDueChada)],["মোট দায়",fmt(totalLiability)]].map(([l,v],i)=>`<div style="background:${i===4||(i===1&&cashFund<0)?"rgba(220,38,38,.25)":"rgba(255,255,255,.1)"};border-radius:9px;padding:9px 13px;border:1px solid ${i===4||(i===1&&cashFund<0)?"rgba(220,38,38,.4)":"rgba(255,255,255,.1)"}"><div style="color:rgba(255,255,255,.55);font-size:10px">${l}</div><div style="color:${i===4||(i===1&&cashFund<0)?"#fca5a5":"#fff"};font-weight:800;font-size:15px">${v}</div></div>`).join("")}
-        <div style="background:#fff;border-radius:9px;padding:9px 13px;border:1px solid rgba(255,255,255,.1);cursor:pointer" onclick="goTab('health')">
+        <div style="background:var(--white);border-radius:9px;padding:9px 13px;border:1px solid rgba(255,255,255,.1);cursor:pointer" onclick="goTab('health')">
           <div style="color:#64748b;font-size:10px">স্বাস্থ্য স্কোর</div>
           <div style="color:${hs.scoreColor};font-weight:800;font-size:15px">${hs.score}/১০০ ${hs.scoreLabel}</div>
         </div>
@@ -1665,7 +1762,7 @@ function pgLoans(){
 
     <!-- ঋণ সম্পাদনা Modal -->
     <div id="loan-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center">
-      <div style="background:#fff;border-radius:16px;padding:22px;width:92%;max-width:400px;box-shadow:0 10px 40px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto">
+      <div style="background:var(--white);border-radius:16px;padding:22px;width:92%;max-width:400px;box-shadow:0 10px 40px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto">
         <div style="font-weight:800;font-size:17px;margin-bottom:16px;color:var(--ink)">✏️ ঋণ সম্পাদনা</div>
         <input type="hidden" id="el-id">
         <div class="field"><label>সদস্য</label>
@@ -1856,7 +1953,7 @@ function pgInvest(){
 
   const editModal=`
     <div id="invest-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center">
-      <div style="background:#fff;border-radius:16px;padding:22px;width:92%;max-width:400px;max-height:90vh;overflow-y:auto">
+      <div style="background:var(--white);border-radius:16px;padding:22px;width:92%;max-width:400px;max-height:90vh;overflow-y:auto">
         <div style="font-weight:800;font-size:17px;margin-bottom:16px">✏️ বিনিয়োগ সম্পাদনা</div>
         <input type="hidden" id="ei-id">
         <div class="field"><label>বিনিয়োগের বিবরণ</label><input type="text" id="ei-title"></div>
@@ -2442,14 +2539,14 @@ function pgNotice(){
     <div class="field"><label>শিরোনাম</label><input id="ntT" placeholder="নোটিশের শিরোনাম"></div>
     <div class="field"><label>বিবরণ</label>
 <div style="border:1.5px solid var(--border);border-radius:9px;overflow:hidden">
-  <div style="background:#f8fafc;padding:6px 10px;display:flex;gap:6px;border-bottom:1px solid var(--border);flex-wrap:wrap">
-    <button type="button" onclick="fmtText('bold')" style="background:#fff;border:1px solid #ddd;border-radius:5px;padding:3px 8px;cursor:pointer;font-weight:700;font-size:12px">B</button>
-    <button type="button" onclick="fmtText('italic')" style="background:#fff;border:1px solid #ddd;border-radius:5px;padding:3px 8px;cursor:pointer;font-style:italic;font-size:12px">I</button>
-    <button type="button" onclick="fmtText('ul')" style="background:#fff;border:1px solid #ddd;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px">• তালিকা</button>
-    <button type="button" onclick="fmtText('ol')" style="background:#fff;border:1px solid #ddd;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px">১. তালিকা</button>
-    <button type="button" onclick="fmtText('hr')" style="background:#fff;border:1px solid #ddd;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px">─────</button>
+  <div style="background:var(--bg);padding:6px 10px;display:flex;gap:6px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+    <button type="button" onclick="fmtText('bold')" style="background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:5px;padding:3px 8px;cursor:pointer;font-weight:700;font-size:12px">B</button>
+    <button type="button" onclick="fmtText('italic')" style="background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:5px;padding:3px 8px;cursor:pointer;font-style:italic;font-size:12px">I</button>
+    <button type="button" onclick="fmtText('ul')" style="background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px">• তালিকা</button>
+    <button type="button" onclick="fmtText('ol')" style="background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px">১. তালিকা</button>
+    <button type="button" onclick="fmtText('hr')" style="background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px">─────</button>
   </div>
-  <textarea id="ntB" placeholder="বিস্তারিত লিখুন...&#10;&#10;**গাঢ়** লেখার জন্য ** দিয়ে ঘিরুন&#10;• বুলেটের জন্য • দিয়ে শুরু করুন" style="width:100%;min-height:120px;padding:10px 13px;border:none;font-size:14px;font-family:inherit;outline:none;resize:vertical"></textarea>
+  <textarea id="ntB" placeholder="বিস্তারিত লিখুন...&#10;&#10;**গাঢ়** লেখার জন্য ** দিয়ে ঘিরুন&#10;• বুলেটের জন্য • দিয়ে শুরু করুন" style="width:100%;min-height:120px;padding:10px 13px;border:none;font-size:14px;font-family:inherit;outline:none;resize:vertical;background:var(--white);color:var(--ink)"></textarea>
 </div></div>
     <div class="grid3">
       <div class="field"><label>ধরন</label><select id="ntTy"><option value="info">ℹ️ তথ্য</option><option value="warning">⚠️ সতর্কতা</option><option value="success">✅ সাফল্য</option><option value="urgent">🔴 জরুরি</option></select></div>
@@ -2606,8 +2703,8 @@ function pgMembers(){
 
     <!-- সদস্য সম্পাদনা Modal -->
     <div id="member-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center">
-      <div style="background:#fff;border-radius:16px;padding:22px;width:92%;max-width:400px;max-height:90vh;overflow-y:auto">
-        <div style="font-weight:800;font-size:17px;margin-bottom:16px;color:#071a07">✏️ সদস্য সম্পাদনা</div>
+      <div style="background:var(--white);border-radius:16px;padding:22px;width:92%;max-width:400px;max-height:90vh;overflow-y:auto">
+        <div style="font-weight:800;font-size:17px;margin-bottom:16px;color:var(--ink)">✏️ সদস্য সম্পাদনা</div>
         <input type="hidden" id="em-id">
         <div class="field"><label>পূর্ণ নাম</label><input type="text" id="em-name"></div>
         <div class="field"><label>মোবাইল</label><input type="tel" id="em-phone" placeholder="01XXXXXXXXX"></div>
@@ -2753,7 +2850,7 @@ function openMemberProfile(mid){
   const row=(label,value,color="#071a07")=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9"><span style="font-size:12px;color:#64748b">${label}</span><span style="font-size:13px;font-weight:700;color:${color}">${value}</span></div>`;
 
   const html=`<div id="member-profile-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:10px;overflow-y:auto" onclick="if(event.target===this)closeMemberProfile()">
-  <div style="background:#fff;border-radius:16px;width:100%;max-width:480px;overflow:hidden;margin:auto">
+  <div style="background:var(--white);border-radius:16px;width:100%;max-width:480px;overflow:hidden;margin:auto">
 
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#006400,#1a8a00);padding:20px;position:relative">
@@ -3991,15 +4088,15 @@ function pgPayment(){
         ${isA()?`<button onclick="delBankInfo(${b.id})" style="background:#fee2e2;border:none;border-radius:7px;padding:4px 9px;cursor:pointer;color:#dc2626;font-size:12px">🗑</button>`:""}
       </div>
       <div style="margin-top:10px;display:grid;gap:6px">
-        <div style="display:flex;justify-content:space-between;background:#fff;border-radius:8px;padding:8px 12px">
+        <div style="display:flex;justify-content:space-between;background:var(--white);border-radius:8px;padding:8px 12px">
           <span style="font-size:12px;color:#64748b">অ্যাকাউন্ট নম্বর</span>
           <span style="font-weight:700;font-size:13px;color:#0369a1">${b.number}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;background:#fff;border-radius:8px;padding:8px 12px">
+        <div style="display:flex;justify-content:space-between;background:var(--white);border-radius:8px;padding:8px 12px">
           <span style="font-size:12px;color:#64748b">অ্যাকাউন্টের নাম</span>
           <span style="font-weight:700;font-size:13px">${b.owner}</span>
         </div>
-        ${b.routing?`<div style="display:flex;justify-content:space-between;background:#fff;border-radius:8px;padding:8px 12px"><span style="font-size:12px;color:#64748b">রাউটিং নম্বর</span><span style="font-weight:700;font-size:13px">${b.routing}</span></div>`:""}
+        ${b.routing?`<div style="display:flex;justify-content:space-between;background:var(--white);border-radius:8px;padding:8px 12px"><span style="font-size:12px;color:#64748b">রাউটিং নম্বর</span><span style="font-weight:700;font-size:13px">${b.routing}</span></div>`:""}
       </div>
     </div>`).join(""):`<div style="text-align:center;padding:20px;color:#94a3b8">কোনো ব্যাংক অ্যাকাউন্ট যোগ হয়নি</div>`;
 
@@ -4010,11 +4107,11 @@ function pgPayment(){
         ${isA()?`<button onclick="delMobileInfo(${m.id})" style="background:#fee2e2;border:none;border-radius:7px;padding:4px 9px;cursor:pointer;color:#dc2626;font-size:12px">🗑</button>`:""}
       </div>
       <div style="margin-top:10px;display:grid;gap:6px">
-        <div style="display:flex;justify-content:space-between;background:#fff;border-radius:8px;padding:8px 12px">
+        <div style="display:flex;justify-content:space-between;background:var(--white);border-radius:8px;padding:8px 12px">
           <span style="font-size:12px;color:#64748b">নম্বর (${m.actype||"Send Money"})</span>
           <span style="font-weight:800;font-size:15px;color:#006400">${m.number}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;background:#fff;border-radius:8px;padding:8px 12px">
+        <div style="display:flex;justify-content:space-between;background:var(--white);border-radius:8px;padding:8px 12px">
           <span style="font-size:12px;color:#64748b">নাম</span>
           <span style="font-weight:700;font-size:13px">${m.owner}</span>
         </div>
@@ -4101,17 +4198,31 @@ function pgDuesSheet() {
   }
 
   const years = [...new Set(months.map(m=>m.year))];
+  // ডিফল্ট মোড: গত ১২ মাস (রোলিং)। ব্যবহারকারী চাইলে নির্দিষ্ট বছরও দেখতে পারবেন।
+  if(window._dsMode===undefined) window._dsMode="last12";
+  const dsMode = window._dsMode;
   // _dsYear যদি বৈধ না হয় বা list-এ না থাকে তাহলে বর্তমান বছর বা শেষ বছর ব্যবহার করো
   const selYear = (window._dsYear && years.includes(Number(window._dsYear)))
     ? Number(window._dsYear)
     : (years.includes(now2.getFullYear()) ? now2.getFullYear() : (years[years.length-1]||now2.getFullYear()));
-  const filtMonths = months.filter(m => m.year == selYear);
+  const filtMonths = dsMode==="last12" ? months.slice(Math.max(0, months.length-12)) : months.filter(m => m.year == selYear);
+  // নির্বাচিত পিরিয়ডের মাসগুলোর key-সেট — পেমেন্ট/বিশেষ চাঁদা ফিল্টার করতে ব্যবহৃত হবে (বছর অতিক্রমকারী রোলিং উইন্ডোর জন্যও সঠিক কাজ করে)
+  const filtMonthKeys = new Set(filtMonths.map(m=>m.key));
+  const periodLabel = dsMode==="last12"
+    ? `গত ১২ মাস (${filtMonths[0]?.label||""} – ${filtMonths[filtMonths.length-1]?.label||""})`
+    : String(selYear);
 
-  const yearBtns = years.map(y=>`
-    <button onclick="window._dsYear=${y};goTab('duessheet')"
-      style="padding:6px 14px;border-radius:8px;border:2px solid ${y==selYear?"var(--g2)":"var(--border)"};
-      background:${y==selYear?"var(--gl)":"#fff"};color:${y==selYear?"var(--g2)":"var(--muted)"};
-      font-weight:${y==selYear?700:400};cursor:pointer;font-family:inherit;font-size:12px">${y}</button>
+  const last12Btn = `
+    <button onclick="window._dsMode='last12';goTab('duessheet')"
+      style="padding:6px 14px;border-radius:8px;border:2px solid ${dsMode==="last12"?"var(--g2)":"var(--border)"};
+      background:${dsMode==="last12"?"var(--gl)":"var(--white)"};color:${dsMode==="last12"?"var(--g2)":"var(--muted)"};
+      font-weight:${dsMode==="last12"?700:400};cursor:pointer;font-family:inherit;font-size:12px">📆 গত ১২ মাস</button>
+  `;
+  const yearBtns = last12Btn + years.map(y=>`
+    <button onclick="window._dsMode='year';window._dsYear=${y};goTab('duessheet')"
+      style="padding:6px 14px;border-radius:8px;border:2px solid ${dsMode==="year"&&y==selYear?"var(--g2)":"var(--border)"};
+      background:${dsMode==="year"&&y==selYear?"var(--gl)":"var(--white)"};color:${dsMode==="year"&&y==selYear?"var(--g2)":"var(--muted)"};
+      font-weight:${dsMode==="year"&&y==selYear?700:400};cursor:pointer;font-family:inherit;font-size:12px">${y}</button>
   `).join("");
 
   // ── অ্যাডমিন প্যানেল: রেট ম্যানেজমেন্ট + বিশেষ মাস ──
@@ -4192,12 +4303,12 @@ function pgDuesSheet() {
   // নতুন নিয়ম: প্রতিটি মাসই তার তখনকার কার্যকর (পরিবর্তনশীল) হার অনুযায়ী গণনা হবে,
   // আর বিশেষ চাঁদা/টাকা যত বারই নির্ধারণ করা হোক, তা শুধু অতিরিক্ত হিসেবে যোগ হবে (প্রতিস্থাপন নয়)
   const memberSummary = members.map(m => {
-    const spMonths = specialMonths.filter(s=>s.mid==m.id && s.month.startsWith(selYear));
+    const spMonths = specialMonths.filter(s=>s.mid==m.id && filtMonthKeys.has(s.month));
     const spCount = spMonths.length;
     const spTotal = spMonths.reduce((s,x)=>s+x.amount,0);
     const regularTotal = filtMonths.reduce((s,mon)=>s+getApplicableRate(m.id, mon.key),0);
     const totalExpected = regularTotal + spTotal;
-    const totalPaid = payments.filter(p=>p.mid==m.id && p.month.startsWith(selYear)).reduce((s,p)=>s+p.amount,0);
+    const totalPaid = payments.filter(p=>p.mid==m.id && filtMonthKeys.has(p.month)).reduce((s,p)=>s+p.amount,0);
     const totalDue = totalExpected - totalPaid;
     return { m, spCount, spTotal, regularTotal, monthCount: filtMonths.length, totalExpected, totalPaid, totalDue };
   });
@@ -4219,7 +4330,7 @@ function pgDuesSheet() {
     <th style="position:sticky;left:0;background:#006400 !important;z-index:10;min-width:150px;color:#fff !important;font-size:13px;padding:10px 12px;border-right:2px solid #86efac">সদস্য / মাস</th>
     ${filtMonths.map(m=>`<th style="min-width:110px;text-align:center;background:#006400 !important;color:#fff !important;font-size:12px;font-weight:700;padding:10px 8px;white-space:nowrap;border-right:1px solid rgba(255,255,255,.15)">${m.label}</th>`).join("")}
     <th style="background:#006400 !important;color:#86efac !important;min-width:100px;text-align:center;padding:10px 8px;font-size:12px">মোট দেওয়া</th>
-    <th style="background:#006400 !important;color:#fca5a5 !important;min-width:100px;text-align:center;padding:10px 8px;font-size:12px">এ বছর বকেয়া</th>
+    <th style="background:#006400 !important;color:#fca5a5 !important;min-width:100px;text-align:center;padding:10px 8px;font-size:12px">এ মেয়াদের বকেয়া</th>
     <th style="background:#7f1d1d !important;color:#fca5a5 !important;min-width:170px;text-align:center;padding:10px 8px;font-size:12px;white-space:nowrap">সর্বমোট বকেয়া (শুরু থেকে এখন)</th>
   </tr>`;
 
@@ -4265,7 +4376,7 @@ function pgDuesSheet() {
     const yearDue = yearExpected - yearPaid;
 
     return `<tr data-name="${m.name}">
-      <td style="position:sticky;left:0;background:#fff;color:#071a07;z-index:5;font-weight:700;font-size:13px;padding:8px 12px;border-right:2px solid #e2e8f0">${m.name}</td>
+      <td style="position:sticky;left:0;background:var(--white);color:var(--ink);z-index:5;font-weight:700;font-size:13px;padding:8px 12px;border-right:2px solid #e2e8f0">${m.name}</td>
       ${cells}
       <td style="font-weight:700;color:#1a8a00;text-align:center;background:#f0fdf4">${fmt(yearPaid)}</td>
       <td style="font-weight:700;color:${yearDue>0?"#dc2626":"#1a8a00"};text-align:center;background:${yearDue>0?"#fff1f2":"#f0fdf4"}">${yearDue>0?fmt(yearDue):"✅"}</td>
@@ -4304,23 +4415,23 @@ function pgDuesSheet() {
       </div>
     </div>
 
-    <!-- বছর সিলেক্টর -->
+    <!-- সময়কাল সিলেক্টর: গত ১২ মাস (ডিফল্ট) অথবা নির্দিষ্ট বছর -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${yearBtns}</div>
 
     <!-- KPI -->
     <div class="grid3" style="margin-bottom:14px">
       <div class="kpi" style="background:#f0fdf4;text-align:center">
         <div class="ki">💰</div><div class="kv" style="color:#1a8a00;font-size:18px">${fmt(grandExp)}</div>
-        <div class="kl">${selYear} মোট প্রত্যাশিত</div>
+        <div class="kl">${periodLabel} মোট প্রত্যাশিত</div>
       </div>
       <div class="kpi" style="background:#f0fdf4;text-align:center">
         <div class="ki">✅</div><div class="kv" style="color:#1a8a00;font-size:18px">${fmt(grandPaid)}</div>
-        <div class="kl">${selYear} মোট পরিশোধিত</div>
+        <div class="kl">${periodLabel} মোট পরিশোধিত</div>
       </div>
       <div class="kpi" style="background:${grandDue>0?"#fff1f2":"#f0fdf4"};text-align:center">
         <div class="ki">${grandDue>0?"⚠️":"🎉"}</div>
         <div class="kv" style="color:${grandDue>0?"#dc2626":"#1a8a00"};font-size:18px">${grandDue>0?fmt(grandDue):"শূন্য"}</div>
-        <div class="kl">${selYear} মোট বকেয়া</div>
+        <div class="kl">${periodLabel} মোট বকেয়া</div>
       </div>
     </div>
 
@@ -4338,7 +4449,7 @@ function pgDuesSheet() {
 
     <!-- মাসভিত্তিক টেবিল -->
     <div class="card">
-      ${ch("📋","মাসওয়ারি চাঁদার টেবিল",`${selYear} — ${filtMonths.length} মাস · ${members.length} জন সদস্য`)}
+      ${ch("📋","মাসওয়ারি চাঁদার টেবিল",`${periodLabel} — ${filtMonths.length} মাস · ${members.length} জন সদস্য`)}
       <div style="padding:12px 16px 0"><input type="text" placeholder="🔎 সদস্য খুঁজুন..." oninput="filterTableRowsLive(this.value,'dues-tbody')" style="width:100%;padding:9px 13px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;outline:none"></div>
       <div style="overflow-x:auto;padding:0">
         <table class="tbl" style="min-width:${85*filtMonths.length+420}px">
@@ -4346,7 +4457,7 @@ function pgDuesSheet() {
           <tbody id="dues-tbody">${tableRows}</tbody>
           <tfoot>
             <tr style="background:#f8fafc;font-weight:800">
-              <td style="position:sticky;left:0;background:#f8fafc;color:#071a07;padding:8px 12px;border-right:2px solid #e2e8f0">সর্বমোট</td>
+              <td style="position:sticky;left:0;background:var(--white);color:var(--ink);padding:8px 12px;border-right:2px solid #e2e8f0">সর্বমোট</td>
               ${filtMonths.map(()=>'<td></td>').join("")}
               <td style="text-align:center;color:#1a8a00">${fmt(grandPaid)}</td>
               <td style="text-align:center;color:${grandDue>0?"#dc2626":"#1a8a00"}">${grandDue>0?fmt(grandDue):"✅"}</td>
@@ -4359,7 +4470,7 @@ function pgDuesSheet() {
 
     <!-- চাঁদা সম্পাদনা Modal -->
     <div id="due-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;align-items:center;justify-content:center">
-      <div style="background:#fff;border-radius:14px;padding:22px;width:90%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
+      <div style="background:var(--white);border-radius:14px;padding:22px;width:90%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,.2)">
         <div style="font-weight:700;font-size:16px;margin-bottom:14px" id="dm-title">চাঁদা যোগ / সম্পাদনা</div>
         <input type="hidden" id="dm-mid">
         <input type="hidden" id="dm-month">
@@ -5309,7 +5420,7 @@ function pgMeeting(){
 
     <!-- কার্যবিবরণী Modal -->
     <div id="minutes-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;align-items:center;justify-content:center">
-      <div style="background:#fff;border-radius:14px;padding:22px;width:92%;max-width:440px">
+      <div style="background:var(--white);border-radius:14px;padding:22px;width:92%;max-width:440px">
         <div style="font-weight:700;font-size:16px;margin-bottom:12px">📝 কার্যবিবরণী লিখুন</div>
         <input type="hidden" id="min-mid">
         <textarea id="min-text" rows="6" style="width:100%;padding:10px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit" placeholder="আলোচিত বিষয়, সিদ্ধান্ত..."></textarea>
@@ -6101,66 +6212,47 @@ pdfDownload=function(type){
     var s2=document.createElement('script');
     s2.src='https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js';
     s2.onload=function(){
-      try{
-        if(!firebase.apps.length){
-          firebase.initializeApp({
-            apiKey:"AIzaSyDoO4strum7G_pTZFbHedzlGvy4v5bs6do",
-            authDomain:"swapnaghuri.firebaseapp.com",
-            databaseURL:"https://swapnaghuri-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId:"swapnaghuri",
-            storageBucket:"swapnaghuri.firebasestorage.app",
-            messagingSenderId:"125719834510",
-            appId:"1:125719834510:web:f87c44420d0f44d490bedf"
-          });
-        }
-        if(window.role && window.D){
-          updateSyncStatus("synced");
-          firebase.database().ref('sg_data').once('value').then(function(snap){
-            if(snap.exists()){
-              try{
-                var fbData=JSON.parse(snap.val());
-                if(fbData&&fbData.members){ window.D=fbData; if(window.curTab)window.goTab(window.curTab); }
-              }catch(e){}
+      var s3=document.createElement('script');
+      s3.src='https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js';
+      s3.onload=function(){
+        try{
+          if(!firebase.apps.length){
+            firebase.initializeApp(firebaseConfig);
+          }
+          if(role && D){
+            updateSyncStatus("synced");
+            subscribeFirebaseData();
+          }
+          // ── প্রকৃত অ্যাডমিন সেশন পুনরুদ্ধার: Firebase নিজে টোকেন যাচাই করে, লোকাল স্টোরেজকে অন্ধভাবে বিশ্বাস করা হয় না ──
+          firebase.auth().onAuthStateChanged(function(user){
+            if(role) return; // এই ট্যাবে ইতিমধ্যে লগইন করা আছে
+            if(user && !user.isAnonymous){
+              firebase.database().ref('roles/'+user.uid).once('value').then(function(snap){
+                if(snap.val()==="admin"){
+                  enterApp("admin");
+                }else{
+                  // Authentication-এ আছে কিন্তু roles-এ admin হিসেবে অনুমোদিত না — সাইন আউট করে দাও
+                  firebase.auth().signOut();
+                }
+              }).catch(function(){});
             }
           });
-          firebase.database().ref('sg_data').on('value',function(snap){
-            if(snap.exists()&&window.role){
-              try{
-                var fbData=JSON.parse(snap.val());
-                if(fbData&&fbData.members){ window.D=fbData; if(window.curTab)window.goTab(window.curTab); updateSyncStatus("synced"); }
-              }catch(e){}
-            }
-          });
-        }
-      }catch(e){console.log('Firebase init error:',e);}
+        }catch(e){console.log('Firebase init error:',e);}
+      };
+      document.head.appendChild(s3);
     };
     document.head.appendChild(s2);
   };
   document.head.appendChild(s1);
 })();
-// ── Auto-login on reload ──
+// ── ভিউয়ার auto-restore (ভিউয়ারের কোনো লেখা/সম্পাদনার অনুমতি নেই বলে লোকাল স্টোরেজে বিশ্বাস করা নিরাপদ) ──
+// অ্যাডমিন সেশন উপরের firebase.auth().onAuthStateChanged() দিয়ে পুনরুদ্ধার হয়
 window.addEventListener("DOMContentLoaded",function(){
-  const savedRole=localStorage.getItem("sg_role");
-  if(savedRole){
-    try{
-      role=savedRole;
-      D=LS.get(SK)||JSON.parse(JSON.stringify(SEED));
-      if(!D.rateHistory)D.rateHistory=[];
-      if(!D.activityLog)D.activityLog=[];
-      if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];
-      document.getElementById("ls").style.display="none";
-      document.getElementById("app").style.display="flex";
-      document.getElementById("fab-btn").classList.add("show");
-      if(savedRole!=="admin") document.getElementById("vbar").style.display="block";
-      history.pushState({tab:"home",role:savedRole},"","");
-      buildNav();
-      trackVisitor();
-      goTab("home");
-    }catch(e){
-      localStorage.removeItem("sg_role");
-    }
+  if(localStorage.getItem("sg_role")==="viewer"){
+    try{ enterApp("viewer"); }catch(e){ localStorage.removeItem("sg_role"); }
   }
 });
 </script>
+
 </body>
 </html>
