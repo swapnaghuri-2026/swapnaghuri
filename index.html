@@ -108,6 +108,8 @@ button,input,select,textarea{font-family:'Hind Siliguri',sans-serif}
 .section-sub{font-size:12px;color:var(--muted);margin-bottom:16px}
 
 #toast{position:fixed;top:78px;left:50%;transform:translateX(-50%);padding:10px 24px;border-radius:30px;color:#fff;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);white-space:nowrap;display:none}
+#undo-toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);padding:10px 14px 10px 18px;border-radius:30px;color:#fff;background:#334155;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.25);display:none;align-items:center;max-width:92vw}
+@media(min-width:769px){#undo-toast{bottom:24px}}
 
 @keyframes fadeUp{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 @keyframes sli{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
@@ -237,6 +239,17 @@ const firebaseConfig = {
 </head>
 <body>
 <div id="toast"></div>
+<div id="undo-toast"></div>
+<div id="backup-history-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;align-items:center;justify-content:center">
+  <div style="background:var(--white);color:var(--ink);border-radius:14px;padding:20px;width:92%;max-width:420px;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div style="font-weight:800;font-size:16px">🕘 স্বয়ংক্রিয় ব্যাকআপ ইতিহাস</div>
+      <button onclick="closeBackupHistory()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">প্রতি ২৪ ঘন্টায় একবার স্বয়ংক্রিয়ভাবে ব্যাকআপ নেওয়া হয় এবং সর্বশেষ ৫টি রাখা হয়</div>
+    <div id="backup-history-list" style="font-size:13px"></div>
+  </div>
+</div>
 <div class="overlay" id="ov" onclick="closeSB()"></div>
 
 <!-- LOGIN -->
@@ -277,13 +290,14 @@ const firebaseConfig = {
     <div class="sb-footer">
       <div style="color:rgba(255,255,255,.4);font-size:10px">মোট বকেয়া</div>
       <div id="sb-due" style="color:#f87171;font-weight:700;font-size:15px;margin:2px 0 10px">৳০</div>
-      <div id="sb-backup-restore" style="display:none;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <div id="sb-backup-restore" style="display:none;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
         <button onclick="backupData()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 4px;cursor:pointer;font-family:inherit;font-size:11px;color:#fff;font-weight:600">⬇️ ব্যাকআপ</button>
         <label style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 4px;cursor:pointer;font-size:11px;color:#fff;font-weight:600;text-align:center;display:block">
           ⬆️ রিস্টোর
           <input type="file" accept=".json" onchange="restoreData(event)" style="display:none">
         </label>
       </div>
+      <button id="sb-backup-history-btn" onclick="openBackupHistory()" style="display:none;width:100%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 4px;cursor:pointer;font-family:inherit;font-size:11px;color:#fff;font-weight:600;margin-bottom:8px">🕘 ব্যাকআপ ইতিহাস</button>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px">
         <button onclick="setTheme('light')" id="th-light" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 2px;cursor:pointer;font-family:inherit;font-size:10px;color:#fff">☀️ লাইট</button>
         <button onclick="setTheme('dark')" id="th-dark" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 2px;cursor:pointer;font-family:inherit;font-size:10px;color:#fff">🌙 ডার্ক</button>
@@ -406,6 +420,7 @@ const TABS = [
     {id:"msgtemplate",icon:"✉️",label:"বার্তা টেম্পলেট"},
     {id:"report",icon:"📊",label:"রিপোর্ট সেন্টার"},
     {id:"history",icon:"🕘",label:"কার্যক্রম ইতিহাস"},
+    {id:"trash",icon:"🗑️",label:"ট্র্যাশ",adminOnly:true},
     {id:"visitors",icon:"👥",label:"ভিজিটর ইতিহাস",adminOnly:true},
     {id:"payment",icon:"💳",label:"পেমেন্ট তথ্য"},
     {id:"rules",icon:"📜",label:"নিয়মকানুন"},
@@ -421,7 +436,8 @@ const SEED = {
   rateHistory:[],activityLog:[],liabilities:[],
   paymentInfo:{bank:[],mobile:[]},
   msgTemplates:[],
-  formerMembers:[]
+  formerMembers:[],
+  trash:[]
 };
 
 // ══════════════════
@@ -453,6 +469,7 @@ const sv=()=>{
   window._dirty = true;
   updateSyncStatus("saving");
   _syncToFirebase(0);
+  try{ maybeAutoBackup(); }catch(e){}
 };
 
 function _syncToFirebase(attempt){
@@ -625,6 +642,127 @@ function delActivity(id){
 }
 
 // ══════════════════════════════════════════
+// ট্র্যাশ / সফট ডিলিট সিস্টেম (Soft Delete + Undo)
+// কোনো তথ্য মুছলে সাথে সাথে স্থায়ীভাবে হারিয়ে যায় না —
+// ৩০ দিনের জন্য "ট্র্যাশ"-এ জমা থাকে, চাইলে ফিরিয়ে আনা যায়।
+// প্রতিটি মুছার পর একটি Undo বাটনসহ টোস্ট দেখানো হয়।
+// ══════════════════════════════════════════
+const TRASH_RETENTION_DAYS = 30;
+const TRASH_META = {
+  payment:     {arr:"payments",      icon:"💰", label:"চাঁদা"},
+  loan:        {arr:"loans",         icon:"🤝", label:"ঋণ"},
+  invest:      {arr:"investments",   icon:"📈", label:"বিনিয়োগ"},
+  asset:       {arr:"assets",        icon:"🏛️", label:"সম্পদ"},
+  income:      {arr:"income",        icon:"📥", label:"আয়"},
+  expense:     {arr:"expenses",      icon:"📤", label:"ব্যয়"},
+  liability:   {arr:"liabilities",   icon:"⚖️", label:"দায়"},
+  notice:      {arr:"notices",       icon:"📢", label:"নোটিশ"},
+  news:        {arr:"news",          icon:"📰", label:"নিউজ"},
+  goal:        {arr:"goals",         icon:"🎯", label:"লক্ষ্যমাত্রা"},
+  member:      {arr:"members",       icon:"👤", label:"সদস্য"},
+  opinion:     {arr:"opinions",      icon:"💬", label:"মতামত"},
+  gallery:     {arr:"gallery",       icon:"🖼️", label:"গ্যালারি"},
+  rule:        {arr:"rules",         icon:"📜", label:"নিয়ম"},
+  bankInfo:    {arr:"bank", nested:"paymentInfo", icon:"🏦", label:"ব্যাংক তথ্য"},
+  mobileInfo:  {arr:"mobile", nested:"paymentInfo", icon:"📱", label:"মোবাইল ব্যাংকিং তথ্য"},
+  rate:        {arr:"rateHistory",   icon:"💱", label:"চাঁদার হার রেকর্ড"},
+  specialMonth:{arr:"specialMonths", icon:"💱", label:"বিশেষ মাসিক চাঁদা"},
+  vote:        {arr:"votes",         icon:"🗳️", label:"ভোট"},
+  meeting:     {arr:"meetings",      icon:"📅", label:"মিটিং"},
+  msgTemplate: {arr:"msgTemplates",  icon:"✉️", label:"বার্তা টেম্পলেট"},
+};
+function trashGetArr(entity){
+  const meta=TRASH_META[entity];
+  if(!meta) return [];
+  if(meta.nested){
+    if(!D[meta.nested]) D[meta.nested]={};
+    if(!D[meta.nested][meta.arr]) D[meta.nested][meta.arr]=[];
+    return D[meta.nested][meta.arr];
+  }
+  if(!D[meta.arr]) D[meta.arr]=[];
+  return D[meta.arr];
+}
+function trashSetArr(entity,newArr){
+  const meta=TRASH_META[entity];
+  if(!meta) return;
+  if(meta.nested) D[meta.nested][meta.arr]=newArr;
+  else D[meta.arr]=newArr;
+}
+function moveToTrash(entity,summary,item){
+  if(!D.trash) D.trash=[];
+  const tid=Date.now()+"_"+Math.random().toString(36).slice(2,7);
+  D.trash.push({id:tid,entity,summary:String(summary||"").slice(0,120),data:item,deletedAt:new Date().toISOString(),deletedBy:isA()?"অ্যাডমিন":"ভিউয়ার"});
+  purgeOldTrash();
+  return tid;
+}
+function purgeOldTrash(){
+  if(!D.trash||!D.trash.length) return;
+  const cutoff=Date.now()-TRASH_RETENTION_DAYS*24*60*60*1000;
+  D.trash=D.trash.filter(t=>{const dt=new Date(t.deletedAt).getTime();return !dt||dt>cutoff;});
+}
+function restoreFromTrash(tid){
+  const t=(D.trash||[]).find(x=>String(x.id)===String(tid));
+  if(!t){toast("❌ পাওয়া যায়নি, হয়তো মেয়াদ শেষ হয়ে গেছে","#dc2626");return;}
+  const meta=TRASH_META[t.entity];
+  if(!meta){toast("❌ পুনরুদ্ধার সম্ভব নয়","#dc2626");return;}
+  trashSetArr(t.entity,[...trashGetArr(t.entity),t.data]);
+  D.trash=(D.trash||[]).filter(x=>String(x.id)!==String(tid));
+  logActivity(t.entity,`${meta.label} পুনরুদ্ধার করা হয়েছে (ট্র্যাশ থেকে): ${t.summary}`);
+  sv();
+  toast("↩️ পুনরুদ্ধার হয়েছে");
+  const hideEl=document.getElementById("undo-toast");
+  if(hideEl) hideEl.style.display="none";
+  goTab(curTab);
+}
+function permaDeleteTrash(tid){
+  if(!confirm("এই আইটেমটি স্থায়ীভাবে মুছে ফেলতে চান? এটি আর ফেরানো যাবে না।"))return;
+  D.trash=(D.trash||[]).filter(x=>String(x.id)!==String(tid));
+  sv();toast("🗑 স্থায়ীভাবে মুছে ফেলা হয়েছে","#dc2626");goTab("trash");
+}
+function emptyTrash(){
+  if(!isA()){toast("⚠️ শুধু অ্যাডমিন পারবেন","#d97706");return;}
+  if(!(D.trash||[]).length){toast("ট্র্যাশ ইতিমধ্যে খালি");return;}
+  if(!confirm("সম্পূর্ণ ট্র্যাশ খালি করতে চান? সব আইটেম স্থায়ীভাবে মুছে যাবে। এটি ফিরিয়ে আনা যাবে না।"))return;
+  D.trash=[];sv();toast("🗑 ট্র্যাশ খালি করা হয়েছে","#dc2626");goTab("trash");
+}
+function undoToast(msg,tid){
+  const el=document.getElementById("undo-toast");
+  if(!el)return;
+  el.innerHTML=`<span>${msg}</span><button onclick="restoreFromTrash('${tid}')" style="margin-left:12px;background:#fff;color:#dc2626;border:none;border-radius:20px;padding:5px 14px;font-weight:700;font-size:12px;cursor:pointer;flex-shrink:0">↩️ পূর্বাবস্থায় ফেরান</button>`;
+  el.style.display="flex";
+  clearTimeout(window._undoTimer);
+  window._undoTimer=setTimeout(()=>{ if(el) el.style.display="none"; },6000);
+}
+function pgTrash(){
+  purgeOldTrash();
+  const items=(D.trash||[]).slice().sort((a,b)=>(b.deletedAt||"").localeCompare(a.deletedAt||""));
+  const rows=items.map(t=>{
+    const meta=TRASH_META[t.entity]||{icon:"🗑️",label:"অন্যান্য"};
+    let dt="-";
+    try{ const x=new Date(t.deletedAt); dt=`${x.getDate()} ${BNM[x.getMonth()]} ${x.getFullYear()}, ${String(x.getHours()).padStart(2,"0")}:${String(x.getMinutes()).padStart(2,"0")}`; }catch(e){}
+    const daysLeft=Math.max(0,TRASH_RETENTION_DAYS-Math.floor((Date.now()-new Date(t.deletedAt).getTime())/(24*60*60*1000)));
+    return `<div style="display:flex;gap:11px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+      <span style="font-size:20px;flex-shrink:0">${meta.icon}</span>
+      <div style="flex:1;min-width:150px">
+        <div style="font-size:13px;font-weight:600;color:var(--ink)">${meta.label}: ${t.summary||""}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:2px">মুছেছেন ${t.deletedBy||"-"} · ${dt} · ⏳ আর ${daysLeft} দিন পর স্থায়ীভাবে মুছে যাবে</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-sm" style="background:#dcfce7;color:#16a34a;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700" onclick="restoreFromTrash('${t.id}')">↩️ ফেরান</button>
+        ${isA()?`<button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700" onclick="permaDeleteTrash('${t.id}')">✖️ স্থায়ী মুছুন</button>`:""}
+      </div>
+    </div>`;
+  }).join("") || `<div style="padding:40px;text-align:center;color:#94a3b8">🗑️ ট্র্যাশ খালি আছে</div>`;
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div><div class="section-title">🗑️ ট্র্যাশ</div>
+      <div class="section-sub">মুছে ফেলা তথ্য ${TRASH_RETENTION_DAYS} দিন পর্যন্ত এখানে থাকে, চাইলে ফিরিয়ে আনতে পারবেন</div></div>
+      ${isA()&&items.length?`<button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="emptyTrash()">🗑 ট্র্যাশ খালি করুন</button>`:""}
+    </div>
+    <div class="card">${rows}</div>`;
+}
+
+// ══════════════════════════════════════════
 // চাঁদার হার ব্যবস্থাপনা (Rate History System)
 // সবসময় একটা current active rate থাকবে; নতুন হার effective date
 // থেকে কার্যকর হয়, আগের হিসাব পুরাতন হারেই থাকে।
@@ -659,7 +797,8 @@ function login(r){
     if(!D.rateHistory) D.rateHistory=[];if(!D.liabilities) D.liabilities=[];
     if(!D.activityLog) D.activityLog=[];
     if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
-    if(!D.formerMembers) D.formerMembers=[];
+    if(!D.formerMembers) D.formerMembers=[];if(!D.trash) D.trash=[];
+    try{ maybeAutoBackup(); }catch(e){}
     document.getElementById("ls").style.display="none";
     document.getElementById("app").style.display="flex";
     document.getElementById("fab-btn").classList.add("show");
@@ -676,7 +815,7 @@ function login(r){
             try{
               if(snap.exists()){
                 var fd=JSON.parse(snap.val());
-                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];LS.set(SK,D);if(curTab)goTab(curTab);}
+                if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];LS.set(SK,D);if(curTab)goTab(curTab);}
               }
             }catch(e){}
           });
@@ -690,7 +829,7 @@ function login(r){
                     toast("⚠️ ক্লাউড থেকে নতুন ডেটা এসেছে — লোকাল পরিবর্তন মার্জ হচ্ছে","#d97706");
                   }
                   D=fd;
-                  if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];
+                  if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];
                   window._dirty=false;
                   LS.set(SK,D);
                   if(curTab)goTab(curTab);
@@ -738,8 +877,12 @@ function restoreData(event){
     try{
       const data=JSON.parse(e.target.result);
       if(!data.members){toast("❌ ভুল ফাইল! সঠিক backup ফাইল দিন","#dc2626");return;}
+      if(!Array.isArray(data.members)){toast("❌ ভুল ফাইল! সঠিক backup ফাইল দিন","#dc2626");return;}
       if(!data.rateHistory) data.rateHistory=[];if(!data.liabilities) data.liabilities=[];
       if(!data.activityLog) data.activityLog=[];
+      if(!data.trash) data.trash=[];
+      // পুনরুদ্ধারের আগে বর্তমান ডেটার একটা স্বয়ংক্রিয় ব্যাকআপ রেখে দিই, যাতে ভুল ফাইল রিস্টোর করলেও ফেরানো যায়
+      try{ saveAutoBackup(D,"restore-এর আগে"); }catch(e){}
       D=data;
       sv();
       toast("✅ ডেটা রিস্টোর হয়েছে");
@@ -747,6 +890,97 @@ function restoreData(event){
     }catch(err){toast("❌ ফাইল পড়তে সমস্যা হয়েছে","#dc2626");}
   };
   reader.readAsText(file);
+}
+
+// ══════════════════════════════════════════
+// অটো ব্যাকআপ সিস্টেম (Auto Backup)
+// প্রতি ২৪ ঘন্টায় একবার ডেটার একটা কপি localStorage-এ রেখে দেওয়া হয়
+// সর্বোচ্চ ৫টা সংস্করণ রাখা হয়, পুরনোগুলো নিজে থেকেই ছাঁটাই হয়
+// ══════════════════════════════════════════
+const AUTO_BACKUP_KEY = "sg_autobackups";
+const AUTO_BACKUP_MAX = 5;
+const AUTO_BACKUP_INTERVAL_MS = 24*60*60*1000;
+
+function saveAutoBackup(data,label){
+  try{
+    const meta = LS.get(AUTO_BACKUP_KEY) || {list:[]};
+    const key = "sg_ab_"+Date.now();
+    const ok = LS.set(key, data);
+    if(!ok) return false;
+    meta.list.push({key, label: label||"স্বয়ংক্রিয় ব্যাকআপ", at: new Date().toISOString()});
+    while(meta.list.length > AUTO_BACKUP_MAX){
+      const old = meta.list.shift();
+      try{ localStorage.removeItem(old.key); }catch(e){}
+    }
+    LS.set(AUTO_BACKUP_KEY, meta);
+    return true;
+  }catch(e){ console.error("auto backup failed",e); return false; }
+}
+function maybeAutoBackup(){
+  try{
+    if(!D) return;
+    const meta = LS.get(AUTO_BACKUP_KEY) || {list:[]};
+    const last = meta.list[meta.list.length-1];
+    const lastAt = last ? new Date(last.at).getTime() : 0;
+    if(Date.now()-lastAt > AUTO_BACKUP_INTERVAL_MS){
+      saveAutoBackup(D,"দৈনিক স্বয়ংক্রিয় ব্যাকআপ");
+    }
+  }catch(e){}
+}
+function listAutoBackups(){
+  const meta = LS.get(AUTO_BACKUP_KEY) || {list:[]};
+  return meta.list.slice().reverse();
+}
+function restoreAutoBackup(key){
+  if(!confirm("সতর্কতা! এই ব্যাকআপ থেকে রিস্টোর করলে বর্তমান ডেটা প্রতিস্থাপিত হবে। নিশ্চিত?"))return;
+  try{
+    const data = LS.get(key);
+    if(!data || !data.members){ toast("❌ ব্যাকআপ পড়া যায়নি","#dc2626"); return; }
+    saveAutoBackup(D,"restore-এর আগে");
+    D = data;
+    if(!D.rateHistory) D.rateHistory=[]; if(!D.liabilities) D.liabilities=[];
+    if(!D.activityLog) D.activityLog=[]; if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
+    if(!D.formerMembers) D.formerMembers=[]; if(!D.trash) D.trash=[];
+    sv();
+    toast("✅ ব্যাকআপ থেকে রিস্টোর হয়েছে");
+    closeBackupHistory();
+    goTab("home");
+  }catch(e){ toast("❌ রিস্টোর ব্যর্থ","#dc2626"); }
+}
+function deleteAutoBackup(key){
+  if(!confirm("এই ব্যাকআপটি মুছে ফেলবেন?"))return;
+  const meta = LS.get(AUTO_BACKUP_KEY) || {list:[]};
+  meta.list = meta.list.filter(b=>b.key!==key);
+  LS.set(AUTO_BACKUP_KEY, meta);
+  try{ localStorage.removeItem(key); }catch(e){}
+  toast("🗑 মুছে ফেলা হয়েছে","#dc2626");
+  renderBackupHistory();
+}
+function openBackupHistory(){
+  renderBackupHistory();
+  const m=document.getElementById("backup-history-modal");
+  if(m) m.style.display="flex";
+}
+function closeBackupHistory(){
+  const m=document.getElementById("backup-history-modal");
+  if(m) m.style.display="none";
+}
+function renderBackupHistory(){
+  const el=document.getElementById("backup-history-list");
+  if(!el)return;
+  const list=listAutoBackups();
+  if(!list.length){ el.innerHTML=`<div style="text-align:center;color:#94a3b8;padding:20px">এখনো কোনো স্বয়ংক্রিয় ব্যাকআপ তৈরি হয়নি — অ্যাপ ব্যবহার করলে প্রতি ২৪ ঘন্টায় একটি তৈরি হবে।</div>`; return; }
+  el.innerHTML=list.map(b=>{
+    let dt="-";
+    try{ const x=new Date(b.at); dt=`${x.getDate()} ${BNM[x.getMonth()]} ${x.getFullYear()}, ${String(x.getHours()).padStart(2,"0")}:${String(x.getMinutes()).padStart(2,"0")}`; }catch(e){}
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:8px">
+      <div><div style="font-weight:600">${b.label}</div><div style="font-size:11px;color:#94a3b8">${dt}</div></div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button onclick="restoreAutoBackup('${b.key}')" style="background:#dcfce7;color:#16a34a;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">↩️ রিস্টোর</button>
+        <button onclick="deleteAutoBackup('${b.key}')" style="background:#fee2e2;color:#dc2626;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">🗑</button>
+      </div>
+    </div>`;
+  }).join("");
 }
 
 
@@ -788,6 +1022,8 @@ function buildNav(){
 
   const brEl=document.getElementById("sb-backup-restore");
   if(brEl) brEl.style.display = isAd ? "grid" : "none";
+  const bhBtn=document.getElementById("sb-backup-history-btn");
+  if(bhBtn) bhBtn.style.display = isAd ? "block" : "none";
   document.getElementById("sb-badge").innerHTML=`<span class="badge" style="background:${isAd?"#fbbf24":"rgba(255,255,255,.15)"};color:${isAd?"#006400":"rgba(255,255,255,.7)"};font-size:10px">${isAd?"👑 অ্যাডমিন":"👁️ ভিউ মোড"}</span>`;
   document.getElementById("tb-badge").innerHTML=`<span class="badge" style="background:${isAd?"#fef08a":"#f0fdf4"};color:${isAd?"#006400":"#1a8a00"};font-size:10px">${isAd?"👑 অ্যাডমিন":"👁️ ভিউ মোড"}</span>`;
   const msgBtn=document.getElementById("msg-btn");
@@ -885,7 +1121,7 @@ function goTab(id){
   closeSB();
   const c=document.getElementById("content");
   c.className="content pa";c.innerHTML="";
-  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate,formermembers:pgFormerMembers};
+  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,trash:pgTrash,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate,formermembers:pgFormerMembers};
   if(pages[id]){
     try{
       c.innerHTML=pages[id]();
@@ -1305,9 +1541,11 @@ function addPayment(){
 }
 function delPay(id){
   const p=(D.payments||[]).find(x=>x.id===id);
+  if(!p)return;
   D.payments=(D.payments||[]).filter(p=>p.id!==id);
-  if(p) logActivity("payment",`${gn(p.mid)} — ${p.month} মাসের চাঁদা ${fmt(p.amount)} মুছে ফেলা হয়েছে`);
-  sv();toast("🗑","#dc2626");goTab("savings");
+  const tid=moveToTrash("payment",`${gn(p.mid)} — ${p.month} মাসের চাঁদা ${fmt(p.amount)}`,p);
+  logActivity("payment",`${gn(p.mid)} — ${p.month} মাসের চাঁদা ${fmt(p.amount)} মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে)`);
+  sv();undoToast("🗑 চাঁদা মুছে ফেলা হয়েছে",tid);goTab("savings");
 }
 
 // ══════════════════
@@ -1456,9 +1694,11 @@ function addLoan(){
 function delLoan(id){
   if(!confirm("এই ঋণ মুছবেন?"))return;
   const l=(D.loans||[]).find(x=>x.id===id);
+  if(!l)return;
   D.loans=(D.loans||[]).filter(l=>l.id!==id);
-  if(l) logActivity("loan",`${gn(l.mid)} — ${fmt(l.principal)} টাকার ঋণ রেকর্ড মুছে ফেলা হয়েছে`);
-  sv();toast("🗑 ঋণ মুছে গেছে","#dc2626");goTab("loans");
+  const tid=moveToTrash("loan",`${gn(l.mid)} — ${fmt(l.principal)} টাকার ঋণ`,l);
+  logActivity("loan",`${gn(l.mid)} — ${fmt(l.principal)} টাকার ঋণ রেকর্ড মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে)`);
+  sv();undoToast("🗑 ঋণ মুছে ফেলা হয়েছে",tid);goTab("loans");
 }
 function repay(id){
   const amt=Number(document.getElementById("rp"+id).value);
@@ -1636,9 +1876,11 @@ function addInvest(){
 }
 function delInvest(id){
   const i=(D.investments||[]).find(x=>x.id===id);
+  if(!i)return;
   D.investments=(D.investments||[]).filter(i=>i.id!==id);
-  if(i) logActivity("invest",`বিনিয়োগ মুছে ফেলা হয়েছে: ${i.title} — ${fmt(i.amount)}`);
-  sv();toast("🗑","#dc2626");goTab("invest");
+  const tid=moveToTrash("invest",`${i.title} — ${fmt(i.amount)}`,i);
+  logActivity("invest",`বিনিয়োগ মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${i.title} — ${fmt(i.amount)}`);
+  sv();undoToast("🗑 বিনিয়োগ মুছে ফেলা হয়েছে",tid);goTab("invest");
 }
 function editInvest(id){
   const i=(D.investments||[]).find(x=>x.id==id);if(!i)return;
@@ -1787,9 +2029,11 @@ function addAsset(){
 }
 function delAsset(id){
   const a=(D.assets||[]).find(x=>x.id===id);
+  if(!a)return;
   D.assets=(D.assets||[]).filter(a=>a.id!==id);
-  if(a) logActivity("asset",`সম্পদ মুছে ফেলা হয়েছে: ${a.name} — ${fmt(a.value)}`);
-  sv();toast("🗑","#dc2626");goTab("assets");
+  const tid=moveToTrash("asset",`${a.name} — ${fmt(a.value)}`,a);
+  logActivity("asset",`সম্পদ মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${a.name} — ${fmt(a.value)}`);
+  sv();undoToast("🗑 সম্পদ মুছে ফেলা হয়েছে",tid);goTab("assets");
 }
 
 // ══════════════════
@@ -1888,15 +2132,19 @@ function addExpense(){
 }
 function delIncome(id){
   const i=(D.income||[]).find(x=>x.id===id);
+  if(!i)return;
   D.income=(D.income||[]).filter(i=>i.id!==id);
-  if(i) logActivity("income",`আয় মুছে ফেলা হয়েছে: ${i.title} — ${fmt(i.amount)}`);
-  sv();toast("🗑","#dc2626");goTab("expenses");
+  const tid=moveToTrash("income",`${i.title} — ${fmt(i.amount)}`,i);
+  logActivity("income",`আয় মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${i.title} — ${fmt(i.amount)}`);
+  sv();undoToast("🗑 আয় মুছে ফেলা হয়েছে",tid);goTab("expenses");
 }
 function delExp(id){
   const e=(D.expenses||[]).find(x=>x.id===id);
+  if(!e)return;
   D.expenses=(D.expenses||[]).filter(e=>e.id!==id);
-  if(e) logActivity("expense",`ব্যয় মুছে ফেলা হয়েছে: ${e.title} — ${fmt(e.amount)}`);
-  sv();toast("🗑","#dc2626");goTab("expenses");
+  const tid=moveToTrash("expense",`${e.title} — ${fmt(e.amount)}`,e);
+  logActivity("expense",`ব্যয় মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${e.title} — ${fmt(e.amount)}`);
+  sv();undoToast("🗑 ব্যয় মুছে ফেলা হয়েছে",tid);goTab("expenses");
 }
 
 // ══════════════════
@@ -2139,9 +2387,11 @@ function addLiability(){
 function delLiability(id){
   if(!confirm("এই দায় মুছবেন?"))return;
   const l=(D.liabilities||[]).find(x=>x.id===id);
+  if(!l)return;
   D.liabilities=(D.liabilities||[]).filter(x=>x.id!==id);
-  if(l) logActivity("liability",`দায় মুছে ফেলা হয়েছে: ${l.name} — ${fmt(l.amount)}`);
-  sv();toast("🗑","#dc2626");goTab("balance");
+  const tid=moveToTrash("liability",`${l.name} — ${fmt(l.amount)}`,l);
+  logActivity("liability",`দায় মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${l.name} — ${fmt(l.amount)}`);
+  sv();undoToast("🗑 দায় মুছে ফেলা হয়েছে",tid);goTab("balance");
 }
 
 // ══════════════════
@@ -2196,9 +2446,11 @@ function toggleNoticeBody(id){
 }
 function delNotice(id){
   const n=(D.notices||[]).find(x=>x.id===id);
+  if(!n)return;
   D.notices=(D.notices||[]).filter(n=>n.id!==id);
-  if(n) logActivity("notice",`নোটিশ মুছে ফেলা হয়েছে: ${n.title}`);
-  sv();toast("🗑","#dc2626");goTab("notice");
+  const tid=moveToTrash("notice",n.title,n);
+  logActivity("notice",`নোটিশ মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${n.title}`);
+  sv();undoToast("🗑 নোটিশ মুছে ফেলা হয়েছে",tid);goTab("notice");
 }
 
 function pgNews(){
@@ -2229,7 +2481,14 @@ function addNews(){
   D.news=[...(D.news||[]),{id:Date.now(),title:t,body:b,category:document.getElementById("nwC").value,date}];
   sv();toast("✅ প্রকাশিত হয়েছে");goTab("news");
 }
-function delNews(id){D.news=(D.news||[]).filter(n=>n.id!==id);sv();toast("🗑","#dc2626");goTab("news");}
+function delNews(id){
+  const n=(D.news||[]).find(x=>x.id===id);
+  if(!n)return;
+  D.news=(D.news||[]).filter(n=>n.id!==id);
+  const tid=moveToTrash("news",n.title||"নিউজ",n);
+  logActivity("news",`নিউজ মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${n.title||""}`);
+  sv();undoToast("🗑 নিউজ মুছে ফেলা হয়েছে",tid);goTab("news");
+}
 
 function pgGoals(){
   const goals=D.goals||[];
@@ -2265,7 +2524,14 @@ function addGoal(){
   sv();toast("✅ লক্ষ্য যোগ হয়েছে");goTab("goals");
 }
 function updGoal(id){const v=document.getElementById("gp"+id).value;D.goals=(D.goals||[]).map(g=>g.id===id?{...g,current:Number(v)}:g);sv();toast("✅ আপডেট হয়েছে");goTab("goals");}
-function delGoal(id){D.goals=(D.goals||[]).filter(g=>g.id!==id);sv();toast("🗑","#dc2626");goTab("goals");}
+function delGoal(id){
+  const g=(D.goals||[]).find(x=>x.id===id);
+  if(!g)return;
+  D.goals=(D.goals||[]).filter(g=>g.id!==id);
+  const tid=moveToTrash("goal",g.title||"লক্ষ্যমাত্রা",g);
+  logActivity("goal",`লক্ষ্যমাত্রা মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${g.title||""}`);
+  sv();undoToast("🗑 লক্ষ্যমাত্রা মুছে ফেলা হয়েছে",tid);goTab("goals");
+}
 
 // ══════════════════
 // MEMBERS
@@ -2790,9 +3056,11 @@ function saveMemberEdit(){
 function delMember(id){
   if(!confirm("এই সদস্য মুছবেন?"))return;
   const m=(D.members||[]).find(x=>x.id===id);
+  if(!m)return;
   D.members=(D.members||[]).filter(m=>m.id!==id);
-  if(m) logActivity("member",`সদস্য মুছে ফেলা হয়েছে: ${m.name}`);
-  sv();toast("🗑","#dc2626");goTab("members");
+  const tid=moveToTrash("member",m.name,m);
+  logActivity("member",`সদস্য মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${m.name}`);
+  sv();undoToast("🗑 সদস্য মুছে ফেলা হয়েছে",tid);goTab("members");
 }
 
 // ══════════════════════════════════════════
@@ -2805,7 +3073,7 @@ function moveToFormerMember(id){
   const totalLoanOut=(D.loans||[]).filter(l=>l.mid==id).reduce((s,l)=>s+l.remaining,0);
   const msg=`"${m.name}" কে পূর্ব সদস্য তালিকায় স্থানান্তর করতে চান?\n\nমোট জমা দিয়েছেন: ৳${totalPaid.toLocaleString("bn-BD")}\nবকেয়া ঋণ: ৳${totalLoanOut.toLocaleString("bn-BD")}\n\nতিনি বর্তমান সদস্য তালিকা থেকে সরে যাবেন।`;
   if(!confirm(msg))return;
-  if(!D.formerMembers) D.formerMembers=[];
+  if(!D.formerMembers) D.formerMembers=[];if(!D.trash) D.trash=[];
   D.formerMembers.push({
     id:m.id,
     name:m.name,
@@ -2896,7 +3164,14 @@ function pgOpinion(){
 }
 function addOp(){const m=document.getElementById("opM").value,t=document.getElementById("opT").value.trim();if(!m||!t)return;D.opinions=[...(D.opinions||[]),{id:Date.now(),mid:Number(m),text:t,date:new Date().toISOString().slice(0,10),likes:0}];sv();toast("✅ মতামত যোগ হয়েছে");goTab("opinion");}
 function likeOp(id){D.opinions=(D.opinions||[]).map(o=>o.id===id?{...o,likes:(o.likes||0)+1}:o);sv();goTab("opinion");}
-function delOp(id){D.opinions=(D.opinions||[]).filter(o=>o.id!==id);sv();toast("🗑","#dc2626");goTab("opinion");}
+function delOp(id){
+  const o=(D.opinions||[]).find(x=>x.id===id);
+  if(!o)return;
+  D.opinions=(D.opinions||[]).filter(o=>o.id!==id);
+  const tid=moveToTrash("opinion",`${gn(o.mid)}: ${(o.text||"").slice(0,40)}`,o);
+  logActivity("opinion",`মতামত মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${gn(o.mid)}`);
+  sv();undoToast("🗑 মতামত মুছে ফেলা হয়েছে",tid);goTab("opinion");
+}
 
 function pgGallery(){
   const gal=D.gallery||[];
@@ -2979,7 +3254,14 @@ function openGalleryItem(id){
   </div>`;
   document.body.insertAdjacentHTML("beforeend",html);
 }
-function delGal(id){D.gallery=(D.gallery||[]).filter(g=>g.id!==id);sv();toast("🗑","#dc2626");goTab("gallery");}
+function delGal(id){
+  const g=(D.gallery||[]).find(x=>x.id===id);
+  if(!g)return;
+  D.gallery=(D.gallery||[]).filter(g=>g.id!==id);
+  const tid=moveToTrash("gallery",g.caption||g.name||"গ্যালারি আইটেম",g);
+  logActivity("gallery",`গ্যালারি আইটেম মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${g.caption||g.name||""}`);
+  sv();undoToast("🗑 গ্যালারি আইটেম মুছে ফেলা হয়েছে",tid);goTab("gallery");
+}
 
 function pgRules(){
   const rules=D.rules||[];
@@ -2991,7 +3273,14 @@ function pgRules(){
   return form+list;
 }
 function addRule(){const t=document.getElementById("ruleT").value.trim();if(!t)return;D.rules=[...(D.rules||[]),t];sv();toast("✅ নিয়ম যোগ হয়েছে");goTab("rules");}
-function delRule(i){D.rules=(D.rules||[]).filter((_,idx)=>idx!==i);sv();toast("🗑","#dc2626");goTab("rules");}
+function delRule(i){
+  const r=(D.rules||[])[i];
+  if(r===undefined)return;
+  D.rules=(D.rules||[]).filter((_,idx)=>idx!==i);
+  const tid=moveToTrash("rule",r.length>40?r.slice(0,40)+"…":r,r);
+  logActivity("rule",`নিয়ম মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${r}`);
+  sv();undoToast("🗑 নিয়ম মুছে ফেলা হয়েছে",tid);goTab("rules");
+}
 
 // ══════════════════════════════════════════
 // FORMAT TEXT IN NOTICE
@@ -3575,7 +3864,7 @@ function pgVisitors(){
 // ══════════════════════════════════════════
 function pgPayment(){
   if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
-    if(!D.formerMembers) D.formerMembers=[];
+    if(!D.formerMembers) D.formerMembers=[];if(!D.trash) D.trash=[];
   const {bank,mobile}=D.paymentInfo;
   const mobileIcons={"বিকাশ":"🩷","নগদ":"🧡","রকেট":"💜","উপায়":"💙","অন্যান্য":"📱"};
 
@@ -3675,7 +3964,7 @@ function addBankInfo(){
   const owner=document.getElementById("pi-bowner").value.trim();
   if(!name||!number||!owner){toast("⚠️ ব্যাংকের নাম, নম্বর ও অ্যাকাউন্টের নাম দিন","#d97706");return;}
   if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
-    if(!D.formerMembers) D.formerMembers=[];
+    if(!D.formerMembers) D.formerMembers=[];if(!D.trash) D.trash=[];
   D.paymentInfo.bank.push({id:Date.now(),name,number,owner,
     branch:document.getElementById("pi-branch").value.trim(),
     routing:document.getElementById("pi-routing").value.trim()});
@@ -3689,7 +3978,7 @@ function addMobileInfo(){
   const owner=document.getElementById("pi-mowner").value.trim();
   if(!number||!owner){toast("⚠️ নম্বর ও নাম দিন","#d97706");return;}
   if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
-    if(!D.formerMembers) D.formerMembers=[];
+    if(!D.formerMembers) D.formerMembers=[];if(!D.trash) D.trash=[];
   D.paymentInfo.mobile.push({id:Date.now(),type,number,owner,
     actype:document.getElementById("pi-mactype").value});
   logActivity("payment","নতুন মোবাইল ব্যাংকিং যোগ হয়েছে: "+type+" "+number);
@@ -3698,14 +3987,22 @@ function addMobileInfo(){
 
 function delBankInfo(id){
   if(!confirm("এই ব্যাংক অ্যাকাউন্ট মুছবেন?"))return;
+  const b=(D.paymentInfo.bank||[]).find(x=>x.id===id);
+  if(!b)return;
   D.paymentInfo.bank=D.paymentInfo.bank.filter(b=>b.id!==id);
-  sv();toast("🗑 মুছে গেছে","#dc2626");goTab("payment");
+  const tid=moveToTrash("bankInfo",`${b.name} — ${b.number}`,b);
+  logActivity("payment",`ব্যাংক অ্যাকাউন্ট মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${b.name}`);
+  sv();undoToast("🗑 মুছে ফেলা হয়েছে",tid);goTab("payment");
 }
 
 function delMobileInfo(id){
   if(!confirm("এই মোবাইল ব্যাংকিং তথ্য মুছবেন?"))return;
+  const m=(D.paymentInfo.mobile||[]).find(x=>x.id===id);
+  if(!m)return;
   D.paymentInfo.mobile=D.paymentInfo.mobile.filter(m=>m.id!==id);
-  sv();toast("🗑 মুছে গেছে","#dc2626");goTab("payment");
+  const tid=moveToTrash("mobileInfo",`${m.type} — ${m.number}`,m);
+  logActivity("payment",`মোবাইল ব্যাংকিং তথ্য মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${m.type} ${m.number}`);
+  sv();undoToast("🗑 মুছে ফেলা হয়েছে",tid);goTab("payment");
 }
 
 function pgDuesSheet() {
@@ -4041,9 +4338,11 @@ function addRateChange(){
 function delRateChange(id){
   if(!confirm("এই হার পরিবর্তনের রেকর্ড মুছবেন? (এটি অডিট ইতিহাসের অংশ, মুছলে হিসাব পরিবর্তন হতে পারে)"))return;
   const r=(D.rateHistory||[]).find(x=>x.id==id);
+  if(!r)return;
   D.rateHistory=(D.rateHistory||[]).filter(x=>x.id!=id);
-  if(r) logActivity("rate", `হার পরিবর্তনের রেকর্ড মুছে ফেলা হয়েছে: ${r.mid!=null?gn(r.mid):"গ্লোবাল"} — ${fmt(r.rate)} (কার্যকর ${r.effectiveFrom})`);
-  sv(); toast("🗑 মুছে গেছে","#dc2626"); goTab("duessheet");
+  const tid=moveToTrash("rate",`${r.mid!=null?gn(r.mid):"গ্লোবাল"} — ${fmt(r.rate)}`,r);
+  logActivity("rate", `হার পরিবর্তনের রেকর্ড মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${r.mid!=null?gn(r.mid):"গ্লোবাল"} — ${fmt(r.rate)} (কার্যকর ${r.effectiveFrom})`);
+  sv(); undoToast("🗑 মুছে ফেলা হয়েছে",tid); goTab("duessheet");
 }
 
 function addSpecialMonth() {
@@ -4075,8 +4374,9 @@ function delSpecialMonth(id){
   if(!s)return;
   if(!confirm(`${gn(s.mid)}-এর ${s.month} মাসের বিশেষ চাঁদা (${fmt(s.amount)}) মুছবেন?`))return;
   D.specialMonths=(D.specialMonths||[]).filter(x=>x.id!==id);
-  logActivity("rate",`${gn(s.mid)}-এর ${s.month} বিশেষ চাঁদা মুছে ফেলা হয়েছে`);
-  sv();toast("🗑 মুছে গেছে","#dc2626");goTab("duessheet");
+  const tid=moveToTrash("specialMonth",`${gn(s.mid)} — ${s.month} — ${fmt(s.amount)}`,s);
+  logActivity("rate",`বিশেষ চাঁদা মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${gn(s.mid)}-এর ${s.month}`);
+  sv();undoToast("🗑 মুছে ফেলা হয়েছে",tid);goTab("duessheet");
 }
 
 
@@ -4131,9 +4431,11 @@ function deleteDueModal() {
   if(!pid) return;
   if(!confirm("এই রেকর্ড মুছবেন?")) return;
   const p=(D.payments||[]).find(x=>x.id==pid);
+  if(!p){closeDueModal();return;}
   D.payments = (D.payments||[]).filter(p=>p.id!=pid);
-  if(p) logActivity("payment", `${gn(p.mid)} — ${p.month} মাসের চাঁদা ${fmt(p.amount)} মুছে ফেলা হয়েছে`);
-  sv(); toast("🗑 মুছে গেছে","#dc2626"); closeDueModal(); goTab("duessheet");
+  const tid=moveToTrash("payment",`${gn(p.mid)} — ${p.month} মাসের চাঁদা ${fmt(p.amount)}`,p);
+  logActivity("payment", `${gn(p.mid)} — ${p.month} মাসের চাঁদা ${fmt(p.amount)} মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে)`);
+  sv(); undoToast("🗑 চাঁদা মুছে ফেলা হয়েছে",tid); closeDueModal(); goTab("duessheet");
 }
 
 function closeDueModal() {
@@ -4839,9 +5141,11 @@ function castVote(vid,val){
 function delVote(id){
   if(!confirm("এই ভোট মুছবেন?"))return;
   const v=(D.votes||[]).find(x=>x.id===id);
+  if(!v)return;
   D.votes=(D.votes||[]).filter(v=>v.id!==id);
-  if(v) logActivity("vote",`ভোট মুছে ফেলা হয়েছে: ${v.title}`);
-  sv();toast("🗑 মুছে গেছে","#dc2626");goTab("voting");
+  const tid=moveToTrash("vote",v.title,v);
+  logActivity("vote",`ভোট মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${v.title}`);
+  sv();undoToast("🗑 ভোট মুছে ফেলা হয়েছে",tid);goTab("voting");
 }
 
 // ══════════════════════════════════════════
@@ -4977,9 +5281,11 @@ function saveMinutes(){
 function delMeeting(id){
   if(!confirm("এই মিটিং মুছবেন?"))return;
   const mt=(D.meetings||[]).find(x=>x.id===id);
+  if(!mt)return;
   D.meetings=(D.meetings||[]).filter(m=>m.id!==id);
-  if(mt) logActivity("meeting",`মিটিং মুছে ফেলা হয়েছে: ${mt.title}`);
-  sv();toast("🗑 মুছে গেছে","#dc2626");goTab("meeting");
+  const tid=moveToTrash("meeting",mt.title,mt);
+  logActivity("meeting",`মিটিং মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${mt.title}`);
+  sv();undoToast("🗑 মিটিং মুছে ফেলা হয়েছে",tid);goTab("meeting");
 }
 
 function meetingPDF(mid){
@@ -5183,30 +5489,9 @@ function pgReport(){
 // ══════════════════════════════════════════
 // কার্যক্রম ইতিহাস (Activity / Audit Log Page)
 // ══════════════════════════════════════════
-function pgHistory(){
-  const log=(D.activityLog||[]).slice().sort((a,b)=>(b.at||"").localeCompare(a.at||""));
-  const typeMeta={
-    payment:{icon:"💰",label:"চাঁদা",color:"#1a8a00"},
-    member:{icon:"👤",label:"সদস্য",color:"#2563eb"},
-    loan:{icon:"🤝",label:"ঋণ",color:"#d97706"},
-    invest:{icon:"📈",label:"বিনিয়োগ",color:"#7c3aed"},
-    asset:{icon:"🏛️",label:"সম্পদ",color:"#0d9488"},
-    income:{icon:"📥",label:"আয়",color:"#16a34a"},
-    expense:{icon:"📤",label:"ব্যয়",color:"#dc2626"},
-    rate:{icon:"💱",label:"চাঁদার হার",color:"#92400e"},
-    notice:{icon:"📢",label:"নোটিশ",color:"#d97706"},
-    vote:{icon:"🗳️",label:"ভোটিং",color:"#7c3aed"},
-    meeting:{icon:"📅",label:"মিটিং",color:"#2563eb"},
-  };
-  const types=Object.keys(typeMeta);
-  const filterChips=`<div class="chips" style="margin-bottom:12px">
-    <button class="chip${!window._histFilter?" on":""}" onclick="window._histFilter='';goTab('history')">সব</button>
-    ${types.map(t=>`<button class="chip${window._histFilter===t?" on":""}" onclick="window._histFilter='${t}';goTab('history')">${typeMeta[t].icon} ${typeMeta[t].label}</button>`).join("")}
-  </div>`;
-
-  const filtered = window._histFilter ? log.filter(l=>l.type===window._histFilter) : log;
-
-  const rows = filtered.slice(0,300).map(l=>{
+function renderHistRows(filtered){
+  const typeMeta=window._histTypeMeta||{};
+  return filtered.slice(0,300).map(l=>{
     const meta = typeMeta[l.type]||{icon:"🕘",label:"অন্যান্য",color:"#64748b"};
     let dt="-";
     try{ const x=new Date(l.at); dt = `${x.getDate()} ${BNM[x.getMonth()]} ${x.getFullYear()}, ${String(x.getHours()).padStart(2,"0")}:${String(x.getMinutes()).padStart(2,"0")}`; }catch(e){}
@@ -5218,15 +5503,68 @@ function pgHistory(){
       </div>
     </div>`;
   }).join("") || `<div style="padding:40px;text-align:center;color:#94a3b8">🕘 কোনো কার্যক্রমের তথ্য নেই</div>`;
+}
+function filterHistoryLive(q){
+  window._histSearch=q;
+  const log=window._histLogAll||[];
+  let filtered = window._histFilter ? log.filter(l=>l.type===window._histFilter) : log;
+  const qq=(q||"").trim().toLowerCase();
+  if(qq) filtered = filtered.filter(l=>(l.text||"").toLowerCase().includes(qq)||(l.by||"").toLowerCase().includes(qq));
+  const rowsEl=document.getElementById("hist-rows");
+  const subEl=document.getElementById("hist-count-sub");
+  if(rowsEl) rowsEl.innerHTML=renderHistRows(filtered);
+  if(subEl) subEl.textContent=`সকল হিসাব-নিকাশ, সদস্য যোগ-বাদ ও কার্যক্রমের সম্পূর্ণ লগ — ${filtered.length}টি (সর্বোচ্চ ৩০০টি দেখানো হচ্ছে)`;
+}
+function pgHistory(){
+  const log=(D.activityLog||[]).slice().sort((a,b)=>(b.at||"").localeCompare(a.at||""));
+  const typeMeta={
+    payment:{icon:"💰",label:"চাঁদা",color:"#1a8a00"},
+    member:{icon:"👤",label:"সদস্য",color:"#2563eb"},
+    loan:{icon:"🤝",label:"ঋণ",color:"#d97706"},
+    invest:{icon:"📈",label:"বিনিয়োগ",color:"#7c3aed"},
+    asset:{icon:"🏛️",label:"সম্পদ",color:"#0d9488"},
+    income:{icon:"📥",label:"আয়",color:"#16a34a"},
+    expense:{icon:"📤",label:"ব্যয়",color:"#dc2626"},
+    liability:{icon:"⚖️",label:"দায়",color:"#dc2626"},
+    rate:{icon:"💱",label:"চাঁদার হার",color:"#92400e"},
+    notice:{icon:"📢",label:"নোটিশ",color:"#d97706"},
+    news:{icon:"📰",label:"নিউজ",color:"#0369a1"},
+    goal:{icon:"🎯",label:"লক্ষ্যমাত্রা",color:"#16a34a"},
+    opinion:{icon:"💬",label:"মতামত",color:"#7c3aed"},
+    gallery:{icon:"🖼️",label:"গ্যালারি",color:"#0d9488"},
+    rule:{icon:"📜",label:"নিয়ম",color:"#64748b"},
+    msgTemplate:{icon:"✉️",label:"বার্তা টেম্পলেট",color:"#2563eb"},
+    vote:{icon:"🗳️",label:"ভোটিং",color:"#7c3aed"},
+    meeting:{icon:"📅",label:"মিটিং",color:"#2563eb"},
+    error:{icon:"⚠️",label:"ত্রুটি",color:"#dc2626"},
+  };
+  window._histTypeMeta=typeMeta;
+  window._histLogAll=log;
+  const types=Object.keys(typeMeta);
+  const filterChips=`<div class="chips" style="margin-bottom:12px">
+    <button class="chip${!window._histFilter?" on":""}" onclick="window._histFilter='';goTab('history')">সব</button>
+    ${types.map(t=>`<button class="chip${window._histFilter===t?" on":""}" onclick="window._histFilter='${t}';goTab('history')">${typeMeta[t].icon} ${typeMeta[t].label}</button>`).join("")}
+  </div>`;
+
+  let filtered = window._histFilter ? log.filter(l=>l.type===window._histFilter) : log;
+  const q=(window._histSearch||"").trim().toLowerCase();
+  if(q) filtered = filtered.filter(l=>(l.text||"").toLowerCase().includes(q)||(l.by||"").toLowerCase().includes(q));
+
+  const searchBox=`<div style="margin-bottom:10px">
+    <input type="text" id="hist-search-input" placeholder="🔍 লগে খুঁজুন (নাম, বিবরণ...)" value="${(window._histSearch||"").replace(/"/g,"&quot;")}" oninput="filterHistoryLive(this.value)" style="width:100%;padding:10px 12px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;background:var(--white);color:var(--ink)">
+  </div>`;
+
+  const rows = renderHistRows(filtered);
 
   return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div><div class="section-title">🕘 কার্যক্রম ইতিহাস</div>
-      <div class="section-sub">সকল হিসাব-নিকাশ, সদস্য যোগ-বাদ ও কার্যক্রমের সম্পূর্ণ লগ (সর্বশেষ ৩০০টি)</div></div>
+      <div class="section-sub" id="hist-count-sub">সকল হিসাব-নিকাশ, সদস্য যোগ-বাদ ও কার্যক্রমের সম্পূর্ণ লগ — ${filtered.length}টি (সর্বোচ্চ ৩০০টি দেখানো হচ্ছে)</div></div>
       ${isA()?`<button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="clearHistory()">🗑 ইতিহাস মুছুন</button>`:""}
     </div>
+    ${searchBox}
     ${filterChips}
-    <div class="card">${rows}</div>`;
+    <div class="card" id="hist-rows">${rows}</div>`;
 }
 // ══════════════════════════════════════════
 // বার্তা টেম্পলেট
@@ -5352,8 +5690,12 @@ function editTemplate(id){
 
 function deleteTemplate(id){
   if(!confirm("এই টেম্পলেট মুছে ফেলবেন?"))return;
+  const t=(D.msgTemplates||[]).find(x=>x.id===id);
+  if(!t)return;
   D.msgTemplates=(D.msgTemplates||[]).filter(t=>t.id!==id);
-  sv();toast("🗑️ মুছে ফেলা হয়েছে","#dc2626");goTab("msgtemplate");
+  const tid=moveToTrash("msgTemplate",t.title,t);
+  logActivity("msgTemplate",`বার্তা টেম্পলেট মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${t.title}`);
+  sv();undoToast("🗑️ মুছে ফেলা হয়েছে",tid);goTab("msgtemplate");
 }
 
 function insertVar(text){
@@ -5709,7 +6051,7 @@ window.addEventListener("DOMContentLoaded",function(){
       D=LS.get(SK)||JSON.parse(JSON.stringify(SEED));
       if(!D.rateHistory)D.rateHistory=[];
       if(!D.activityLog)D.activityLog=[];
-      if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];
+      if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];
       document.getElementById("ls").style.display="none";
       document.getElementById("app").style.display="flex";
       document.getElementById("fab-btn").classList.add("show");
