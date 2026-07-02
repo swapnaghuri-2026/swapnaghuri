@@ -339,7 +339,7 @@ const firebaseConfig = {
   <div class="gsearch-box" id="gsearch-box">
     <div class="gsearch-top">
       <span style="font-size:18px">🔍</span>
-      <input type="text" id="gsearch-field" placeholder="নাম, মোবাইল, আইডি, এনআইডি, ঋণ, সঞ্চয়..." oninput="runGSearch(this.value)" autocomplete="off">
+      <input type="text" id="gsearch-field" placeholder="নাম, মোবাইল, আইডি, এনআইডি, ঋণ, সঞ্চয়..." oninput="runGSearchLive(this.value)" autocomplete="off">
       <button onclick="closeGSearchBtn()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted)">✕</button>
     </div>
     <div id="gsearch-body"><div class="gsearch-empty">উপরে টাইপ করুন — নাম, মোবাইল, সদস্য আইডি, এনআইডি, ঋণ, সঞ্চয় সব খোঁজা যাবে</div></div>
@@ -1167,6 +1167,44 @@ function filterTableRows(q,tbodyId){
     const name=(tr.getAttribute("data-name")||"").toLowerCase();
     tr.style.display = (!ql||name.includes(ql)) ? "" : "none";
   });
+}
+const filterTableRowsLive=debounce(filterTableRows,200);
+
+// ══════════════════
+// PERFORMANCE (Priority 6): Debounce + Pagination Utilities
+// ══════════════════
+// একটি ফাংশনের বারবার-কল থামিয়ে শুধু শেষ কলটি চালায় (search input optimization)
+function debounce(fn,delay){
+  let t;
+  return function(...args){
+    clearTimeout(t);
+    t=setTimeout(()=>fn.apply(this,args),delay||250);
+  };
+}
+// একটি array-কে page অনুযায়ী ভাগ করে
+function paginateArr(arr,page,perPage){
+  const total=arr.length;
+  const totalPages=Math.max(1,Math.ceil(total/perPage));
+  const p=Math.min(Math.max(1,page||1),totalPages);
+  const start=(p-1)*perPage;
+  return {items:arr.slice(start,start+perPage),page:p,perPage,totalPages,total};
+}
+// Pagination bar-এর HTML তৈরি করে। onChangeFn হলো global function-এর নাম (string), যেটা page number নিয়ে কল হবে
+function renderPager(page,totalPages,onChangeFn){
+  if(totalPages<=1)return "";
+  const mk=(p,label,disabled,active)=>`<button ${disabled?"disabled":""} onclick="${onChangeFn}(${p})" style="min-width:34px;padding:7px 10px;border-radius:8px;border:1.5px solid ${active?"#006400":"var(--border)"};background:${active?"#006400":"var(--white)"};color:${active?"#fff":"var(--ink)"};font-weight:700;font-size:12px;cursor:${disabled?"default":"pointer"};opacity:${disabled?0.4:1}">${label}</button>`;
+  let s=Math.max(1,page-2),e=Math.min(totalPages,page+2);
+  if(page<=3)e=Math.min(totalPages,5);
+  if(page>=totalPages-2)s=Math.max(1,totalPages-4);
+  let nums="";
+  for(let i=s;i<=e;i++)nums+=mk(i,i,false,i===page);
+  return `<div style="display:flex;gap:6px;justify-content:center;align-items:center;margin-top:14px;flex-wrap:wrap">
+    ${mk(1,"«",page===1,false)}
+    ${mk(Math.max(1,page-1),"‹",page===1,false)}
+    ${nums}
+    ${mk(Math.min(totalPages,page+1),"›",page===totalPages,false)}
+    ${mk(totalPages,"»",page===totalPages,false)}
+  </div>`;
 }
 
 // ══════════════════
@@ -2553,10 +2591,42 @@ function pgMembers(){
     <button class="btn btn-g" onclick="addMember()">✅ যোগ করুন</button>
   </div></div>`:"";
 
-  const totalFundAll=calcFund();
-  const allMeetings=D.meetings||[];
-  const duesListAll=getDuesList();
-  const cards=members.map(m=>{
+  const memView=computeMembersView();
+
+  return `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div><div class="section-title">👥 সদস্যবৃন্দ</div>
+      <div class="section-sub" id="members-count-sub">${members.length} জন সদস্য</div></div>
+      <button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="pdfDownload('members')">📄 সদস্য তালিকা PDF</button>
+    </div>
+    ${form}
+    <div class="field" style="margin-bottom:10px"><input type="text" placeholder="🔎 সদস্য খুঁজুন..." value="${(window._memSearch||"").replace(/"/g,"&quot;")}" oninput="searchMembersLive(this.value)"></div>
+    <div class="gauto" id="members-grid">${memView.cardsHtml}</div>
+    <div id="members-pager">${memView.pagerHtml}</div>
+
+    <!-- সদস্য সম্পাদনা Modal -->
+    <div id="member-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center">
+      <div style="background:#fff;border-radius:16px;padding:22px;width:92%;max-width:400px;max-height:90vh;overflow-y:auto">
+        <div style="font-weight:800;font-size:17px;margin-bottom:16px;color:#071a07">✏️ সদস্য সম্পাদনা</div>
+        <input type="hidden" id="em-id">
+        <div class="field"><label>পূর্ণ নাম</label><input type="text" id="em-name"></div>
+        <div class="field"><label>মোবাইল</label><input type="tel" id="em-phone" placeholder="01XXXXXXXXX"></div>
+        <div class="field"><label>পদবি</label><select id="em-role">${mRoles.map(r=>'<option>'+r+'</option>').join("")}</select></div>
+        <div class="field"><label>যোগদানের মাস</label><input type="month" id="em-join"></div>
+        <div class="field"><label>মাসিক চাঁদার হার (৳)</label><input type="number" id="em-rate" placeholder="2000"></div>
+        <div style="font-size:11px;color:#94a3b8;margin:-6px 0 10px">নতুন হার নির্দিষ্ট তারিখ থেকে কার্যকর করতে "চাঁদার শিট" পেজে রেট ম্যানেজমেন্ট ব্যবহার করুন</div>
+        <div class="field"><label>নোমিনি</label><input type="text" id="em-nominee" placeholder="নোমিনির নাম"></div>
+        <div class="field"><label>ঠিকানা</label><input type="text" id="em-address" placeholder="গ্রাম/শহর"></div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button class="btn btn-g" onclick="saveMemberEdit()" style="flex:1">✅ সেভ করুন</button>
+          <button class="btn btn-outline" onclick="document.getElementById('member-edit-modal').style.display='none'">বাতিল</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+// সদস্য কার্ড একটি member object থেকে তৈরি করে (pagination-এর সাথে reuse করার জন্য আলাদা করা হয়েছে)
+function buildMemberCard(m,payments,loans,duesListAll,allMeetings,totalFundAll,rG,members){
     const tp=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
     const tl=loans.filter(l=>l.mid==m.id).reduce((s,l)=>s+l.remaining,0);
     const dueRec=duesListAll.find(x=>x.id==m.id);
@@ -2570,7 +2640,7 @@ function pgMembers(){
       <div style="padding:14px">
         <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
           ${m.photo
-            ? `<label title="ছবি পরিবর্তন" style="cursor:pointer;flex-shrink:0"><img src="${m.photo}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid ${g}"><input type="file" accept="image/*" onchange="changeMemberPhoto(${m.id},this)" style="display:none"></label>`
+            ? `<label title="ছবি পরিবর্তন" style="cursor:pointer;flex-shrink:0"><img src="${m.photo}" loading="lazy" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid ${g}"><input type="file" accept="image/*" onchange="changeMemberPhoto(${m.id},this)" style="display:none"></label>`
             : `<label title="ছবি যোগ করুন" style="cursor:pointer;flex-shrink:0">${av(m.name,44,g,m.id)}<input type="file" accept="image/*" onchange="changeMemberPhoto(${m.id},this)" style="display:none"></label>`}
           <div style="flex:1">
             <div style="font-weight:700;font-size:15px;color:var(--ink);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(0,100,0,.3)" onclick="openMemberProfile(${m.id})">${m.name}</div>
@@ -2615,38 +2685,44 @@ function pgMembers(){
         </div>
       </div>
     </div>`;
-  }).join("");
-
-  return `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-      <div><div class="section-title">👥 সদস্যবৃন্দ</div>
-      <div class="section-sub">${members.length} জন সদস্য</div></div>
-      <button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="pdfDownload('members')">📄 সদস্য তালিকা PDF</button>
-    </div>
-    ${form}
-    <div class="field" style="margin-bottom:10px"><input type="text" placeholder="🔎 সদস্য খুঁজুন..." oninput="filterCardsByName(this.value,'members-grid')"></div>
-    <div class="gauto" id="members-grid">${cards||`<div style="text-align:center;padding:40px;color:#94a3b8">👥 কোনো সদস্য নেই</div>`}</div>
-
-    <!-- সদস্য সম্পাদনা Modal -->
-    <div id="member-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center">
-      <div style="background:#fff;border-radius:16px;padding:22px;width:92%;max-width:400px;max-height:90vh;overflow-y:auto">
-        <div style="font-weight:800;font-size:17px;margin-bottom:16px;color:#071a07">✏️ সদস্য সম্পাদনা</div>
-        <input type="hidden" id="em-id">
-        <div class="field"><label>পূর্ণ নাম</label><input type="text" id="em-name"></div>
-        <div class="field"><label>মোবাইল</label><input type="tel" id="em-phone" placeholder="01XXXXXXXXX"></div>
-        <div class="field"><label>পদবি</label><select id="em-role">${mRoles.map(r=>'<option>'+r+'</option>').join("")}</select></div>
-        <div class="field"><label>যোগদানের মাস</label><input type="month" id="em-join"></div>
-        <div class="field"><label>মাসিক চাঁদার হার (৳)</label><input type="number" id="em-rate" placeholder="2000"></div>
-        <div style="font-size:11px;color:#94a3b8;margin:-6px 0 10px">নতুন হার নির্দিষ্ট তারিখ থেকে কার্যকর করতে "চাঁদার শিট" পেজে রেট ম্যানেজমেন্ট ব্যবহার করুন</div>
-        <div class="field"><label>নোমিনি</label><input type="text" id="em-nominee" placeholder="নোমিনির নাম"></div>
-        <div class="field"><label>ঠিকানা</label><input type="text" id="em-address" placeholder="গ্রাম/শহর"></div>
-        <div style="display:flex;gap:8px;margin-top:4px">
-          <button class="btn btn-g" onclick="saveMemberEdit()" style="flex:1">✅ সেভ করুন</button>
-          <button class="btn btn-outline" onclick="document.getElementById('member-edit-modal').style.display='none'">বাতিল</button>
-        </div>
-      </div>
-    </div>
-  `;
+}
+// Members grid-এর জন্য filter + pagination হিসাব করে card ও pager-এর HTML রিটার্ন করে
+function computeMembersView(){
+  const members=D.members||[], payments=D.payments||[], loans=D.loans||[];
+  const rG={সভাপতি:GR.gold,সম্পাদক:GR.b,কোষাধ্যক্ষ:GR.g,সদস্য:GR.g,উপদেষ্টা:GR.p};
+  const totalFundAll=calcFund();
+  const allMeetings=D.meetings||[];
+  const duesListAll=getDuesList();
+  const q=(window._memSearch||"").trim().toLowerCase();
+  const filtered=q?members.filter(m=>(m.name||"").toLowerCase().includes(q)):members;
+  const pg=paginateArr(filtered,window._memPage||1,MEMBERS_PAGE_SIZE);
+  window._memPage=pg.page;
+  const cardsHtml=pg.items.map(m=>buildMemberCard(m,payments,loans,duesListAll,allMeetings,totalFundAll,rG,members)).join("")
+    || `<div style="text-align:center;padding:40px;color:#94a3b8">${q?"🔎 কোনো ফলাফল পাওয়া যায়নি":"👥 কোনো সদস্য নেই"}</div>`;
+  const pagerHtml=renderPager(pg.page,pg.totalPages,'gotoMembersPage');
+  return {cardsHtml,pagerHtml,total:members.length,filteredTotal:filtered.length};
+}
+const MEMBERS_PAGE_SIZE=24;
+// Search বা page পরিবর্তনের পর পুরো tab রিফ্রেশ না করে শুধু grid+pager আপডেট করে (performance optimization)
+function updateMembersGrid(){
+  const v=computeMembersView();
+  const grid=document.getElementById("members-grid");
+  const pager=document.getElementById("members-pager");
+  const sub=document.getElementById("members-count-sub");
+  if(grid)grid.innerHTML=v.cardsHtml;
+  if(pager)pager.innerHTML=v.pagerHtml;
+  if(sub)sub.textContent=`${v.total} জন সদস্য`+(window._memSearch?` (খুঁজে পাওয়া গেছে ${v.filteredTotal} জন)`:"");
+}
+const searchMembersLive=debounce(function(q){
+  window._memSearch=q;
+  window._memPage=1;
+  updateMembersGrid();
+},250);
+function gotoMembersPage(p){
+  window._memPage=p;
+  updateMembersGrid();
+  const grid=document.getElementById("members-grid");
+  if(grid)grid.scrollIntoView({behavior:"smooth",block:"start"});
 }
 
 function openMemberProfile(mid){
@@ -2684,7 +2760,7 @@ function openMemberProfile(mid){
       <button onclick="closeMemberProfile()" style="position:absolute;top:12px;right:12px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:16px">✕</button>
       <button onclick="memberProfilePDF(${mid})" style="position:absolute;top:12px;right:54px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:12px;font-weight:600">📄 PDF</button>
       <div style="display:flex;align-items:center;gap:14px">
-        ${m.photo?`<img src="${m.photo}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff;border:3px solid rgba(255,255,255,.3)">${m.name?m.name[0]:""}</div>`}
+        ${m.photo?`<img src="${m.photo}" loading="lazy" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff;border:3px solid rgba(255,255,255,.3)">${m.name?m.name[0]:""}</div>`}
         <div>
           <div style="font-size:18px;font-weight:800;color:#fff">${m.name}</div>
           <div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:2px">${m.role||"সদস্য"} | আইডি: #${String(mid).slice(-4)}</div>
@@ -2712,7 +2788,7 @@ function openMemberProfile(mid){
       <!-- ১. ব্যক্তিগত -->
       <div id="ptab-personal-content">
         <div style="text-align:center;margin-bottom:14px">
-          ${m.photo?`<img src="${m.photo}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #006400;margin-bottom:8px">`:`<div style="width:80px;height:80px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#006400;margin:0 auto 8px">${m.name?m.name[0]:""}</div>`}
+          ${m.photo?`<img src="${m.photo}" loading="lazy" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #006400;margin-bottom:8px">`:`<div style="width:80px;height:80px;border-radius:50%;background:#dcfce7;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#006400;margin:0 auto 8px">${m.name?m.name[0]:""}</div>`}
           <label style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;color:#006400;font-weight:600">📷 ছবি পরিবর্তন<input type="file" accept="image/*" onchange="changeMemberPhoto(${mid},this)" style="display:none"></label>
         </div>
         <div class="grid2">
@@ -2901,7 +2977,7 @@ function memberProfilePDF(mid){
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfStyle}table{width:100%;border-collapse:collapse;margin-bottom:16px}.kpi{display:inline-block;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin:4px;text-align:center}.kv{font-size:16px;font-weight:800;color:#006400}.kl{font-size:10px;color:#64748b}</style></head><body>
   ${pdfWM()}${pdfBtn()}
   <div style="background:linear-gradient(135deg,#006400,#1a8a00);padding:20px;border-radius:12px;margin-bottom:20px;display:flex;align-items:center;gap:16px">
-    ${m.photo?`<img src="${m.photo}" style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff">${m.name?m.name[0]:""}</div>`}
+    ${m.photo?`<img src="${m.photo}" loading="lazy" style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff">${m.name?m.name[0]:""}</div>`}
     <div>
       <h1 style="color:#fff;margin:0;font-size:20px;border:none">${m.name}</h1>
       <div style="color:rgba(255,255,255,.8);font-size:13px">${m.role||"সদস্য"} | আইডি: #${String(mid).slice(-4)}</div>
@@ -3190,7 +3266,7 @@ function pgGallery(){
     const isVid=g.type&&g.type.startsWith("video");
     const isAud=g.type&&g.type.startsWith("audio");
     let media="";
-    if(isImg) media=`<img src="${g.src}" style="width:100%;height:130px;object-fit:cover;display:block;cursor:pointer" onclick="openGalleryItem(${g.id})">`;
+    if(isImg) media=`<img src="${g.src}" loading="lazy" style="width:100%;height:130px;object-fit:cover;display:block;cursor:pointer" onclick="openGalleryItem(${g.id})">`;
     else if(isVid) media=`<video src="${g.src}" controls style="width:100%;height:130px;object-fit:cover;display:block"></video>`;
     else if(isAud) media=`<div style="background:#f0fdf4;padding:14px;text-align:center"><div style="font-size:32px">🎵</div><audio src="${g.src}" controls style="width:100%;margin-top:6px"></audio></div>`;
     else media=`<div style="background:#f8fafc;height:130px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;cursor:pointer" onclick="openGalleryItem(${g.id})"><div style="font-size:40px">${fileIcon(g.type)}</div><div style="font-size:11px;color:#64748b">${g.name||"ফাইল"}</div><a href="${g.src}" download="${g.name||"file"}" style="font-size:11px;background:#006400;color:#fff;padding:4px 10px;border-radius:6px;text-decoration:none">⬇️ ডাউনলোড</a></div>`;
@@ -4263,7 +4339,7 @@ function pgDuesSheet() {
     <!-- মাসভিত্তিক টেবিল -->
     <div class="card">
       ${ch("📋","মাসওয়ারি চাঁদার টেবিল",`${selYear} — ${filtMonths.length} মাস · ${members.length} জন সদস্য`)}
-      <div style="padding:12px 16px 0"><input type="text" placeholder="🔎 সদস্য খুঁজুন..." oninput="filterTableRows(this.value,'dues-tbody')" style="width:100%;padding:9px 13px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;outline:none"></div>
+      <div style="padding:12px 16px 0"><input type="text" placeholder="🔎 সদস্য খুঁজুন..." oninput="filterTableRowsLive(this.value,'dues-tbody')" style="width:100%;padding:9px 13px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;outline:none"></div>
       <div style="overflow-x:auto;padding:0">
         <table class="tbl" style="min-width:${85*filtMonths.length+420}px">
           <thead>${tableHeader}</thead>
@@ -5489,9 +5565,12 @@ function pgReport(){
 // ══════════════════════════════════════════
 // কার্যক্রম ইতিহাস (Activity / Audit Log Page)
 // ══════════════════════════════════════════
+const HISTORY_PAGE_SIZE=50;
 function renderHistRows(filtered){
   const typeMeta=window._histTypeMeta||{};
-  return filtered.slice(0,300).map(l=>{
+  const pg=paginateArr(filtered,window._histPage||1,HISTORY_PAGE_SIZE);
+  window._histPage=pg.page;
+  const rowsHtml=pg.items.map(l=>{
     const meta = typeMeta[l.type]||{icon:"🕘",label:"অন্যান্য",color:"#64748b"};
     let dt="-";
     try{ const x=new Date(l.at); dt = `${x.getDate()} ${BNM[x.getMonth()]} ${x.getFullYear()}, ${String(x.getHours()).padStart(2,"0")}:${String(x.getMinutes()).padStart(2,"0")}`; }catch(e){}
@@ -5503,17 +5582,33 @@ function renderHistRows(filtered){
       </div>
     </div>`;
   }).join("") || `<div style="padding:40px;text-align:center;color:#94a3b8">🕘 কোনো কার্যক্রমের তথ্য নেই</div>`;
+  const pagerHtml=renderPager(pg.page,pg.totalPages,"gotoHistoryPage");
+  return rowsHtml+`<div style="padding:10px 16px">${pagerHtml}</div>`;
 }
-function filterHistoryLive(q){
-  window._histSearch=q;
+function getFilteredHistory(){
   const log=window._histLogAll||[];
   let filtered = window._histFilter ? log.filter(l=>l.type===window._histFilter) : log;
-  const qq=(q||"").trim().toLowerCase();
+  const qq=(window._histSearch||"").trim().toLowerCase();
   if(qq) filtered = filtered.filter(l=>(l.text||"").toLowerCase().includes(qq)||(l.by||"").toLowerCase().includes(qq));
+  return filtered;
+}
+function refreshHistoryView(){
+  const filtered=getFilteredHistory();
   const rowsEl=document.getElementById("hist-rows");
   const subEl=document.getElementById("hist-count-sub");
   if(rowsEl) rowsEl.innerHTML=renderHistRows(filtered);
-  if(subEl) subEl.textContent=`সকল হিসাব-নিকাশ, সদস্য যোগ-বাদ ও কার্যক্রমের সম্পূর্ণ লগ — ${filtered.length}টি (সর্বোচ্চ ৩০০টি দেখানো হচ্ছে)`;
+  if(subEl) subEl.textContent=`সকল হিসাব-নিকাশ, সদস্য যোগ-বাদ ও কার্যক্রমের সম্পূর্ণ লগ — ${filtered.length}টি`;
+}
+const filterHistoryLive=debounce(function(q){
+  window._histSearch=q;
+  window._histPage=1;
+  refreshHistoryView();
+},250);
+function gotoHistoryPage(p){
+  window._histPage=p;
+  refreshHistoryView();
+  const rowsEl=document.getElementById("hist-rows");
+  if(rowsEl) rowsEl.scrollIntoView({behavior:"smooth",block:"start"});
 }
 function pgHistory(){
   const log=(D.activityLog||[]).slice().sort((a,b)=>(b.at||"").localeCompare(a.at||""));
@@ -5540,15 +5635,14 @@ function pgHistory(){
   };
   window._histTypeMeta=typeMeta;
   window._histLogAll=log;
+  if(!window._histPage) window._histPage=1;
   const types=Object.keys(typeMeta);
   const filterChips=`<div class="chips" style="margin-bottom:12px">
-    <button class="chip${!window._histFilter?" on":""}" onclick="window._histFilter='';goTab('history')">সব</button>
-    ${types.map(t=>`<button class="chip${window._histFilter===t?" on":""}" onclick="window._histFilter='${t}';goTab('history')">${typeMeta[t].icon} ${typeMeta[t].label}</button>`).join("")}
+    <button class="chip${!window._histFilter?" on":""}" onclick="window._histFilter='';window._histPage=1;goTab('history')">সব</button>
+    ${types.map(t=>`<button class="chip${window._histFilter===t?" on":""}" onclick="window._histFilter='${t}';window._histPage=1;goTab('history')">${typeMeta[t].icon} ${typeMeta[t].label}</button>`).join("")}
   </div>`;
 
-  let filtered = window._histFilter ? log.filter(l=>l.type===window._histFilter) : log;
-  const q=(window._histSearch||"").trim().toLowerCase();
-  if(q) filtered = filtered.filter(l=>(l.text||"").toLowerCase().includes(q)||(l.by||"").toLowerCase().includes(q));
+  const filtered = getFilteredHistory();
 
   const searchBox=`<div style="margin-bottom:10px">
     <input type="text" id="hist-search-input" placeholder="🔍 লগে খুঁজুন (নাম, বিবরণ...)" value="${(window._histSearch||"").replace(/"/g,"&quot;")}" oninput="filterHistoryLive(this.value)" style="width:100%;padding:10px 12px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;background:var(--white);color:var(--ink)">
@@ -5559,7 +5653,7 @@ function pgHistory(){
   return `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div><div class="section-title">🕘 কার্যক্রম ইতিহাস</div>
-      <div class="section-sub" id="hist-count-sub">সকল হিসাব-নিকাশ, সদস্য যোগ-বাদ ও কার্যক্রমের সম্পূর্ণ লগ — ${filtered.length}টি (সর্বোচ্চ ৩০০টি দেখানো হচ্ছে)</div></div>
+      <div class="section-sub" id="hist-count-sub">সকল হিসাব-নিকাশ, সদস্য যোগ-বাদ ও কার্যক্রমের সম্পূর্ণ লগ — ${filtered.length}টি</div></div>
       ${isA()?`<button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="clearHistory()">🗑 ইতিহাস মুছুন</button>`:""}
     </div>
     ${searchBox}
@@ -5816,6 +5910,8 @@ function runGSearch(q){
   let flat=[];Object.values(groups).forEach(arr=>arr.slice(0,8).forEach(r=>flat.push(r)));
   document.querySelectorAll(".gsearch-item").forEach((el,i)=>{if(flat[i])el.onclick=flat[i].action;});
 }
+// প্রতিটি কি-স্ট্রোকে সম্পূর্ণ ডেটাসেট স্ক্যান না করে, টাইপিং থামলে একবার সার্চ চালায় (performance optimization)
+const runGSearchLive=debounce(runGSearch,220);
 
 // ══════════════════════════════════════════
 // AI REPORT MODAL
