@@ -6506,13 +6506,15 @@ function installApp(){
   alert(msg);
 }
 
-// ব্রাউজার/ডিভাইস অনুযায়ী পেজ লোডের সময় বাটন দেখানো (iOS-এ beforeinstallprompt আসে না, তাই সবসময় বাটন দেখানো হয়)
+// বাটন সবসময় দেখানো হয় (যদি অ্যাপ আগে থেকে ইনস্টল করা না থাকে) —
+// কারণ beforeinstallprompt ইভেন্ট Chrome-এর নিজস্ব শর্তে (engagement/session) নির্ভর করে,
+// সবসময় ফায়ার নাও হতে পারে। বাটনে চাপলে installApp() নিজেই ঠিক পথ বেছে নেবে
+// (হয় নেটিভ প্রম্পট, নাহলে ম্যানুয়াল নির্দেশনা)।
 window.addEventListener("DOMContentLoaded",function(){
   if(isStandaloneMode()) return;
   const btn=document.getElementById("sb-install-btn");
   if(!btn) return;
-  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
-  if(isIOS) btn.style.display="block";
+  btn.style.display="block";
 });
 </script>
 
