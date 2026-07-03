@@ -261,8 +261,14 @@ const firebaseConfig = {
       <div style="font-weight:800;font-size:16px">🕘 স্বয়ংক্রিয় ব্যাকআপ ইতিহাস</div>
       <button onclick="closeBackupHistory()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">প্রতি ২৪ ঘন্টায় একবার স্বয়ংক্রিয়ভাবে ব্যাকআপ নেওয়া হয় এবং সর্বশেষ ৫টি রাখা হয়</div>
+    <button onclick="manualBackupNow()" style="width:100%;background:#16a34a;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:12px">⚡ এখনই ব্যাকআপ নিন (ক্লাউড + ফোন)</button>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">প্রতি ২৪ ঘন্টায় একবার স্বয়ংক্রিয়ভাবে ব্যাকআপ নেওয়া হয় এবং সর্বশেষ ৫টি রাখা হয় (এই ডিভাইসে)</div>
     <div id="backup-history-list" style="font-size:13px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 6px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-weight:800;font-size:16px">☁️ ক্লাউড ব্যাকআপ ইতিহাস</div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">প্রতিদিন একটা কপি Firebase-এ জমা থাকে, কখনো মোছা হয় না — ব্রাউজার ক্যাশ মুছলেও এগুলো নিরাপদ থাকে</div>
+    <div id="cloud-backup-history-list" style="font-size:13px"></div>
   </div>
 </div>
 <div class="overlay" id="ov" onclick="closeSB()"></div>
@@ -1050,8 +1056,63 @@ function maybeAutoBackup(){
     const lastAt = last ? new Date(last.at).getTime() : 0;
     if(Date.now()-lastAt > AUTO_BACKUP_INTERVAL_MS){
       saveAutoBackup(D,"দৈনিক স্বয়ংক্রিয় ব্যাকআপ");
+      cloudAutoBackup();       // ক্লাউডে (Firebase) স্থায়ী দৈনিক ব্যাকআপ — কখনো মুছে ফেলা হয় না
+      autoDownloadBackup();    // ফোনে দিনে একবার স্বয়ংক্রিয় JSON ফাইল ডাউনলোড
     }
   }catch(e){}
+}
+
+// ══════════════════════════════════════════
+// ক্লাউড স্বয়ংক্রিয় ব্যাকআপ (Firebase-এ, কখনো ট্রিম/মুছে ফেলা হয় না)
+// প্রতিদিন একটা করে স্ন্যাপশট 'sg_backups/{YYYY-MM-DD}' নোডে জমা থাকে
+// ব্রাউজার ক্যাশ/localStorage মুছে গেলেও এই ব্যাকআপ অক্ষত থাকবে
+// ══════════════════════════════════════════
+function cloudAutoBackup(){
+  try{
+    if(typeof firebase==="undefined"||!firebase.apps||!firebase.apps.length||!firebase.database) return;
+    const dateKey=new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    firebase.database().ref('sg_backups/'+dateKey).set({
+      data:JSON.stringify(D),
+      at:new Date().toISOString(),
+      memberCount:(D.members||[]).length
+    }).catch(function(e){ console.error("cloud auto backup failed",e); });
+  }catch(e){}
+}
+
+// ══════════════════════════════════════════
+// ফোনে দিনে একবার স্বয়ংক্রিয় JSON ফাইল ডাউনলোড
+// ব্রাউজার ছাড়াও Downloads ফোল্ডারে একটা কপি থেকে যায়
+// ══════════════════════════════════════════
+function autoDownloadBackup(){
+  try{
+    const today=new Date().toISOString().split("T")[0];
+    const lastDL=localStorage.getItem("sg_last_auto_dl");
+    if(lastDL===today) return; // আজকেরটা ইতিমধ্যে ডাউনলোড হয়ে গেছে
+    backupData();
+    localStorage.setItem("sg_last_auto_dl",today);
+  }catch(e){}
+}
+
+// নির্দিষ্ট তারিখের ক্লাউড ব্যাকআপ থেকে রিস্টোর করা
+function restoreCloudBackup(dateKey){
+  if(!confirm("সতর্কতা! "+dateKey+" তারিখের ক্লাউড ব্যাকআপ থেকে রিস্টোর করলে বর্তমান ডেটা প্রতিস্থাপিত হবে। নিশ্চিত?"))return;
+  try{
+    firebase.database().ref('sg_backups/'+dateKey).once('value').then(function(snap){
+      if(!snap.exists()){ toast("❌ এই ব্যাকআপ পাওয়া যায়নি","#dc2626"); return; }
+      const rec=snap.val();
+      const data=JSON.parse(rec.data);
+      if(!data||!data.members){ toast("❌ ব্যাকআপ পড়া যায়নি","#dc2626"); return; }
+      saveAutoBackup(D,"cloud-restore-এর আগে");
+      D=data;
+      if(!D.rateHistory) D.rateHistory=[]; if(!D.liabilities) D.liabilities=[];
+      if(!D.activityLog) D.activityLog=[]; if(!D.paymentInfo) D.paymentInfo={bank:[],mobile:[]};
+      if(!D.formerMembers) D.formerMembers=[]; if(!D.trash) D.trash=[];
+      sv();
+      toast("✅ ক্লাউড ব্যাকআপ থেকে রিস্টোর হয়েছে");
+      closeBackupHistory();
+      goTab("home");
+    }).catch(function(e){ toast("❌ ক্লাউড থেকে আনতে ব্যর্থ","#dc2626"); });
+  }catch(e){ toast("❌ রিস্টোর ব্যর্থ","#dc2626"); }
 }
 function listAutoBackups(){
   const meta = LS.get(AUTO_BACKUP_KEY) || {list:[]};
@@ -1082,10 +1143,47 @@ function deleteAutoBackup(key){
   toast("🗑 মুছে ফেলা হয়েছে","#dc2626");
   renderBackupHistory();
 }
+// ম্যানুয়ালি এখনই ব্যাকআপ নেওয়া (২৪ ঘন্টা অপেক্ষা না করেই টেস্ট/ব্যবহার করা যায়)
+function manualBackupNow(){
+  try{
+    saveAutoBackup(D,"ম্যানুয়াল ব্যাকআপ");
+    cloudAutoBackup();
+    backupData();
+    const today=new Date().toISOString().split("T")[0];
+    localStorage.setItem("sg_last_auto_dl",today);
+    toast("✅ ব্যাকআপ নেওয়া হয়েছে (ক্লাউড + ফোন)");
+    setTimeout(function(){ renderBackupHistory(); renderCloudBackupHistory(); },800);
+  }catch(e){ toast("❌ ব্যাকআপ ব্যর্থ","#dc2626"); }
+}
+
 function openBackupHistory(){
   renderBackupHistory();
+  renderCloudBackupHistory();
   const m=document.getElementById("backup-history-modal");
   if(m) m.style.display="flex";
+}
+// ক্লাউডে জমে থাকা প্রতিদিনের ব্যাকআপগুলোর তালিকা (কখনো মোছা হয় না)
+function renderCloudBackupHistory(){
+  const el=document.getElementById("cloud-backup-history-list");
+  if(!el) return;
+  el.innerHTML=`<div style="text-align:center;color:#94a3b8;padding:10px">লোড হচ্ছে...</div>`;
+  try{
+    if(typeof firebase==="undefined"||!firebase.apps||!firebase.apps.length||!firebase.database){
+      el.innerHTML=`<div style="text-align:center;color:#94a3b8;padding:10px">ক্লাউড সংযোগ নেই</div>`; return;
+    }
+    firebase.database().ref('sg_backups').once('value').then(function(snap){
+      if(!snap.exists()){ el.innerHTML=`<div style="text-align:center;color:#94a3b8;padding:10px">এখনো কোনো ক্লাউড ব্যাকআপ তৈরি হয়নি — অ্যাপ ব্যবহার করলে প্রতিদিন একটি তৈরি হবে।</div>`; return; }
+      const val=snap.val();
+      const dates=Object.keys(val).sort().reverse();
+      el.innerHTML=dates.map(function(dateKey){
+        const rec=val[dateKey];
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:8px">
+          <div><div style="font-weight:600">☁️ ${dateKey}</div><div style="font-size:11px;color:#94a3b8">সদস্য: ${rec.memberCount||0} জন</div></div>
+          <button onclick="restoreCloudBackup('${dateKey}')" style="background:#dcfce7;color:#16a34a;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">↩️ রিস্টোর</button>
+        </div>`;
+      }).join("");
+    }).catch(function(){ el.innerHTML=`<div style="text-align:center;color:#dc2626;padding:10px">ক্লাউড ব্যাকআপ লোড করতে ব্যর্থ</div>`; });
+  }catch(e){ el.innerHTML=`<div style="text-align:center;color:#dc2626;padding:10px">ত্রুটি হয়েছে</div>`; }
 }
 function closeBackupHistory(){
   const m=document.getElementById("backup-history-modal");
