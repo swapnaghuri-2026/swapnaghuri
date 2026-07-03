@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="স্বপ্নঘুড়ি">
 <title>🪁 স্বপ্নঘুড়ি</title>
 <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{--g1:#006400;--g2:#1a8a00;--g3:#86efac;--gl:#f0fdf4;--rd:#dc2626;--rl:#fff1f2;--gd:#d97706;--yl:#fffbeb;--bl:#1a8a00;--ink:#071a07;--muted:#64748b;--bg:#f1f5f9;--white:#fff;--border:#e2e8f0}
@@ -323,6 +324,7 @@ const firebaseConfig = {
         </label>
       </div>
       <button id="sb-backup-history-btn" onclick="openBackupHistory()" style="display:none;width:100%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 4px;cursor:pointer;font-family:inherit;font-size:11px;color:#fff;font-weight:600;margin-bottom:8px">🕘 ব্যাকআপ ইতিহাস</button>
+      <button onclick="showAppQR()" style="width:100%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 4px;cursor:pointer;font-family:inherit;font-size:11px;color:#fff;font-weight:600;margin-bottom:8px">📱 অ্যাপ শেয়ার করুন (QR)</button>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px">
         <button onclick="setTheme('light')" id="th-light" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 2px;cursor:pointer;font-family:inherit;font-size:10px;color:#fff">☀️ লাইট</button>
         <button onclick="setTheme('dark')" id="th-dark" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 2px;cursor:pointer;font-family:inherit;font-size:10px;color:#fff">🌙 ডার্ক</button>
@@ -2988,6 +2990,7 @@ function openMemberProfile(mid){
     <div style="background:linear-gradient(135deg,#006400,#1a8a00);padding:20px;position:relative">
       <button onclick="closeMemberProfile()" style="position:absolute;top:12px;right:12px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:16px">✕</button>
       <button onclick="memberProfilePDF(${mid})" style="position:absolute;top:12px;right:54px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:12px;font-weight:600">📄 PDF</button>
+      <button onclick="showMemberQR(${mid})" style="position:absolute;top:12px;right:98px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:12px;font-weight:600">📱 QR</button>
       <div style="display:flex;align-items:center;gap:14px">
         ${m.photo?`<img src="${m.photo}" loading="lazy" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff;border:3px solid rgba(255,255,255,.3)">${m.name?m.name[0]:""}</div>`}
         <div>
@@ -3163,6 +3166,66 @@ function switchProfileTab(id){
 function closeMemberProfile(){
   const modal=document.getElementById("member-profile-modal");
   if(modal) modal.remove();
+}
+
+// ══════════════════════════════════════════
+// QR কোড — যেকোনো টেক্সট/তথ্যকে QR কোডে দেখানো
+// ══════════════════════════════════════════
+function showQRCode(text,title,subtitle){
+  closeQRCode();
+  const html=`<div id="qr-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeQRCode()">
+    <div style="background:var(--white);border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-weight:800;font-size:16px;color:var(--ink)">📱 ${title||"QR কোড"}</div>
+        <button onclick="closeQRCode()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
+      </div>
+      ${subtitle?`<div style="font-size:12px;color:var(--muted);margin-bottom:14px">${subtitle}</div>`:""}
+      <div id="qr-canvas-holder" style="display:flex;justify-content:center;padding:12px;background:#fff;border-radius:12px;margin-bottom:14px"></div>
+      <button onclick="downloadQRCode('${(title||"qrcode").replace(/[^a-zA-Z0-9_\u0980-\u09FF]/g,"_")}')" style="width:100%;background:#16a34a;color:#fff;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">⬇️ QR ছবি ডাউনলোড করুন</button>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML("beforeend",html);
+  try{
+    new QRCode(document.getElementById("qr-canvas-holder"),{
+      text:text, width:220, height:220,
+      colorDark:"#071a07", colorLight:"#ffffff",
+      correctLevel:QRCode.CorrectLevel.M
+    });
+  }catch(e){
+    document.getElementById("qr-canvas-holder").innerHTML=`<div style="color:#dc2626;font-size:12px;padding:20px">QR কোড তৈরি করা যায়নি। ইন্টারনেট সংযোগ চেক করুন (QR লাইব্রেরি লোড হতে ইন্টারনেট প্রয়োজন)।</div>`;
+  }
+}
+function closeQRCode(){
+  const m=document.getElementById("qr-modal");
+  if(m) m.remove();
+}
+function downloadQRCode(filename){
+  try{
+    const holder=document.getElementById("qr-canvas-holder");
+    const canvas=holder&&holder.querySelector("canvas");
+    if(!canvas){ toast("❌ QR কোড পাওয়া যায়নি","#dc2626"); return; }
+    const a=document.createElement("a");
+    a.download=(filename||"qrcode")+".png";
+    a.href=canvas.toDataURL("image/png");
+    a.click();
+  }catch(e){ toast("❌ ডাউনলোড ব্যর্থ","#dc2626"); }
+}
+// সদস্যের তথ্য (vCard ফরম্যাট) QR কোডে দেখানো — স্ক্যান করলে সরাসরি ফোনের কন্টাক্টে সেভ করা যাবে
+function showMemberQR(mid){
+  const m=(D.members||[]).find(x=>x.id==mid);
+  if(!m) return;
+  const vcard=`BEGIN:VCARD
+VERSION:3.0
+FN:${m.name||""}
+TEL:${m.phone||""}
+NOTE:স্বপ্নঘুড়ি সদস্য আইডি #${String(mid).slice(-4)}
+END:VCARD`;
+  showQRCode(vcard,m.name||"সদস্য",`সদস্য আইডি: #${String(mid).slice(-4)} — স্ক্যান করে কন্টাক্টে সেভ করুন`);
+}
+// অ্যাপের লিংক শেয়ার করার জন্য QR কোড
+function showAppQR(){
+  const url=window.location.origin+window.location.pathname;
+  showQRCode(url,"স্বপ্নঘুড়ি অ্যাপ শেয়ার করুন","স্ক্যান করে সরাসরি অ্যাপে প্রবেশ করুন");
 }
 
 function saveMemberProfile(mid){
