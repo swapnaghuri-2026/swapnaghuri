@@ -2837,7 +2837,10 @@ function pgMembers(){
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div><div class="section-title">👥 সদস্যবৃন্দ</div>
       <div class="section-sub" id="members-count-sub">${members.length} জন সদস্য</div></div>
-      <button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="pdfDownload('members')">📄 সদস্য তালিকা PDF</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="pdfDownload('members')">📄 সদস্য তালিকা PDF</button>
+        ${isA()?`<button class="btn btn-sm" style="background:#7c3aed;color:#fff" onclick="allMembersIDCardPDF()">🪪 সবার আইডি কার্ড</button>`:""}
+      </div>
     </div>
     ${form}
     <div class="field" style="margin-bottom:10px"><input type="text" placeholder="🔎 সদস্য খুঁজুন..." value="${(window._memSearch||"").replace(/"/g,"&quot;")}" oninput="searchMembersLive(this.value)"></div>
@@ -2922,6 +2925,7 @@ function buildMemberCard(m,payments,loans,duesListAll,allMeetings,totalFundAll,r
           <button onclick="memberStatPDF(${m.id})" style="font-size:11px;background:#fee2e2;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#dc2626">📄 স্টেটমেন্ট PDF</button>
           <button onclick="memberStatXL(${m.id})" style="font-size:11px;background:#dcfce7;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#16a34a">📊 Excel</button>
           <button onclick="goTab('memberstat');window._statMid=${m.id}" style="font-size:11px;background:#eff6ff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#2563eb">📋 লেনদেন</button>
+          <button onclick="memberIDCardPDF(${m.id})" style="font-size:11px;background:#f3e8ff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#7c3aed;font-weight:600">🪪 আইডি কার্ড</button>
         </div>
       </div>
     </div>`;
@@ -3000,6 +3004,7 @@ function openMemberProfile(mid){
       <button onclick="closeMemberProfile()" style="position:absolute;top:12px;right:12px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:16px">✕</button>
       <button onclick="memberProfilePDF(${mid})" style="position:absolute;top:12px;right:54px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:12px;font-weight:600">📄 PDF</button>
       <button onclick="showMemberQR(${mid})" style="position:absolute;top:12px;right:98px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:12px;font-weight:600">📱 QR</button>
+      <button onclick="memberIDCardPDF(${mid})" style="position:absolute;top:44px;right:12px;background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#fff;font-size:12px;font-weight:600">🪪 আইডি কার্ড</button>
       <div style="display:flex;align-items:center;gap:14px">
         ${m.photo?`<img src="${m.photo}" loading="lazy" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff;border:3px solid rgba(255,255,255,.3)">${m.name?m.name[0]:""}</div>`}
         <div>
@@ -3235,6 +3240,154 @@ END:VCARD`;
 function showAppQR(){
   const url=window.location.origin+window.location.pathname;
   showQRCode(url,"স্বপ্নঘুড়ি অ্যাপ শেয়ার করুন","স্ক্যান করে সরাসরি অ্যাপে প্রবেশ করুন");
+}
+
+// ══════════════════════════════════════════
+// সদস্য আইডি কার্ড (PDF) — প্রিন্ট-রেডি, সামনে + পেছনে, QR কোডসহ
+// ══════════════════════════════════════════
+// একটি সদস্যের vCard QR কোড ক্যানভাসে বানিয়ে dataURL হিসেবে ফেরত দেয় (কলব্যাক-ভিত্তিক, কারণ QR লাইব্রেরি async ভাবে ড্র করে)
+function buildIDCardQR(mid,cb){
+  const m=(D.members||[]).find(x=>x.id==mid);
+  if(!m){ cb(""); return; }
+  const vcard=`BEGIN:VCARD\nVERSION:3.0\nFN:${m.name||""}\nTEL:${m.phone||""}\nNOTE:স্বপ্নঘুড়ি সদস্য আইডি #${String(mid).slice(-4)}\nEND:VCARD`;
+  const holder=document.createElement("div");
+  holder.style.cssText="position:fixed;left:-9999px;top:-9999px;width:200px;height:200px";
+  document.body.appendChild(holder);
+  try{
+    new QRCode(holder,{text:vcard,width:200,height:200,colorDark:"#071a07",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});
+    setTimeout(()=>{
+      let dataUrl="";
+      try{
+        const canvas=holder.querySelector("canvas");
+        if(canvas) dataUrl=canvas.toDataURL("image/png");
+      }catch(e){}
+      if(holder.parentNode) document.body.removeChild(holder);
+      cb(dataUrl);
+    },100);
+  }catch(e){
+    if(holder.parentNode) document.body.removeChild(holder);
+    cb("");
+  }
+}
+// আইডি কার্ডের CSS (সামনে + পেছনে উভয় পাশের জন্য কমন, standard CR80 সাইজ 85.6mm x 54mm)
+const idCardStyle=`
+  @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700;800&display=swap');
+  *{font-family:'Hind Siliguri',Arial,sans-serif;box-sizing:border-box;margin:0;padding:0}
+  body{background:#e2e8f0;padding:28px;display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:center;gap:16px;min-height:100vh}
+  @media print{@page{margin:8mm}.no-print{display:none!important}body{background:#fff;padding:0;gap:10px}}
+  .idcard{width:85.6mm;height:54mm;border-radius:12px;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.22);padding:10px 12px}
+  @media print{.idcard{box-shadow:none;border:0.3px solid #cbd5e1}}
+  .idc-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;position:relative;z-index:1}
+  .idc-logo{font-size:22px}
+  .idc-orgname{font-weight:800;font-size:14px;color:#fff}
+  .idc-sub{font-size:8.5px;color:rgba(255,255,255,.85)}
+  .idc-body{display:flex;align-items:center;gap:10px;position:relative;z-index:1}
+  .idc-info{flex:1;min-width:0}
+  .idc-name{font-weight:800;font-size:13px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .idc-role{font-size:9.5px;background:rgba(255,255,255,.25);color:#fff;display:inline-block;padding:1px 7px;border-radius:6px;margin:3px 0}
+  .idc-id{font-size:10px;font-weight:700;color:#fff;margin-top:2px}
+  .idc-phone{font-size:9.5px;color:#fff;margin-top:2px}
+  .idc-qr{width:42px;height:42px;background:#fff;border-radius:4px;padding:2px;flex-shrink:0}
+  .idc-foot{position:absolute;bottom:8px;left:12px;right:12px;font-size:7.5px;color:rgba(255,255,255,.85);border-top:1px solid rgba(255,255,255,.3);padding-top:4px;z-index:1}
+  .idcard-back{background:#fff;border:1.5px solid #cbd5e1;color:#071a07;display:flex;flex-direction:column}
+  .idc-back-title{font-weight:800;font-size:11px;color:#006400;border-bottom:1px solid #bbf7d0;padding-bottom:4px;margin-bottom:6px}
+  .idc-tbl{width:100%;border-collapse:collapse;font-size:9px}
+  .idc-tbl td{padding:2.5px 0;border-bottom:1px dotted #e2e8f0;vertical-align:top}
+  .idc-tbl td:first-child{color:#64748b;width:30%;white-space:nowrap}
+  .idc-tbl td:last-child{font-weight:600;word-break:break-word}
+  .idc-sign-row{display:flex;justify-content:space-between;margin-top:6px}
+  .idc-sign{text-align:center;width:45%}
+  .idc-sign-line{border-top:1px solid #94a3b8;margin-bottom:3px}
+  .idc-sign-label{font-size:8px;color:#64748b}
+  .idc-note{font-size:7px;color:#dc2626;margin-top:auto;padding-top:6px;text-align:center;line-height:1.3}
+`;
+// একটি সদস্যের কার্ডের একপাশ (সামনে/পেছনে) HTML তৈরি করে
+function idCardFace(m,mid,qrDataUrl,isFront){
+  const idNum="SG-"+String(mid).padStart(4,"0");
+  if(isFront){
+    const photoHtml=m.photo
+      ?`<img src="${m.photo}" style="width:66px;height:66px;border-radius:10px;object-fit:cover;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.2);flex-shrink:0">`
+      :`<div style="width:66px;height:66px;border-radius:10px;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;border:2px solid #fff;flex-shrink:0">${m.name?m.name[0]:"?"}</div>`;
+    return `<div class="idcard" style="background:linear-gradient(135deg,#006400,#1a8a00)">
+      <div class="idc-head">
+        <div class="idc-logo">🪁</div>
+        <div>
+          <div class="idc-orgname">স্বপ্নঘুড়ি সমিতি</div>
+          <div class="idc-sub">সদস্য পরিচয়পত্র · Member ID Card</div>
+        </div>
+      </div>
+      <div class="idc-body">
+        ${photoHtml}
+        <div class="idc-info">
+          <div class="idc-name">${m.name||""}</div>
+          <div class="idc-role">${m.role||"সদস্য"}</div>
+          <div class="idc-id">ID: ${idNum}</div>
+          <div class="idc-phone">📞 ${m.phone||"—"}</div>
+        </div>
+        ${qrDataUrl?`<img src="${qrDataUrl}" class="idc-qr">`:""}
+      </div>
+      <div class="idc-foot">যোগদান: ${m.join||"—"} &nbsp;|&nbsp; সদস্যপদ চলাকালীন বৈধ</div>
+    </div>`;
+  }
+  return `<div class="idcard idcard-back">
+    <div class="idc-back-title">গুরুত্বপূর্ণ তথ্য</div>
+    <table class="idc-tbl">
+      <tr><td>রক্তের গ্রুপ</td><td>${m.blood||"—"}</td></tr>
+      <tr><td>NID নম্বর</td><td>${m.nid||"—"}</td></tr>
+      <tr><td>ঠিকানা</td><td>${m.address?m.address.slice(0,70):"—"}</td></tr>
+      <tr><td>জরুরি যোগাযোগ</td><td>${m.emname?m.emname+(m.emphone?" ("+m.emphone+")":""):"—"}</td></tr>
+      <tr><td>নমিনি</td><td>${m.nomname||"—"}</td></tr>
+    </table>
+    <div class="idc-sign-row">
+      <div class="idc-sign"><div class="idc-sign-line"></div><div class="idc-sign-label">সদস্যের স্বাক্ষর</div></div>
+      <div class="idc-sign"><div class="idc-sign-line"></div><div class="idc-sign-label">সভাপতি / সম্পাদক</div></div>
+    </div>
+    <div class="idc-note">⚠️ এই কার্ড স্বপ্নঘুড়ি সমিতির সম্পত্তি। হারিয়ে গেলে অবিলম্বে কমিটিকে জানান।</div>
+  </div>`;
+}
+// একজন সদস্যের আইডি কার্ড (সামনে+পেছনে) প্রিন্ট/PDF
+function memberIDCardPDF(mid){
+  const m=(D.members||[]).find(x=>x.id==mid);
+  if(!m){ toast("❌ সদস্য পাওয়া যায়নি","#dc2626"); return; }
+  toast("🪪 আইডি কার্ড তৈরি হচ্ছে...");
+  buildIDCardQR(mid,(qrDataUrl)=>{
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>আইডি কার্ড - ${m.name||""}</title>
+    <style>${idCardStyle}</style></head><body>
+    ${pdfBtn()}
+    ${idCardFace(m,mid,qrDataUrl,true)}
+    ${idCardFace(m,mid,qrDataUrl,false)}
+    </body></html>`;
+    const w=window.open("","_blank");
+    if(!w){ toast("❌ পপ-আপ ব্লক হয়েছে, ব্রাউজার সেটিংস চেক করুন","#dc2626"); return; }
+    w.document.write(html);w.document.close();setTimeout(()=>w.print(),700);
+    toast("📄 আইডি কার্ড প্রিন্ট ডায়ালগ খুলছে");
+  });
+}
+// সব সদস্যের আইডি কার্ড একসাথে প্রিন্ট (কাটার জন্য প্রস্তুত, শুধু অ্যাডমিন)
+function allMembersIDCardPDF(){
+  const members=D.members||[];
+  if(!members.length){ toast("❌ কোনো সদস্য নেই","#dc2626"); return; }
+  toast("🪪 সব সদস্যের আইডি কার্ড তৈরি হচ্ছে...");
+  const qrs={};
+  let done=0;
+  members.forEach(m=>{
+    buildIDCardQR(m.id,(dataUrl)=>{
+      qrs[m.id]=dataUrl;
+      done++;
+      if(done===members.length){
+        const cardsHtml=members.map(mm=>idCardFace(mm,mm.id,qrs[mm.id],true)+idCardFace(mm,mm.id,qrs[mm.id],false)).join("");
+        const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>সব সদস্যের আইডি কার্ড</title>
+        <style>${idCardStyle}</style></head><body>
+        ${pdfBtn()}
+        ${cardsHtml}
+        </body></html>`;
+        const w=window.open("","_blank");
+        if(!w){ toast("❌ পপ-আপ ব্লক হয়েছে, ব্রাউজার সেটিংস চেক করুন","#dc2626"); return; }
+        w.document.write(html);w.document.close();setTimeout(()=>w.print(),900);
+        toast("📄 সব আইডি কার্ড প্রিন্ট ডায়ালগ খুলছে");
+      }
+    });
+  });
 }
 
 function saveMemberProfile(mid){
