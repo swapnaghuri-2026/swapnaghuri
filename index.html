@@ -3693,55 +3693,257 @@ function renderNoticeBody(text) {
 // EXCEL ও PDF ডাউনলোড ফাংশন
 // ══════════════════════════════════════════
 
-// ── প্রকৃত Excel (.xls / SpreadsheetML) ফাইল তৈরির জেনেরিক হেল্পার ──
-// CDN বা কোনো বাইরের লাইব্রেরি ছাড়াই সরাসরি Excel-এর নিজস্ব XML ফরম্যাটে
-// ফাইল তৈরি করা হয় — Excel ও Google Sheets উভয়েই সরাসরি খোলে।
-function xlEscXML(v){
+// ══════════════════════════════════════════
+// প্রকৃত .xlsx (Open XML / ZIP ফরম্যাট) ফাইল তৈরির হেল্পার
+// কোনো বাইরের লাইব্রেরি ছাড়াই, একদম ভ্যানিলা JS দিয়ে
+// (মোবাইলের Google Sheets/WPS/Excel — সব জায়গায় খোলার জন্য
+//  আসল ZIP-ভিত্তিক .xlsx দরকার, XML-স্প্রেডশিট ট্রিক মোবাইলে কাজ করে না)
+// ══════════════════════════════════════════
+
+// ---- CRC32 ----
+const XLSX_CRC_TABLE = (function(){
+  const t = [];
+  for(let n=0;n<256;n++){
+    let c=n;
+    for(let k=0;k<8;k++){ c = (c&1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1); }
+    t[n]=c>>>0;
+  }
+  return t;
+})();
+function xlsxCrc32(bytes){
+  let c = 0xFFFFFFFF;
+  for(let i=0;i<bytes.length;i++){
+    c = XLSX_CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  }
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function xlsxUtf8Bytes(str){
+  if(typeof TextEncoder !== "undefined"){ return new TextEncoder().encode(str); }
+  // fallback (পুরনো ব্রাউজারের জন্য)
+  const utf8 = unescape(encodeURIComponent(str));
+  const arr = new Uint8Array(utf8.length);
+  for(let i=0;i<utf8.length;i++) arr[i]=utf8.charCodeAt(i);
+  return arr;
+}
+
+function xlsxDosDateTime(){
+  // সরল ফিক্সড তারিখ (২০২৪-০১-০১, ০০:০০) — ফাইলের বৈধতার জন্য যথেষ্ট
+  const dosDate = (2024-1980)<<9 | (1<<5) | 1;
+  const dosTime = 0;
+  return {date:dosDate, time:dosTime};
+}
+
+function xlsxWriteUint32LE(arr, offset, val){
+  arr[offset]=val&0xFF; arr[offset+1]=(val>>>8)&0xFF; arr[offset+2]=(val>>>16)&0xFF; arr[offset+3]=(val>>>24)&0xFF;
+}
+function xlsxWriteUint16LE(arr, offset, val){
+  arr[offset]=val&0xFF; arr[offset+1]=(val>>>8)&0xFF;
+}
+
+// ---- ন্যূনতম ZIP (STORED/আনকমপ্রেসড) রাইটার ----
+function xlsxBuildZip(files){
+  // files: [{name:"path/in/zip", data: Uint8Array}]
+  const {date:dosDate, time:dosTime} = xlsxDosDateTime();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  files.forEach(function(f){
+    const nameBytes = xlsxUtf8Bytes(f.name);
+    const data = f.data;
+    const crc = xlsxCrc32(data);
+    const size = data.length;
+
+    // Local file header (30 bytes + name)
+    const lfh = new Uint8Array(30 + nameBytes.length);
+    xlsxWriteUint32LE(lfh,0,0x04034b50);
+    xlsxWriteUint16LE(lfh,4,20);       // version needed
+    xlsxWriteUint16LE(lfh,6,0);        // flags
+    xlsxWriteUint16LE(lfh,8,0);        // compression = stored
+    xlsxWriteUint16LE(lfh,10,dosTime);
+    xlsxWriteUint16LE(lfh,12,dosDate);
+    xlsxWriteUint32LE(lfh,14,crc);
+    xlsxWriteUint32LE(lfh,18,size);    // compressed size
+    xlsxWriteUint32LE(lfh,22,size);    // uncompressed size
+    xlsxWriteUint16LE(lfh,26,nameBytes.length);
+    xlsxWriteUint16LE(lfh,28,0);       // extra length
+    lfh.set(nameBytes,30);
+
+    localParts.push(lfh, data);
+
+    // Central directory header (46 bytes + name)
+    const cdh = new Uint8Array(46 + nameBytes.length);
+    xlsxWriteUint32LE(cdh,0,0x02014b50);
+    xlsxWriteUint16LE(cdh,4,20);   // version made by
+    xlsxWriteUint16LE(cdh,6,20);   // version needed
+    xlsxWriteUint16LE(cdh,8,0);    // flags
+    xlsxWriteUint16LE(cdh,10,0);   // compression
+    xlsxWriteUint16LE(cdh,12,dosTime);
+    xlsxWriteUint16LE(cdh,14,dosDate);
+    xlsxWriteUint32LE(cdh,16,crc);
+    xlsxWriteUint32LE(cdh,20,size);
+    xlsxWriteUint32LE(cdh,24,size);
+    xlsxWriteUint16LE(cdh,28,nameBytes.length);
+    xlsxWriteUint16LE(cdh,30,0);   // extra length
+    xlsxWriteUint16LE(cdh,32,0);   // comment length
+    xlsxWriteUint16LE(cdh,34,0);   // disk number start
+    xlsxWriteUint16LE(cdh,36,0);   // internal attrs
+    xlsxWriteUint32LE(cdh,38,0);   // external attrs
+    xlsxWriteUint32LE(cdh,42,offset); // local header offset
+    cdh.set(nameBytes,46);
+
+    centralParts.push(cdh);
+
+    offset += lfh.length + data.length;
+  });
+
+  const centralStart = offset;
+  let centralSize = 0;
+  centralParts.forEach(p=>{ centralSize += p.length; });
+
+  const eocd = new Uint8Array(22);
+  xlsxWriteUint32LE(eocd,0,0x06054b50);
+  xlsxWriteUint16LE(eocd,4,0);  // disk number
+  xlsxWriteUint16LE(eocd,6,0);  // disk with central dir
+  xlsxWriteUint16LE(eocd,8,files.length);   // entries this disk
+  xlsxWriteUint16LE(eocd,10,files.length);  // total entries
+  xlsxWriteUint32LE(eocd,12,centralSize);
+  xlsxWriteUint32LE(eocd,16,centralStart);
+  xlsxWriteUint16LE(eocd,20,0); // comment length
+
+  return localParts.concat(centralParts).concat([eocd]);
+}
+
+// ---- OOXML হেল্পার ----
+function xlsxColLetter(n){
+  let s="";
+  n++;
+  while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); }
+  return s;
+}
+function xlsxEscXML(v){
   return String(v==null?"":v)
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
     .replace(/"/g,"&quot;").replace(/'/g,"&apos;");
 }
-function xlCellXML(val,isHeader,isBoldRow){
-  const styleId = isHeader ? "Header" : (isBoldRow ? "Bold" : (typeof val==="number" ? "Number" : ""));
-  const styleAttr = styleId ? ` ss:StyleID="${styleId}"` : "";
-  if(val===null||val===undefined||val==="") return `<Cell${styleAttr}></Cell>`;
-  if(typeof val==="number" && isFinite(val)){
-    return `<Cell${styleAttr}><Data ss:Type="Number">${val}</Data></Cell>`;
-  }
-  return `<Cell${styleAttr}><Data ss:Type="String">${xlEscXML(val)}</Data></Cell>`;
-}
-function xlBuildWorkbookXML(sheets){
-  let xml = '<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n';
-  xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ';
-  xml += 'xmlns:o="urn:schemas-microsoft-com:office:office" ';
-  xml += 'xmlns:x="urn:schemas-microsoft-com:office:excel" ';
-  xml += 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n';
-  xml += '<Styles>';
-  xml += '<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#006400" ss:Pattern="Solid"/></Style>';
-  xml += '<Style ss:ID="Bold"><Font ss:Bold="1"/></Style>';
-  xml += '<Style ss:ID="Number"><NumberFormat ss:Format="#,##0"/></Style>';
-  xml += '</Styles>\n';
-  sheets.forEach(function(sheet){
-    const safeName = xlEscXML((sheet.name||"Sheet").slice(0,31));
-    xml += `<Worksheet ss:Name="${safeName}"><Table>`;
-    (sheet.rows||[]).forEach(function(row,ri){
-      const isHeader = ri===0;
-      const isBoldRow = !!(row.length && typeof row[0]==="string" && (row[0].indexOf("মোট")===0 || row[0].indexOf("===")===0 || row[0].indexOf("---")===0 || row[0].indexOf("নিট")===0 || row[0].indexOf("সর্বমোট")===0));
-      xml += "<Row>";
-      row.forEach(function(cell){ xml += xlCellXML(cell,isHeader,isBoldRow); });
-      xml += "</Row>";
+
+// styleId: 0=সাধারণ, 1=হেডার(বোল্ড+সবুজ ব্যাকগ্রাউন্ড+সাদা লেখা), 2=বোল্ড(টোটাল/সেকশন)
+function xlsxBuildSheetXML(rows){
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  xml += '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
+  xml += '<sheetData>';
+  rows.forEach(function(row, ri){
+    const rNum = ri+1;
+    const isHeader = ri===0;
+    const isBoldRow = !!(row.length && typeof row[0]==="string" && (row[0].indexOf("মোট")===0 || row[0].indexOf("===")===0 || row[0].indexOf("---")===0 || row[0].indexOf("নিট")===0 || row[0].indexOf("সর্বমোট")===0));
+    const styleId = isHeader ? 1 : (isBoldRow ? 2 : 0);
+    xml += `<row r="${rNum}">`;
+    row.forEach(function(val, ci){
+      const ref = xlsxColLetter(ci)+rNum;
+      if(val===null||val===undefined||val===""){
+        xml += `<c r="${ref}" s="${styleId}"/>`;
+      } else if(typeof val==="number" && isFinite(val)){
+        xml += `<c r="${ref}" s="${styleId}"><v>${val}</v></c>`;
+      } else {
+        xml += `<c r="${ref}" t="inlineStr" s="${styleId}"><is><t xml:space="preserve">${xlsxEscXML(val)}</t></is></c>`;
+      }
     });
-    xml += "</Table></Worksheet>";
+    xml += `</row>`;
   });
-  xml += "</Workbook>";
+  xml += '</sheetData></worksheet>';
   return xml;
 }
-function xlDownloadWorkbook(sheets,filename){
-  const xml = xlBuildWorkbookXML(sheets);
-  const blob = new Blob([xml],{type:"application/vnd.ms-excel;charset=utf-8;"});
+
+function xlsxBuildStylesXML(){
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+  '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+  '<fonts count="3">'+
+    '<font><sz val="11"/><name val="Calibri"/></font>'+
+    '<font><sz val="11"/><b/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>'+
+    '<font><sz val="11"/><b/><name val="Calibri"/></font>'+
+  '</fonts>'+
+  '<fills count="3">'+
+    '<fill><patternFill patternType="none"/></fill>'+
+    '<fill><patternFill patternType="gray125"/></fill>'+
+    '<fill><patternFill patternType="solid"><fgColor rgb="FF006400"/><bgColor indexed="64"/></patternFill></fill>'+
+  '</fills>'+
+  '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'+
+  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+  '<cellXfs count="3">'+
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
+    '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'+
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'+
+  '</cellXfs>'+
+  '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'+
+  '</styleSheet>';
+}
+
+function xlsxBuildWorkbookXML(sheets){
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+  xml += '<sheets>';
+  sheets.forEach(function(s,i){
+    xml += `<sheet name="${xlsxEscXML((s.name||"Sheet"+(i+1)).slice(0,31))}" sheetId="${i+1}" r:id="rId${i+1}"/>`;
+  });
+  xml += '</sheets></workbook>';
+  return xml;
+}
+function xlsxBuildWorkbookRelsXML(sheets){
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+  sheets.forEach(function(s,i){
+    xml += `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`;
+  });
+  xml += `<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`;
+  xml += '</Relationships>';
+  return xml;
+}
+function xlsxBuildContentTypesXML(sheets){
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">';
+  xml += '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>';
+  xml += '<Default Extension="xml" ContentType="application/xml"/>';
+  xml += '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>';
+  xml += '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
+  sheets.forEach(function(s,i){
+    xml += `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  });
+  xml += '</Types>';
+  return xml;
+}
+function xlsxBuildRootRelsXML(){
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+  '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'+
+  '</Relationships>';
+}
+
+// sheets: [{name, rows:[[...],[...]]}]
+function xlsxBuildWorkbookBytes(sheets){
+  const files = [];
+  files.push({name:"[Content_Types].xml", data:xlsxUtf8Bytes(xlsxBuildContentTypesXML(sheets))});
+  files.push({name:"_rels/.rels", data:xlsxUtf8Bytes(xlsxBuildRootRelsXML())});
+  files.push({name:"xl/workbook.xml", data:xlsxUtf8Bytes(xlsxBuildWorkbookXML(sheets))});
+  files.push({name:"xl/_rels/workbook.xml.rels", data:xlsxUtf8Bytes(xlsxBuildWorkbookRelsXML(sheets))});
+  files.push({name:"xl/styles.xml", data:xlsxUtf8Bytes(xlsxBuildStylesXML())});
+  sheets.forEach(function(s,i){
+    files.push({name:"xl/worksheets/sheet"+(i+1)+".xml", data:xlsxUtf8Bytes(xlsxBuildSheetXML(s.rows||[]))});
+  });
+  const zipParts = xlsxBuildZip(files);
+  // সব Uint8Array যোগ করে একটাই বাফারে একত্র করা
+  let totalLen=0; zipParts.forEach(p=>totalLen+=p.length);
+  const out = new Uint8Array(totalLen);
+  let pos=0; zipParts.forEach(p=>{ out.set(p,pos); pos+=p.length; });
+  return out;
+}
+
+function xlDownloadWorkbook(sheets, filename){
+  const bytes = xlsxBuildWorkbookBytes(sheets);
+  const blob = new Blob([bytes], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href=url; a.download=filename+".xls"; a.click();
+  a.href=url; a.download=filename+".xlsx"; a.click();
   URL.revokeObjectURL(url);
   toast("✅ Excel ফাইল ডাউনলোড শুরু হয়েছে");
 }
