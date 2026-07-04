@@ -3692,52 +3692,108 @@ function renderNoticeBody(text) {
 // ══════════════════════════════════════════
 // EXCEL ও PDF ডাউনলোড ফাংশন
 // ══════════════════════════════════════════
+
+// ── প্রকৃত Excel (.xls / SpreadsheetML) ফাইল তৈরির জেনেরিক হেল্পার ──
+// CDN বা কোনো বাইরের লাইব্রেরি ছাড়াই সরাসরি Excel-এর নিজস্ব XML ফরম্যাটে
+// ফাইল তৈরি করা হয় — Excel ও Google Sheets উভয়েই সরাসরি খোলে।
+function xlEscXML(v){
+  return String(v==null?"":v)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&apos;");
+}
+function xlCellXML(val,isHeader,isBoldRow){
+  const styleId = isHeader ? "Header" : (isBoldRow ? "Bold" : (typeof val==="number" ? "Number" : ""));
+  const styleAttr = styleId ? ` ss:StyleID="${styleId}"` : "";
+  if(val===null||val===undefined||val==="") return `<Cell${styleAttr}></Cell>`;
+  if(typeof val==="number" && isFinite(val)){
+    return `<Cell${styleAttr}><Data ss:Type="Number">${val}</Data></Cell>`;
+  }
+  return `<Cell${styleAttr}><Data ss:Type="String">${xlEscXML(val)}</Data></Cell>`;
+}
+function xlBuildWorkbookXML(sheets){
+  let xml = '<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n';
+  xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ';
+  xml += 'xmlns:o="urn:schemas-microsoft-com:office:office" ';
+  xml += 'xmlns:x="urn:schemas-microsoft-com:office:excel" ';
+  xml += 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n';
+  xml += '<Styles>';
+  xml += '<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#006400" ss:Pattern="Solid"/></Style>';
+  xml += '<Style ss:ID="Bold"><Font ss:Bold="1"/></Style>';
+  xml += '<Style ss:ID="Number"><NumberFormat ss:Format="#,##0"/></Style>';
+  xml += '</Styles>\n';
+  sheets.forEach(function(sheet){
+    const safeName = xlEscXML((sheet.name||"Sheet").slice(0,31));
+    xml += `<Worksheet ss:Name="${safeName}"><Table>`;
+    (sheet.rows||[]).forEach(function(row,ri){
+      const isHeader = ri===0;
+      const isBoldRow = !!(row.length && typeof row[0]==="string" && (row[0].indexOf("মোট")===0 || row[0].indexOf("===")===0 || row[0].indexOf("---")===0 || row[0].indexOf("নিট")===0 || row[0].indexOf("সর্বমোট")===0));
+      xml += "<Row>";
+      row.forEach(function(cell){ xml += xlCellXML(cell,isHeader,isBoldRow); });
+      xml += "</Row>";
+    });
+    xml += "</Table></Worksheet>";
+  });
+  xml += "</Workbook>";
+  return xml;
+}
+function xlDownloadWorkbook(sheets,filename){
+  const xml = xlBuildWorkbookXML(sheets);
+  const blob = new Blob([xml],{type:"application/vnd.ms-excel;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href=url; a.download=filename+".xls"; a.click();
+  URL.revokeObjectURL(url);
+  toast("✅ Excel ফাইল ডাউনলোড শুরু হয়েছে");
+}
+
 function xlDownload(type){
-  const bom="\uFEFF";
-  let csv="", fn="";
   const members=D.members||[], payments=D.payments||[], loans=D.loans||[];
   const income=D.income||[], expenses=D.expenses||[], investments=D.investments||[], assets=D.assets||[];
+  let rows=[], fn="", sheetName="";
 
   if(type==="savings"){
-    fn="চাঁদা_রিপোর্ট";
-    csv="সদস্য,মাস,পরিমাণ,নোট\n";
-    payments.forEach(p=>{ csv+=`${(members.find(m=>m.id==p.mid)||{}).name||""},${p.month},${p.amount},"${p.note||""}"\n`; });
-    csv+=`\nমোট,,${payments.reduce((s,p)=>s+p.amount,0)},\n`;
+    fn="চাঁদা_রিপোর্ট"; sheetName="চাঁদা রিপোর্ট";
+    rows.push(["সদস্য","মাস","পরিমাণ","নোট"]);
+    payments.forEach(p=>{ rows.push([(members.find(m=>m.id==p.mid)||{}).name||"",p.month,p.amount,p.note||""]); });
+    rows.push(["মোট","",payments.reduce((s,p)=>s+p.amount,0),""]);
 
   } else if(type==="loans"){
-    fn="ঋণ_রিপোর্ট";
-    csv="সদস্য,তারিখ,মূল ঋণ,বকেয়া,পরিশোধিত,সুদের হার,মাসিক কিস্তি,উদ্দেশ্য,অবস্থা\n";
+    fn="ঋণ_রিপোর্ট"; sheetName="ঋণ রিপোর্ট";
+    rows.push(["সদস্য","তারিখ","মূল ঋণ","বকেয়া","পরিশোধিত","সুদের হার","মাসিক কিস্তি","উদ্দেশ্য","অবস্থা"]);
     loans.forEach(l=>{
       const name=(members.find(m=>m.id==l.mid)||{}).name||"";
       const status=l.remaining===0?"পরিশোধিত":l.remaining<l.principal?"আংশিক":"বাকি";
-      csv+=`${name},${l.date},${l.principal},${l.remaining},${l.principal-l.remaining},${l.rate}%,${l.installment||0},"${l.note||""}",${status}\n`;
+      rows.push([name,l.date,l.principal,l.remaining,l.principal-l.remaining,l.rate+"%",l.installment||0,l.note||"",status]);
     });
-    csv+=`\nমোট,,${loans.reduce((s,l)=>s+l.principal,0)},${loans.reduce((s,l)=>s+l.remaining,0)},${loans.reduce((s,l)=>s+(l.principal-l.remaining),0)},,,\n`;
+    rows.push(["মোট","",loans.reduce((s,l)=>s+l.principal,0),loans.reduce((s,l)=>s+l.remaining,0),loans.reduce((s,l)=>s+(l.principal-l.remaining),0),"","","",""]);
 
   } else if(type==="invest"){
-    fn="বিনিয়োগ_রিপোর্ট";
-    csv="বিনিয়োগ,ধরন,পরিমাণ,প্রত্যাশিত আয়,তারিখ,অবস্থা,বিবরণ\n";
-    investments.forEach(i=>{ csv+=`"${i.title}","${i.type}",${i.amount},${Math.round(i.amount*i.returnRate/100)},${i.date},"${i.status||"সক্রিয়"}","${i.note||""}"\n`; });
-    csv+=`\nমোট,,,${investments.reduce((s,i)=>s+i.amount,0)},,,\n`;
+    fn="বিনিয়োগ_রিপোর্ট"; sheetName="বিনিয়োগ রিপোর্ট";
+    rows.push(["বিনিয়োগ","ধরন","পরিমাণ","প্রত্যাশিত আয়","তারিখ","অবস্থা","বিবরণ"]);
+    investments.forEach(i=>{ rows.push([i.title,i.type,i.amount,Math.round(i.amount*i.returnRate/100),i.date,i.status||"সক্রিয়",i.note||""]); });
+    // ⚠️ নোট: আগের CSV ভার্সনে এই টোটাল ভুলবশত "প্রত্যাশিত আয়" কলামে বসতো, এখানে সঠিক "পরিমাণ" কলামে ঠিক করা হয়েছে
+    rows.push(["মোট","",investments.reduce((s,i)=>s+i.amount,0),"","","",""]);
 
   } else if(type==="assets"){
-    fn="সম্পদ_রিপোর্ট";
-    csv="সম্পদের নাম,ক্যাটাগরি,মূল্য,তারিখ,বিবরণ\n";
-    assets.forEach(a=>{ csv+=`"${a.name}","${a.category}",${a.value},${a.date},"${a.note||""}"\n`; });
-    csv+=`\nমোট,,${assets.reduce((s,a)=>s+a.value,0)},,\n`;
+    fn="সম্পদ_রিপোর্ট"; sheetName="সম্পদ রিপোর্ট";
+    rows.push(["সম্পদের নাম","ক্যাটাগরি","মূল্য","তারিখ","বিবরণ"]);
+    assets.forEach(a=>{ rows.push([a.name,a.category,a.value,a.date,a.note||""]); });
+    rows.push(["মোট","",assets.reduce((s,a)=>s+a.value,0),"",""]);
 
   } else if(type==="expenses"){
-    fn="আয়_ব্যয়_রিপোর্ট";
-    csv="তারিখ,বিবরণ,ক্যাটাগরি,আয়,ব্যয়\n";
-    [...income].forEach(i=>{ csv+=`${i.date},"${i.title}","${i.category||""}",${i.amount},\n`; });
-    payments.forEach(p=>{ csv+=`${p.month}-01,"${(members.find(m=>m.id==p.mid)||{}).name||""} — চাঁদা","সদস্য চাঁদা",${p.amount},\n`; });
-    expenses.forEach(e=>{ csv+=`${e.date},"${e.title}","${e.category||""}","",${e.amount}\n`; });
+    fn="আয়_ব্যয়_রিপোর্ট"; sheetName="আয় ব্যয় রিপোর্ট";
+    rows.push(["তারিখ","বিবরণ","ক্যাটাগরি","আয়","ব্যয়"]);
+    [...income].forEach(i=>{ rows.push([i.date,i.title,i.category||"",i.amount,""]); });
+    payments.forEach(p=>{ rows.push([p.month+"-01",((members.find(m=>m.id==p.mid)||{}).name||"")+" — চাঁদা","সদস্য চাঁদা",p.amount,""]); });
+    expenses.forEach(e=>{ rows.push([e.date,e.title,e.category||"","",e.amount]); });
     const totI=income.reduce((s,i)=>s+i.amount,0)+payments.reduce((s,p)=>s+p.amount,0);
     const totE=expenses.reduce((s,e)=>s+e.amount,0);
-    csv+=`\nমোট আয়,,,${totI},\nমোট ব্যয়,,,,${totE}\nনিট উদ্বৃত্ত,,,${totI-totE},\n`;
+    rows.push(["মোট আয়","","",totI,""]);
+    rows.push(["মোট ব্যয়","","","",totE]);
+    rows.push(["নিট উদ্বৃত্ত","","",totI-totE,""]);
 
   } else if(type==="balance"){
-    fn="ব্যালেন্স_শিট";
+    fn="ব্যালেন্স_শিট"; sheetName="ব্যালেন্স শিট";
     const cashBalance=calcFund();
     const totalLoanOut=loans.reduce((s,l)=>s+l.remaining,0);
     const totalInvest=investments.reduce((s,i)=>s+i.amount,0);
@@ -3754,48 +3810,37 @@ function xlDownload(type){
     const totalLiabilityX=totalManualLiabX+totalFormerDueX;
     const totalEquityX=totalAssetX-totalLiabilityX;
 
-    csv="বিবরণ,পরিমাণ\n";
-    csv+="=== সম্পদ (Assets) ===,\n";
-    csv+=`নগদ/ব্যাংক ব্যালেন্স (তহবিল),${Math.max(0,cashBalance)}\n`;
-    csv+=`আদায়যোগ্য ঋণ,${totalLoanOut}\n`;
-    csv+=`বিনিয়োগ,${totalInvest}\n`;
-    csv+=`বকেয়া চাঁদা (আদায়যোগ্য),${totalDueChadaX}\n`;
-    assets.forEach(a=>{ csv+=`"${a.name} (${a.category})",${a.value}\n`; });
-    csv+=`মোট সম্পদ,${totalAssetX}\n`;
-    csv+="\n=== দায় (Liabilities) ===,\n";
-    liabilitiesX.forEach(l=>{ csv+=`"${l.name} (${l.type||""})",${l.amount}\n`; });
-    if(totalFormerDueX>0) csv+=`পূর্ব সদস্যদের ফেরতযোগ্য পাওনা,${totalFormerDueX}\n`;
-    csv+=`মোট দায়,${totalLiabilityX}\n`;
-    csv+="\n=== মূলধন (Equity) ===,\n";
-    csv+=`মূলধন (সম্পদ - দায়),${totalEquityX}\n`;
-    csv+="\n=== যাচাই ===,\n";
-    csv+=`সম্পদ = দায় + মূলধন,${totalAssetX} = ${totalLiabilityX} + ${totalEquityX}\n`;
+    rows.push(["বিবরণ","পরিমাণ"]);
+    rows.push(["=== সম্পদ (Assets) ===",""]);
+    rows.push(["নগদ/ব্যাংক ব্যালেন্স (তহবিল)",Math.max(0,cashBalance)]);
+    rows.push(["আদায়যোগ্য ঋণ",totalLoanOut]);
+    rows.push(["বিনিয়োগ",totalInvest]);
+    rows.push(["বকেয়া চাঁদা (আদায়যোগ্য)",totalDueChadaX]);
+    assets.forEach(a=>{ rows.push([a.name+" ("+a.category+")",a.value]); });
+    rows.push(["মোট সম্পদ",totalAssetX]);
+    rows.push(["=== দায় (Liabilities) ===",""]);
+    liabilitiesX.forEach(l=>{ rows.push([l.name+" ("+(l.type||"")+")",l.amount]); });
+    if(totalFormerDueX>0) rows.push(["পূর্ব সদস্যদের ফেরতযোগ্য পাওনা",totalFormerDueX]);
+    rows.push(["মোট দায়",totalLiabilityX]);
+    rows.push(["=== মূলধন (Equity) ===",""]);
+    rows.push(["মূলধন (সম্পদ - দায়)",totalEquityX]);
+    rows.push(["=== যাচাই ===",""]);
+    rows.push(["সম্পদ = দায় + মূলধন",totalAssetX+" = "+totalLiabilityX+" + "+totalEquityX]);
   }
 
-  const blob=new Blob([bom+csv],{type:"text/csv;charset=utf-8;"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url; a.download=fn+".csv"; a.click();
-  URL.revokeObjectURL(url);
-  toast("✅ Excel/CSV ডাউনলোড শুরু হয়েছে");
+  xlDownloadWorkbook([{name:sheetName,rows:rows}],fn);
 }
 
 function fullExcelDownload(){
-  const bom="\uFEFF";
   const members=D.members||[], payments=D.payments||[], loans=D.loans||[];
   const income=D.income||[], expenses=D.expenses||[], investments=D.investments||[];
   const assets=D.assets||[], liabilities=D.liabilities||[], specialMonths=D.specialMonths||[];
   const duesList=getDuesList();
 
-  // ── সব শিট একটা CSV-এ বিভাগ দিয়ে ──
-  let csv="";
-
-  // ১. সারসংক্ষেপ
   const totChada=payments.reduce((s,p)=>s+p.amount,0);
   const totOtherInc=income.reduce((s,i)=>s+i.amount,0);
   const totInc=totChada+totOtherInc;
   const totExp=expenses.reduce((s,e)=>s+e.amount,0);
-  const fund=totInc-totExp;
   const cashFund=calcFund();
   const totInvest=investments.reduce((s,i)=>s+i.amount,0);
   const totAsset=assets.reduce((s,a)=>s+a.value,0);
@@ -3806,41 +3851,42 @@ function fullExcelDownload(){
   const totLiability=totManualLiability+totFormerMemberDue;
   const totNetAsset=totAsset+totInvest+totLoanOut+totDueChada+Math.max(0,cashFund);
 
-  csv+="স্বপ্নঘুড়ি — সম্পূর্ণ আর্থিক প্রতিবেদন\n";
-  csv+=`তারিখ:,${new Date().toLocaleDateString("bn-BD")}\n\n`;
+  const sheets=[];
 
-  csv+="=== ১. সারসংক্ষেপ ===\n";
-  csv+="বিবরণ,পরিমাণ\n";
-  csv+=`মোট সদস্য,${members.length}\n`;
-  csv+=`সদস্যদের মোট চাঁদা,${totChada}\n`;
-  csv+=`অন্যান্য আয়,${totOtherInc}\n`;
-  csv+=`সর্বমোট আয়,${totInc}\n`;
-  csv+=`সর্বমোট ব্যয়,${totExp}\n`;
-  csv+=`নিট তহবিল (ব্যাংক),${cashFund}\n`;
-  csv+=`মোট বিনিয়োগ,${totInvest}\n`;
-  csv+=`মোট স্থাবর/চলতি সম্পদ,${totAsset}\n`;
-  csv+=`বিতরণকৃত ঋণ (আদায়যোগ্য),${totLoanOut}\n`;
-  csv+=`বকেয়া চাঁদা (আদায়যোগ্য),${totDueChada}\n`;
-  csv+=`সর্বমোট সম্পদ,${totNetAsset}\n`;
-  csv+=`মোট বাহ্যিক দায়,${totLiability}\n`;
-  csv+=`নিট সম্পদ (সম্পদ − দায়),${totNetAsset-totLiability}\n\n`;
+  // ১. সারসংক্ষেপ
+  let r=[];
+  r.push(["স্বপ্নঘুড়ি — সম্পূর্ণ আর্থিক প্রতিবেদন",""]);
+  r.push(["তারিখ:",new Date().toLocaleDateString("bn-BD")]);
+  r.push(["বিবরণ","পরিমাণ"]);
+  r.push(["মোট সদস্য",members.length]);
+  r.push(["সদস্যদের মোট চাঁদা",totChada]);
+  r.push(["অন্যান্য আয়",totOtherInc]);
+  r.push(["সর্বমোট আয়",totInc]);
+  r.push(["সর্বমোট ব্যয়",totExp]);
+  r.push(["নিট তহবিল (ব্যাংক)",cashFund]);
+  r.push(["মোট বিনিয়োগ",totInvest]);
+  r.push(["মোট স্থাবর/চলতি সম্পদ",totAsset]);
+  r.push(["বিতরণকৃত ঋণ (আদায়যোগ্য)",totLoanOut]);
+  r.push(["বকেয়া চাঁদা (আদায়যোগ্য)",totDueChada]);
+  r.push(["সর্বমোট সম্পদ",totNetAsset]);
+  r.push(["মোট বাহ্যিক দায়",totLiability]);
+  r.push(["নিট সম্পদ (সম্পদ − দায়)",totNetAsset-totLiability]);
+  sheets.push({name:"সারসংক্ষেপ",rows:r});
 
   // ২. সদস্য তালিকা
-  csv+="=== ২. সদস্য তালিকা ===\n";
-  csv+="নাম,পদ,যোগদানের তারিখ,মোট চাঁদা,বকেয়া চাঁদা,মোট ঋণ,ঋণ বকেয়া\n";
+  r=[["নাম","পদ","যোগদানের তারিখ","মোট চাঁদা","বকেয়া চাঁদা","মোট ঋণ","ঋণ বকেয়া"]];
   members.forEach(m=>{
     const mPay=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
     const mDue=(duesList.find(d=>d.id==m.id)||{}).totalDue||0;
     const mLoans=loans.filter(l=>l.mid==m.id);
     const mLoan=mLoans.reduce((s,l)=>s+l.principal,0);
     const mLoanDue=mLoans.reduce((s,l)=>s+l.remaining,0);
-    csv+=`"${m.name}","${m.role||"সদস্য"}",${m.joinDate||""},${mPay},${mDue},${mLoan},${mLoanDue}\n`;
+    r.push([m.name,m.role||"সদস্য",m.joinDate||"",mPay,mDue,mLoan,mLoanDue]);
   });
-  csv+="\n";
+  sheets.push({name:"সদস্য তালিকা",rows:r});
 
   // ৩. চাঁদার ইতিহাস
-  csv+="=== ৩. চাঁদার ইতিহাস ===\n";
-  csv+="সদস্য,মাস,নিয়মিত চাঁদা,বিশেষ চাঁদা,মোট নির্ধারিত,পরিশোধ,বকেয়া,অবস্থা\n";
+  r=[["সদস্য","মাস","নিয়মিত চাঁদা","বিশেষ চাঁদা","মোট নির্ধারিত","পরিশোধ","বকেয়া","অবস্থা"]];
   const allMonths=[];
   let d=new Date(ORG_START);
   while(d<=new Date()){allMonths.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d=new Date(d.getFullYear(),d.getMonth()+1,1);}
@@ -3852,74 +3898,67 @@ function fullExcelDownload(){
       const paid=payments.filter(p=>p.mid==m.id&&p.month===mon).reduce((s,p)=>s+p.amount,0);
       const due=total-paid;
       const status=paid>=total?"পরিশোধিত":paid>0?"আংশিক":"বকেয়া";
-      csv+=`"${m.name}",${mon},${reg},${sp?sp.amount:0},${total},${paid},${due},${status}\n`;
+      r.push([m.name,mon,reg,sp?sp.amount:0,total,paid,due,status]);
     });
   });
-  csv+="\n";
+  sheets.push({name:"চাঁদার ইতিহাস",rows:r});
 
   // ৪. ঋণের ইতিহাস
-  csv+="=== ৪. ঋণের ইতিহাস ===\n";
-  csv+="সদস্য,তারিখ,মূল ঋণ,বকেয়া,পরিশোধিত,সুদের হার,মাসিক কিস্তি,উদ্দেশ্য,অবস্থা\n";
+  r=[["সদস্য","তারিখ","মূল ঋণ","বকেয়া","পরিশোধিত","সুদের হার","মাসিক কিস্তি","উদ্দেশ্য","অবস্থা"]];
   loans.forEach(l=>{
     const name=(members.find(m=>m.id==l.mid)||{}).name||"";
     const status=l.remaining===0?"পরিশোধিত":l.remaining<l.principal?"আংশিক":"বাকি";
-    csv+=`"${name}",${l.date},${l.principal},${l.remaining},${l.principal-l.remaining},${l.rate}%,${l.installment||0},"${l.note||""}",${status}\n`;
+    r.push([name,l.date,l.principal,l.remaining,l.principal-l.remaining,l.rate+"%",l.installment||0,l.note||"",status]);
   });
-  csv+=`\nমোট,,${loans.reduce((s,l)=>s+l.principal,0)},${loans.reduce((s,l)=>s+l.remaining,0)},${loans.reduce((s,l)=>s+(l.principal-l.remaining),0)},,,\n\n`;
+  r.push(["মোট","",loans.reduce((s,l)=>s+l.principal,0),loans.reduce((s,l)=>s+l.remaining,0),loans.reduce((s,l)=>s+(l.principal-l.remaining),0),"","","",""]);
+  sheets.push({name:"ঋণের ইতিহাস",rows:r});
 
   // ৫. বিনিয়োগ
-  csv+="=== ৫. বিনিয়োগ ===\n";
-  csv+="বিনিয়োগ,ধরন,পরিমাণ,প্রত্যাশিত আয়,তারিখ,অবস্থা,বিবরণ\n";
-  investments.forEach(i=>{ csv+=`"${i.title}","${i.type}",${i.amount},${Math.round(i.amount*(i.returnRate||0)/100)},${i.date},"${i.status||"সক্রিয়"}","${i.note||""}"\n`; });
-  csv+=`\nমোট,,${totInvest},,,,\n\n`;
+  r=[["বিনিয়োগ","ধরন","পরিমাণ","প্রত্যাশিত আয়","তারিখ","অবস্থা","বিবরণ"]];
+  investments.forEach(i=>{ r.push([i.title,i.type,i.amount,Math.round(i.amount*(i.returnRate||0)/100),i.date,i.status||"সক্রিয়",i.note||""]); });
+  r.push(["মোট","",totInvest,"","","",""]);
+  sheets.push({name:"বিনিয়োগ",rows:r});
 
   // ৬. সম্পদ
-  csv+="=== ৬. সম্পদ ===\n";
-  csv+="সম্পদের নাম,ক্যাটাগরি,মূল্য,তারিখ,বিবরণ\n";
-  assets.forEach(a=>{ csv+=`"${a.name}","${a.category}",${a.value},${a.date},"${a.note||""}"\n`; });
-  csv+=`\nমোট,,${totAsset},,\n\n`;
+  r=[["সম্পদের নাম","ক্যাটাগরি","মূল্য","তারিখ","বিবরণ"]];
+  assets.forEach(a=>{ r.push([a.name,a.category,a.value,a.date,a.note||""]); });
+  r.push(["মোট","",totAsset,"",""]);
+  sheets.push({name:"সম্পদ",rows:r});
 
   // ৭. আয়
-  csv+="=== ৭. অন্যান্য আয় ===\n";
-  csv+="তারিখ,বিবরণ,ক্যাটাগরি,পরিমাণ\n";
-  income.forEach(i=>{ csv+=`${i.date},"${i.title}","${i.category||""}",${i.amount}\n`; });
-  csv+=`\nমোট,,,${totOtherInc}\n\n`;
+  r=[["তারিখ","বিবরণ","ক্যাটাগরি","পরিমাণ"]];
+  income.forEach(i=>{ r.push([i.date,i.title,i.category||"",i.amount]); });
+  r.push(["মোট","","",totOtherInc]);
+  sheets.push({name:"অন্যান্য আয়",rows:r});
 
   // ৮. ব্যয়
-  csv+="=== ৮. ব্যয়ের ইতিহাস ===\n";
-  csv+="তারিখ,বিবরণ,ক্যাটাগরি,পরিমাণ\n";
-  expenses.forEach(e=>{ csv+=`${e.date},"${e.title}","${e.category||""}",${e.amount}\n`; });
-  csv+=`\nমোট,,,${totExp}\n\n`;
+  r=[["তারিখ","বিবরণ","ক্যাটাগরি","পরিমাণ"]];
+  expenses.forEach(e=>{ r.push([e.date,e.title,e.category||"",e.amount]); });
+  r.push(["মোট","","",totExp]);
+  sheets.push({name:"ব্যয়ের ইতিহাস",rows:r});
 
   // ৯. বাহ্যিক দায়
-  csv+="=== ৯. বাহ্যিক দায় ===\n";
-  csv+="পাওনাদার,ধরন,পরিমাণ,তারিখ,বিবরণ\n";
-  liabilities.forEach(l=>{ csv+=`"${l.name}","${l.type||""}",${l.amount},${l.date||""},"${l.note||""}"\n`; });
-  csv+=`\nমোট,,${totLiability},,\n\n`;
+  r=[["পাওনাদার","ধরন","পরিমাণ","তারিখ","বিবরণ"]];
+  liabilities.forEach(l=>{ r.push([l.name,l.type||"",l.amount,l.date||"",l.note||""]); });
+  r.push(["মোট","",totLiability,"",""]);
+  sheets.push({name:"বাহ্যিক দায়",rows:r});
 
   // ১০. ব্যালেন্স শিট
-  csv+="=== ১০. ব্যালেন্স শিট ===\n";
-  csv+="বিবরণ,পরিমাণ\n";
-  csv+="--- সম্পদ ---,\n";
-  assets.forEach(a=>{ csv+=`"${a.name} (${a.category})",${a.value}\n`; });
-  csv+=`বিতরণকৃত ঋণ,${totLoanOut}\n`;
-  csv+=`বকেয়া চাঁদা,${totDueChada}\n`;
-  investments.forEach(i=>{ csv+=`"${i.title} (বিনিয়োগ)",${i.amount}\n`; });
-  csv+=`নিট তহবিল,${Math.max(0,cashFund)}\n`;
-  csv+=`সর্বমোট সম্পদ,${totNetAsset}\n`;
-  csv+="--- বাহ্যিক দায় ---,\n";
-  liabilities.forEach(l=>{ csv+=`"${l.name}",${l.amount}\n`; });
-  csv+=`মোট দায়,${totLiability}\n`;
-  csv+=`নিট সম্পদ (সম্পদ − দায়),${totNetAsset-totLiability}\n`;
+  r=[["বিবরণ","পরিমাণ"]];
+  r.push(["--- সম্পদ ---",""]);
+  assets.forEach(a=>{ r.push([a.name+" ("+a.category+")",a.value]); });
+  r.push(["বিতরণকৃত ঋণ",totLoanOut]);
+  r.push(["বকেয়া চাঁদা",totDueChada]);
+  investments.forEach(i=>{ r.push([i.title+" (বিনিয়োগ)",i.amount]); });
+  r.push(["নিট তহবিল",Math.max(0,cashFund)]);
+  r.push(["সর্বমোট সম্পদ",totNetAsset]);
+  r.push(["--- বাহ্যিক দায় ---",""]);
+  liabilities.forEach(l=>{ r.push([l.name,l.amount]); });
+  r.push(["মোট দায়",totLiability]);
+  r.push(["নিট সম্পদ (সম্পদ − দায়)",totNetAsset-totLiability]);
+  sheets.push({name:"ব্যালেন্স শিট",rows:r});
 
-  const blob=new Blob([bom+csv],{type:"text/csv;charset=utf-8;"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;
-  a.download=`স্বপ্নঘুড়ি_সম্পূর্ণ_হিসাব_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  toast("✅ সম্পূর্ণ হিসাব ডাউনলোড শুরু হয়েছে");
+  xlDownloadWorkbook(sheets,`স্বপ্নঘুড়ি_সম্পূর্ণ_হিসাব_${new Date().toISOString().slice(0,10)}`);
 }
 
 function fullPDFDownload(){
