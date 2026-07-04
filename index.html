@@ -490,6 +490,7 @@ const SEED = {
   complaints:[],
   massMessages:[],
   lateFeeConfig:{enabled:false, graceDays:15, feeType:"fixed", feeAmount:50, maxCap:0},
+  emiLateFeeConfig:{enabled:false, checkDay:28, feePercent:5},
   lateFees:[],
   trash:[]
 };
@@ -1312,6 +1313,19 @@ function calcFund(){
   const totalInvest=(D.investments||[]).reduce((s,i)=>s+i.amount,0);
   return inc-exp-loanOutstanding-totalInvest;
 }
+// একটি নির্দিষ্ট তারিখের আগ পর্যন্ত (cutoffDateStr, exclusive) সংগঠনের আনুমানিক নগদ তহবিল — বার্ষিক প্রতিবেদনে ওপেনিং/ক্লোজিং ব্যালেন্সের জন্য ব্যবহৃত
+function calcFundAsOf(cutoffDateStr){
+  const cutoffMonth=cutoffDateStr.slice(0,7); // YYYY-MM, চাঁদা মাসভিত্তিক রেকর্ড হওয়ায়
+  const incOther=(D.income||[]).filter(i=>i.date<cutoffDateStr).reduce((s,i)=>s+i.amount,0);
+  const incDues=(D.payments||[]).filter(p=>p.month<cutoffMonth).reduce((s,p)=>s+p.amount,0);
+  const exp=(D.expenses||[]).filter(e=>e.date<cutoffDateStr).reduce((s,e)=>s+e.amount,0);
+  const loanOutstanding=(D.loans||[]).filter(l=>l.date<cutoffDateStr).reduce((s,l)=>{
+    const repaidBefore=(l.repayments||[]).filter(r=>r.date<cutoffDateStr).reduce((rs,r)=>rs+(r.principal||r.amount||0),0);
+    return s+Math.max(0,l.principal-repaidBefore);
+  },0);
+  const totalInvest=(D.investments||[]).filter(i=>i.date<cutoffDateStr).reduce((s,i)=>s+i.amount,0);
+  return incOther+incDues-exp-loanOutstanding-totalInvest;
+}
 // মোট হিসাবি তহবিল (পুরাতন সংজ্ঞা) — শুধু আয়-ব্যয় ভিত্তিক, রিপোর্টের জন্য রাখা হলো
 function calcGrossFund(){
   const inc=(D.income||[]).reduce((s,i)=>s+i.amount,0)+(D.payments||[]).reduce((s,p)=>s+p.amount,0);
@@ -1525,9 +1539,17 @@ function getNotifications(){
   duesList.filter(m=>m.totalDue>0).forEach(m=>{
     list.push({id:"due-"+m.id,icon:"⚠️",text:m.name+" — বকেয়া চাঁদা "+fmt(m.totalDue),date:"",type:"due"});
   });
-  // বকেয়া ঋণ
+  // বকেয়া ঋণ (কিস্তি বিলম্বিত হলে অতিরিক্ত তথ্যসহ)
   (D.loans||[]).filter(l=>l.remaining>0).forEach(l=>{
-    list.push({id:"loan-"+l.id,icon:"🤝",text:gn(l.mid)+" — বকেয়া ঋণ "+fmt(l.remaining),date:"",type:"loan"});
+    let extra="";
+    if(typeof loanNextDue==="function"){
+      const nxt=loanNextDue(l);
+      if(nxt&&nxt.status==="বিলম্বিত"){
+        const days=Math.max(0,Math.floor((new Date()-new Date(nxt.dueDate))/86400000));
+        extra=` · কিস্তি ${days} দিন বিলম্বিত`;
+      }
+    }
+    list.push({id:"loan-"+l.id,icon:"🤝",text:gn(l.mid)+" — বকেয়া ঋণ "+fmt(l.remaining)+extra,date:"",type:"loan"});
   });
   // বকেয়া জরিমানা (শুধু অ্যাডমিন)
   if(isA()){
@@ -1605,6 +1627,7 @@ document.addEventListener("click",function(e){
 // ══════════════════
 function pgHome(){
   try{ syncAutoLateFees(); }catch(e){ console.error("syncAutoLateFees error:",e); }
+  try{ syncAutoEmiLateFees(); }catch(e){ console.error("syncAutoEmiLateFees error:",e); }
   const loans=D.loans||[], members=D.members||[], payments=D.payments||[];
   const totalLoan=loans.reduce((s,l)=>s+l.principal,0);
   const totalDue=loans.reduce((s,l)=>s+l.remaining,0);
@@ -1866,8 +1889,66 @@ function delPay(id){
 }
 
 // ══════════════════
-// LOANS
+// LOANS — EMI নির্ধারিত তারিখ ও সময়সূচী
 // ══════════════════
+// দেওয়া তারিখে n মাস যোগ করে, মাসের দিন-সংখ্যার সীমার মধ্যে ক্ল্যাম্প করে (যেমন ৩১ জানুয়ারি + ১ মাস = ২৮/২৯ ফেব্রুয়ারি)
+function addMonthsClamp(dateStr,n){
+  const d=new Date(dateStr);
+  const day=d.getDate();
+  const target=new Date(d.getFullYear(),d.getMonth()+n,1);
+  const lastDay=new Date(target.getFullYear(),target.getMonth()+1,0).getDate();
+  target.setDate(Math.min(day,lastDay));
+  return target;
+}
+// একটি ঋণের সম্ভাব্য কিস্তির সময়সূচী — ইতিমধ্যে পরিশোধিত কিস্তি + ভবিষ্যতের প্রত্যাশিত কিস্তি
+function loanSchedule(l){
+  if(!l.installment||l.installment<=0) return [];
+  const reps=(l.repayments||[]).slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const futureCount=l.remaining>0?Math.ceil(l.remaining/l.installment):0;
+  const total=reps.length+futureCount;
+  const today=new Date().toISOString().slice(0,10);
+  const rows=[];
+  for(let i=1;i<=total;i++){
+    const dueDate=addMonthsClamp(l.date,i).toISOString().slice(0,10);
+    if(i<=reps.length){
+      const r=reps[i-1];
+      rows.push({no:i,dueDate,status:"পরিশোধিত",amount:r.amount,paidDate:r.date});
+    }else{
+      const isLate=dueDate<today;
+      rows.push({no:i,dueDate,status:isLate?"বিলম্বিত":"আসন্ন",amount:Math.min(l.installment,l.remaining),paidDate:null});
+    }
+  }
+  return rows;
+}
+// পরবর্তী (এখনো অপরিশোধিত) কিস্তির তথ্য — কার্ডে দেখানোর জন্য
+function loanNextDue(l){
+  const sch=loanSchedule(l);
+  return sch.find(r=>r.status!=="পরিশোধিত")||null;
+}
+function showLoanSchedule(id){
+  const l=(D.loans||[]).find(x=>x.id===id);if(!l)return;
+  const sch=loanSchedule(l);
+  const body=document.getElementById("loan-sch-body");
+  const title=document.getElementById("loan-sch-title");
+  if(title) title.textContent=`📅 ${gn(l.mid)} — কিস্তির সম্ভাব্য সময়সূচী`;
+  if(body){
+    body.innerHTML = sch.length? `<div style="font-size:10.5px;color:#94a3b8;margin-bottom:10px">* কিস্তির পরিমাণ পরিবর্তনশীল হওয়ায় এটি একটি সম্ভাব্য হিসাব, নিশ্চিত সময়সূচী নয়</div>` +
+      sch.map(r=>{
+        const sc=r.status==="পরিশোধিত"?"#1a8a00":r.status==="বিলম্বিত"?"#dc2626":"#d97706";
+        const bg=r.status==="পরিশোধিত"?"#f0fdf4":r.status==="বিলম্বিত"?"#fff1f2":"#fffbeb";
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:9px;background:${bg};margin-bottom:6px">
+          <div><div style="font-size:12.5px;font-weight:700;color:var(--ink)">কিস্তি #${r.no}</div>
+          <div style="font-size:10.5px;color:#94a3b8">${r.status==="পরিশোধিত"?"পরিশোধ হয়েছে: "+ds(r.paidDate):"নির্ধারিত তারিখ: "+ds(r.dueDate)}</div></div>
+          <div style="text-align:right"><div style="font-weight:700;font-size:13px;color:${sc}">${fmt(r.amount)}</div>${bdg(r.status,sc,sc+"18",10)}</div>
+        </div>`;
+      }).join("")
+      : `<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12.5px">মাসিক কিস্তি নির্ধারিত নেই বলে সময়সূচী তৈরি করা যাচ্ছে না</div>`;
+  }
+  document.getElementById("loan-schedule-modal").style.display="flex";
+}
+function closeLoanSchedule(){
+  document.getElementById("loan-schedule-modal").style.display="none";
+}
 function pgLoans(){
   const loans=D.loans||[], members=D.members||[];
   const total=loans.reduce((s,l)=>s+l.principal,0),rem=loans.reduce((s,l)=>s+l.remaining,0);
@@ -1898,6 +1979,13 @@ function pgLoans(){
     const repayCount=(l.repayments||[]).length;
     // মুনাফার হার থেকে স্বয়ংক্রিয় পরামর্শ (অ্যাডমিন পরিবর্তন করতে পারবেন)
     const suggestedMunaafa=l.rate>0?Math.round(l.remaining*(l.rate/100)/12):0;
+    // পরবর্তী কিস্তির তারিখ (মাসিক কিস্তি নির্ধারিত থাকলে)
+    const nextDue=l.remaining>0?loanNextDue(l):null;
+    const dueLine=nextDue?(
+      nextDue.status==="বিলম্বিত"
+        ?`<div style="font-size:11px;color:#dc2626;font-weight:700;margin-top:4px">⚠️ কিস্তি বিলম্বিত — নির্ধারিত তারিখ ছিল ${ds(nextDue.dueDate)}</div>`
+        :`<div style="font-size:11px;color:#1a8a00;font-weight:600;margin-top:4px">📅 পরবর্তী কিস্তি: ${ds(nextDue.dueDate)}</div>`
+    ):"";
     return `<div class="card"><div style="padding:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:11px">
         <div style="display:flex;align-items:center;gap:10px">${av(gn(l.mid),40,"linear-gradient(135deg,#006400,#1a8a00)",l.mid)}<div><div style="font-weight:700;font-size:15px">${gn(l.mid)}</div><div style="font-size:11px;color:#94a3b8">${l.date}${l.rate>0?` · মুনাফার হার ${l.rate}%`:" · মুনাফা নির্ধারিত নয়"}${l.note?" · "+l.note:""}</div></div></div>
@@ -1912,6 +2000,7 @@ function pgLoans(){
       ${pb(pct,pct===100?"#006400":pct>50?"#1a8a00":"#d97706",10)}
       <div style="font-size:10px;color:#94a3b8;text-align:right;margin-top:4px;margin-bottom:${isA()&&l.remaining>0?"11px":"0"}">${pct}% পরিশোধিত${repayCount>0?` · ${repayCount} কিস্তি`:""}
       </div>
+      ${dueLine}
       ${isA()?`<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center">
         ${l.remaining>0?`
           <input type="number" id="rp${l.id}" placeholder="মূলধন কিস্তি (৳)"
@@ -1923,6 +2012,7 @@ function pgLoans(){
           </div>
           <button class="btn btn-g btn-sm" onclick="repay(${l.id})">✓ পরিশোধ</button>
         `:""}
+        ${l.installment>0?`<button class="btn btn-sm" style="background:#f0fdf4;color:#1a8a00;border:none;padding:6px 12px" onclick="showLoanSchedule(${l.id})">📅 সময়সূচী</button>`:""}
         <button class="btn btn-sm" style="background:#eff6ff;color:#2563eb;border:none;padding:6px 12px" onclick="editLoan(${l.id})">✏️ সম্পাদনা</button>
         <button class="btn btn-sm" style="background:#fff1f2;color:#dc2626;border:none;padding:6px 12px" onclick="delLoan(${l.id})">🗑 মুছুন</button>
       </div>`:""}
@@ -1980,6 +2070,15 @@ function pgLoans(){
           <button class="btn btn-g" onclick="saveLoanEdit()" style="flex:1">✅ সেভ করুন</button>
           <button class="btn btn-outline" onclick="closeLoanEdit()">বাতিল</button>
         </div>
+      </div>
+    </div>
+
+    <!-- কিস্তির সময়সূচী Modal -->
+    <div id="loan-schedule-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center">
+      <div style="background:var(--white);border-radius:16px;padding:22px;width:92%;max-width:420px;box-shadow:0 10px 40px rgba(0,0,0,.2);max-height:85vh;overflow-y:auto">
+        <div id="loan-sch-title" style="font-weight:800;font-size:15.5px;margin-bottom:14px;color:var(--ink)">📅 কিস্তির সম্ভাব্য সময়সূচী</div>
+        <div id="loan-sch-body"></div>
+        <button class="btn btn-outline" onclick="closeLoanSchedule()" style="width:100%;margin-top:10px">বন্ধ করুন</button>
       </div>
     </div>`;
 }
@@ -4643,6 +4742,211 @@ function fullPDFDownload(){
   toast("✅ PDF প্রস্তুত হচ্ছে — প্রিন্ট ডায়ালগে 'Save as PDF' বেছে নিন");
 }
 
+// ══════════════════════════════════════════
+// বার্ষিক আর্থিক প্রতিবেদন — ডেটা প্রস্তুতকরণ
+// ══════════════════════════════════════════
+function getAnnualReportData(year){
+  year=Number(year);
+  const yearStart=`${year}-01-01`, yearEndExclusive=`${year+1}-01-01`;
+  const monStart=`${year}-01`, monEndExclusive=`${year+1}-01`;
+  const members=D.members||[], payments=D.payments||[], loans=D.loans||[];
+  const income=D.income||[], expenses=D.expenses||[], investments=D.investments||[];
+  const assets=D.assets||[], lateFees=D.lateFees||[];
+
+  const duesYear=payments.filter(p=>p.month>=monStart&&p.month<monEndExclusive);
+  const totDuesYear=duesYear.reduce((s,p)=>s+p.amount,0);
+  const otherIncYear=income.filter(i=>i.date>=yearStart&&i.date<yearEndExclusive);
+  const totOtherIncYear=otherIncYear.reduce((s,i)=>s+i.amount,0);
+  const totIncYear=totDuesYear+totOtherIncYear;
+
+  const expYear=expenses.filter(e=>e.date>=yearStart&&e.date<yearEndExclusive);
+  const totExpYear=expYear.reduce((s,e)=>s+e.amount,0);
+
+  const loansDisbursedYear=loans.filter(l=>l.date>=yearStart&&l.date<yearEndExclusive);
+  const totLoanDisbursedYear=loansDisbursedYear.reduce((s,l)=>s+l.principal,0);
+
+  let totLoanRepaidPrincipalYear=0, totLoanInterestYear=0;
+  loans.forEach(l=>{
+    (l.repayments||[]).filter(r=>r.date>=yearStart&&r.date<yearEndExclusive).forEach(r=>{
+      totLoanRepaidPrincipalYear+=(r.principal!=null?r.principal:r.amount)||0;
+      totLoanInterestYear+=(r.interest||0);
+    });
+  });
+
+  const investYear=investments.filter(i=>i.date>=yearStart&&i.date<yearEndExclusive);
+  const totInvestYear=investYear.reduce((s,i)=>s+i.amount,0);
+
+  const assetsYear=assets.filter(a=>a.date>=yearStart&&a.date<yearEndExclusive);
+  const totAssetsYear=assetsYear.reduce((s,a)=>s+a.value,0);
+
+  const newMembersYear=members.filter(m=>m.joinDate&&m.joinDate>=yearStart&&m.joinDate<yearEndExclusive);
+
+  const lateFeesYear=lateFees.filter(f=>f.date>=yearStart&&f.date<yearEndExclusive);
+  const totLateFeesYear=lateFeesYear.reduce((s,f)=>s+f.amount,0);
+  const totLateFeesDueYear=lateFeesYear.filter(f=>f.source!=="emi").reduce((s,f)=>s+f.amount,0);
+  const totLateFeesEmiYear=lateFeesYear.filter(f=>f.source==="emi").reduce((s,f)=>s+f.amount,0);
+
+  const openingBalance=calcFundAsOf(yearStart);
+  const closingBalance=calcFundAsOf(yearEndExclusive);
+
+  // মাসভিত্তিক আয়-ব্যয়
+  const monthly=[];
+  for(let mIdx=0;mIdx<12;mIdx++){
+    const mk=`${year}-${String(mIdx+1).padStart(2,"0")}`;
+    const mDues=payments.filter(p=>p.month===mk).reduce((s,p)=>s+p.amount,0);
+    const mOther=income.filter(i=>i.date.slice(0,7)===mk).reduce((s,i)=>s+i.amount,0);
+    const mExp=expenses.filter(e=>e.date.slice(0,7)===mk).reduce((s,e)=>s+e.amount,0);
+    monthly.push({month:mk,income:mDues+mOther,expense:mExp,net:mDues+mOther-mExp});
+  }
+
+  // সদস্যভিত্তিক বার্ষিক চাঁদা (সংগঠন শুরু ও সদস্যপদ শুরুর আগের মাস বাদ দিয়ে)
+  const memberDues=members.map(m=>{
+    let totalDueYear=0, totalPaidYear=0;
+    const joinDate=m.joinDate?new Date(m.joinDate):null;
+    for(let mIdx=0;mIdx<12;mIdx++){
+      const mk=`${year}-${String(mIdx+1).padStart(2,"0")}`;
+      const mkDate=new Date(year,mIdx,1);
+      if(mkDate<ORG_START) continue;
+      if(joinDate&&!isNaN(joinDate.getTime())&&mkDate<new Date(joinDate.getFullYear(),joinDate.getMonth(),1)) continue;
+      const reg=getApplicableRate(m.id,mk);
+      const sp=(D.specialMonths||[]).find(s=>s.mid==m.id&&s.month===mk);
+      totalDueYear+=reg+(sp?sp.amount:0);
+      totalPaidYear+=payments.filter(p=>p.mid==m.id&&p.month===mk).reduce((s,p)=>s+p.amount,0);
+    }
+    return {name:m.name,totalDueYear,totalPaidYear,outstandingYear:totalDueYear-totalPaidYear};
+  });
+
+  return {
+    year,openingBalance,closingBalance,
+    totDuesYear,totOtherIncYear,totIncYear,totExpYear,netSurplusYear:totIncYear-totExpYear,
+    totLoanDisbursedYear,totLoanRepaidPrincipalYear,totLoanInterestYear,
+    totInvestYear,totAssetsYear,
+    newMembersCount:newMembersYear.length,newMembersYear,
+    totLateFeesYear,totLateFeesDueYear,totLateFeesEmiYear,lateFeesYear,
+    monthly,memberDues,
+    loansDisbursedYear,investYear,assetsYear
+  };
+}
+function annualExcelDownload(){
+  const yearSel=document.getElementById("annualYearSel");
+  const year=Number(yearSel?yearSel.value:new Date().getFullYear());
+  const d=getAnnualReportData(year);
+  const sheets=[];
+
+  // ১. সারসংক্ষেপ
+  let r=[];
+  r.push([`স্বপ্নঘুড়ি — ${year} সালের বার্ষিক আর্থিক প্রতিবেদন`,""]);
+  r.push(["তৈরির তারিখ:",new Date().toLocaleDateString("bn-BD")]);
+  r.push(["বিবরণ","পরিমাণ"]);
+  r.push(["বছরের শুরুতে তহবিল (আনুমানিক)",d.openingBalance]);
+  r.push(["বছরের শেষে তহবিল (আনুমানিক)",d.closingBalance]);
+  r.push(["বছরে নিট পরিবর্তন",d.closingBalance-d.openingBalance]);
+  r.push(["",""]);
+  r.push(["সদস্যদের চাঁদা (বছরে)",d.totDuesYear]);
+  r.push(["অন্যান্য আয় (বছরে, মুনাফা আয়সহ)",d.totOtherIncYear]);
+  r.push(["সর্বমোট আয় (বছরে)",d.totIncYear]);
+  r.push(["সর্বমোট ব্যয় (বছরে)",d.totExpYear]);
+  r.push(["নিট উদ্বৃত্ত (বছরে)",d.netSurplusYear]);
+  r.push(["",""]);
+  r.push(["ঋণ বিতরণ (বছরে)",d.totLoanDisbursedYear]);
+  r.push(["ঋণ আদায় — মূলধন (বছরে)",d.totLoanRepaidPrincipalYear]);
+  r.push(["ঋণ থেকে মুনাফা আয় (বছরে, উপরের আয়ে যুক্ত আছে)",d.totLoanInterestYear]);
+  r.push(["নতুন বিনিয়োগ (বছরে)",d.totInvestYear]);
+  r.push(["নতুন সম্পদ যোগ (বছরে)",d.totAssetsYear]);
+  r.push(["নতুন সদস্য (বছরে)",d.newMembersCount]);
+  r.push(["",""]);
+  r.push(["মোট জরিমানা/লেট ফি ধার্য (বছরে)",d.totLateFeesYear]);
+  r.push([" — চাঁদা বিলম্বের জরিমানা",d.totLateFeesDueYear]);
+  r.push([" — ঋণ কিস্তি বিলম্বের জরিমানা",d.totLateFeesEmiYear]);
+  sheets.push({name:"সারসংক্ষেপ",rows:r});
+
+  // ২. মাসভিত্তিক আয়-ব্যয়
+  r=[["মাস","আয়","ব্যয়","নিট"]];
+  d.monthly.forEach(mo=>r.push([mo.month,mo.income,mo.expense,mo.net]));
+  r.push(["মোট",d.totIncYear,d.totExpYear,d.netSurplusYear]);
+  sheets.push({name:"মাসভিত্তিক আয়-ব্যয়",rows:r});
+
+  // ৩. সদস্যভিত্তিক বার্ষিক চাঁদা
+  r=[["সদস্য","বছরের মোট চাঁদা (নির্ধারিত)","পরিশোধিত","বকেয়া"]];
+  d.memberDues.forEach(m=>r.push([m.name,m.totalDueYear,m.totalPaidYear,m.outstandingYear]));
+  r.push(["মোট",d.memberDues.reduce((s,m)=>s+m.totalDueYear,0),d.memberDues.reduce((s,m)=>s+m.totalPaidYear,0),d.memberDues.reduce((s,m)=>s+m.outstandingYear,0)]);
+  sheets.push({name:"সদস্যভিত্তিক চাঁদা",rows:r});
+
+  // ৪. ঋণ কার্যক্রম (বছরে বিতরণকৃত)
+  r=[["সদস্য","তারিখ","মূল ঋণ","মুনাফার হার","মাসিক কিস্তি","উদ্দেশ্য"]];
+  d.loansDisbursedYear.forEach(l=>r.push([gn(l.mid),l.date,l.principal,(l.rate||0)+"%",l.installment||0,l.note||""]));
+  r.push(["মোট","",d.totLoanDisbursedYear,"","",""]);
+  sheets.push({name:"ঋণ বিতরণ (বছরে)",rows:r});
+
+  // ৫. বিনিয়োগ ও সম্পদ (বছরে)
+  r=[["ধরন","শিরোনাম/নাম","পরিমাণ/মূল্য","তারিখ"]];
+  d.investYear.forEach(i=>r.push(["বিনিয়োগ",i.title,i.amount,i.date]));
+  d.assetsYear.forEach(a=>r.push(["সম্পদ",a.name,a.value,a.date]));
+  r.push(["মোট বিনিয়োগ","",d.totInvestYear,""]);
+  r.push(["মোট সম্পদ","",d.totAssetsYear,""]);
+  sheets.push({name:"বিনিয়োগ ও সম্পদ (বছরে)",rows:r});
+
+  // ৬. জরিমানা/লেট ফি (বছরে)
+  r=[["সদস্য","মাস","পরিমাণ","ধরন","কারণ","অবস্থা"]];
+  d.lateFeesYear.forEach(f=>r.push([gn(f.mid),f.month,f.amount,f.source==="emi"?"ঋণ কিস্তি বিলম্ব":"চাঁদা বিলম্ব",f.reason||"",f.waived?"মওকুফ":f.collected?"আদায়":"বকেয়া"]));
+  r.push(["মোট","",d.totLateFeesYear,"","",""]);
+  sheets.push({name:"জরিমানা (বছরে)",rows:r});
+
+  xlDownloadWorkbook(sheets,`স্বপ্নঘুড়ি_বার্ষিক_প্রতিবেদন_${year}`);
+}
+function annualPDFDownload(){
+  const yearSel=document.getElementById("annualYearSel");
+  const year=Number(yearSel?yearSel.value:new Date().getFullYear());
+  const d=getAnnualReportData(year);
+
+  const tbl=(cols,rows)=>`<table>
+    <thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(rr=>`<tr>${rr.map((c,ci)=>`<td style="${ci===0?"text-align:left":"text-align:center"}">${c}</td>`).join("")}</tr>`).join("")}</tbody>
+  </table>`;
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>${pdfStyle}
+  .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+  .sbox{background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px;text-align:center}
+  .sbox .sv{font-size:16px;font-weight:800;color:#006400}.sbox .sl{font-size:11px;color:#64748b}
+  </style></head><body>
+  ${pdfWM()}${pdfBtn()}
+  <h1>🪁 স্বপ্নঘুড়ি — ${year} সালের বার্ষিক আর্থিক প্রতিবেদন</h1>
+  <div class="meta">তৈরির তারিখ: ${new Date().toLocaleDateString("bn-BD")}</div>
+  <div class="summary">
+    <div class="sbox"><div class="sv">${fmtBn(d.openingBalance)}</div><div class="sl">বছরের শুরুতে তহবিল</div></div>
+    <div class="sbox"><div class="sv">${fmtBn(d.closingBalance)}</div><div class="sl">বছরের শেষে তহবিল</div></div>
+    <div class="sbox"><div class="sv">${fmtBn(d.netSurplusYear)}</div><div class="sl">নিট উদ্বৃত্ত (বছরে)</div></div>
+    <div class="sbox"><div class="sv">${fmtBn(d.totIncYear)}</div><div class="sl">সর্বমোট আয়</div></div>
+    <div class="sbox"><div class="sv">${fmtBn(d.totExpYear)}</div><div class="sl">সর্বমোট ব্যয়</div></div>
+    <div class="sbox"><div class="sv">${bnNum(d.newMembersCount)}</div><div class="sl">নতুন সদস্য</div></div>
+  </div>
+  <h2>মাসভিত্তিক আয়-ব্যয়</h2>
+  ${tbl(["মাস","আয়","ব্যয়","নিট"],d.monthly.map(mo=>[mo.month,fmtBn(mo.income),fmtBn(mo.expense),fmtBn(mo.net)]))}
+  <h2>ঋণ ও বিনিয়োগ কার্যক্রম (বছরে)</h2>
+  ${tbl(["বিবরণ","পরিমাণ"],[
+    ["ঋণ বিতরণ",fmtBn(d.totLoanDisbursedYear)],
+    ["ঋণ আদায় (মূলধন)",fmtBn(d.totLoanRepaidPrincipalYear)],
+    ["ঋণ থেকে মুনাফা আয়",fmtBn(d.totLoanInterestYear)],
+    ["নতুন বিনিয়োগ",fmtBn(d.totInvestYear)],
+    ["নতুন সম্পদ যোগ",fmtBn(d.totAssetsYear)],
+  ])}
+  <h2>জরিমানা/লেট ফি (বছরে)</h2>
+  ${tbl(["বিবরণ","পরিমাণ"],[
+    ["চাঁদা বিলম্বের জরিমানা",fmtBn(d.totLateFeesDueYear)],
+    ["ঋণ কিস্তি বিলম্বের জরিমানা",fmtBn(d.totLateFeesEmiYear)],
+    ["সর্বমোট",fmtBn(d.totLateFeesYear)],
+  ])}
+  <h2>সদস্যভিত্তিক বার্ষিক চাঁদা</h2>
+  ${tbl(["সদস্য","নির্ধারিত","পরিশোধিত","বকেয়া"],d.memberDues.map(m=>[m.name,fmtBn(m.totalDueYear),fmtBn(m.totalPaidYear),fmtBn(m.outstandingYear)]))}
+  </body></html>`;
+
+  const w=window.open("","_blank");
+  w.document.write(html);
+  w.document.close();
+  setTimeout(()=>w.print(),800);
+  toast("✅ বার্ষিক PDF প্রস্তুত হচ্ছে — প্রিন্ট ডায়ালগে 'Save as PDF' বেছে নিন");
+}
 function pdfDownload(type){
   const members=D.members||[], payments=D.payments||[], loans=D.loans||[];
   const income=D.income||[], expenses=D.expenses||[], investments=D.investments||[], assets=D.assets||[];
@@ -5654,12 +5958,48 @@ function syncAutoLateFees(){
 function getMemberLateFeeTotal(mid){
   return (D.lateFees||[]).filter(f=>f.mid==mid&&!f.waived&&!f.collected).reduce((s,f)=>s+f.amount,0);
 }
+// ঋণের কিস্তি নির্ধারিত সময়ে পরিশোধ না হলে স্বয়ংক্রিয়ভাবে জরিমানা ধার্য — প্রতিটি বকেয়া কিস্তির মাসের জন্য একবারই
+function syncAutoEmiLateFees(){
+  const cfg=D.emiLateFeeConfig||{enabled:false,checkDay:28,feePercent:5};
+  if(!cfg.enabled) return;
+  if(!D.lateFees) D.lateFees=[];
+  const today=new Date().toISOString().slice(0,10);
+  let changed=false;
+  (D.loans||[]).forEach(l=>{
+    if(!l.installment||l.installment<=0||l.remaining<=0) return;
+    const sch=(typeof loanSchedule==="function")?loanSchedule(l):[];
+    sch.filter(r=>r.status!=="পরিশোধিত").forEach(r=>{
+      const dueMonth=r.dueDate.slice(0,7); // YYYY-MM
+      const [y,m]=dueMonth.split("-").map(Number);
+      const lastDay=new Date(y,m,0).getDate();
+      const cDay=Math.min(Math.max(1,cfg.checkDay||28),lastDay);
+      const checkDateStr=`${dueMonth}-${String(cDay).padStart(2,"0")}`;
+      if(today<checkDateStr) return; // চেক-ডে এখনো আসেনি
+      const exists=D.lateFees.find(f=>f.loanId===l.id&&f.month===dueMonth&&f.source==="emi");
+      if(exists) return; // এই কিস্তির জন্য আগেই জরিমানা তৈরি হয়েছে
+      const amount=Math.round(r.amount*((cfg.feePercent||0)/100));
+      if(amount<=0) return;
+      D.lateFees.push({
+        id:Date.now()+"_"+Math.random().toString(36).slice(2,7),
+        mid:l.mid,month:dueMonth,amount,
+        type:"auto",source:"emi",loanId:l.id,
+        reason:`ঋণ কিস্তি বিলম্বে (কিস্তি #${r.no}, নির্ধারিত তারিখ ${ds(r.dueDate)})`,
+        date:today,addedBy:"সিস্টেম",waived:false,collected:false,collectedAt:null,incomeId:null
+      });
+      changed=true;
+    });
+  });
+  if(changed) sv();
+}
 function pgLateFee(){
   if(!D.lateFees) D.lateFees=[];
   if(!D.lateFeeConfig) D.lateFeeConfig={enabled:false,graceDays:15,feeType:"fixed",feeAmount:50,maxCap:0};
+  if(!D.emiLateFeeConfig) D.emiLateFeeConfig={enabled:false,checkDay:28,feePercent:5};
   syncAutoLateFees();
+  try{ syncAutoEmiLateFees(); }catch(e){ console.error("syncAutoEmiLateFees error:",e); }
   const isAd=isA();
   const cfg=D.lateFeeConfig;
+  const ecfg=D.emiLateFeeConfig;
   const members=D.members||[];
   const fees=(D.lateFees||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
 
@@ -5691,6 +6031,19 @@ function pgLateFee(){
     <button class="btn btn-gold" onclick="saveLateFeeConfig()">✅ সেটিংস সংরক্ষণ করুন</button>
   </div></div>`:"";
 
+  const emiConfigPanel=isAd?`<div class="card" style="margin-bottom:12px">${ch("⏱️","ঋণের কিস্তি বিলম্বের জরিমানা","কিস্তি নির্ধারিত সময়ে পরিশোধ না হলে স্বয়ংক্রিয়ভাবে জরিমানা ধার্য হবে","r")}<div class="cb">
+    <div class="field" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="efEnabled" style="width:auto" ${ecfg.enabled?"checked":""}>
+      <label for="efEnabled" style="margin:0;cursor:pointer">✅ কিস্তি বিলম্বের স্বয়ংক্রিয় জরিমানা সক্রিয় করুন</label>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>মাসের কত তারিখে জরিমানা ধরা হবে</label><input type="number" id="efCheckDay" value="${ecfg.checkDay}" min="1" max="28" placeholder="28"></div>
+      <div class="field"><label>জরিমানা — কিস্তির উপর %</label><input type="number" id="efPercent" value="${ecfg.feePercent}" min="0" max="100" placeholder="5"></div>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin:-4px 0 10px">যেমন: কিস্তির নির্ধারিত তারিখ ৮ হলে, ওই মাসের ${ecfg.checkDay} তারিখ পর্যন্ত পরিশোধ না হলে কিস্তির ${ecfg.feePercent}% জরিমানা হিসেবে যোগ হবে। প্রতিটি বকেয়া কিস্তির জন্য একবারই জরিমানা তৈরি হয়।</div>
+    <button class="btn btn-r" onclick="saveEmiLateFeeConfig()">✅ সেটিংস সংরক্ষণ করুন</button>
+  </div></div>`:"";
+
   const manualForm=isAd?`<div class="card" style="margin-bottom:12px">${ch("➕","ম্যানুয়াল জরিমানা যোগ করুন","বিশেষ ক্ষেত্রে সরাসরি জরিমানা ধার্য করুন","r")}<div class="cb">
     <div class="grid2">
       <div class="field"><label>সদস্য</label><select id="lfMid"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>
@@ -5705,7 +6058,7 @@ function pgLateFee(){
 
   const rows=fees.map(f=>{
     const statusBdg=f.waived?bdg("🎗️ মওকুফ","#7c3aed","#f5f3ff"):f.collected?bdg("✅ আদায়","#16a34a","#dcfce7"):bdg("⚠️ বকেয়া","#dc2626","#fee2e2");
-    const typeBdg=f.type==="auto"?bdg("⚙️ স্বয়ংক্রিয়","#2563eb","#eff6ff"):bdg("✍️ ম্যানুয়াল","#d97706","#fffbeb");
+    const typeBdg=f.type==="auto"?(f.source==="emi"?bdg("⚙️ কিস্তি বিলম্ব","#7c3aed","#f5f3ff"):bdg("⚙️ স্বয়ংক্রিয়","#2563eb","#eff6ff")):bdg("✍️ ম্যানুয়াল","#d97706","#fffbeb");
     return `<tr>
       <td style="font-weight:600;white-space:nowrap">${gn(f.mid)}</td>
       <td style="white-space:nowrap">${f.month}</td>
@@ -5724,7 +6077,7 @@ function pgLateFee(){
 
   return `
     <div style="margin-bottom:12px"><div class="section-title">⏰ জরিমানা/লেট ফি</div><div class="section-sub">স্বয়ংক্রিয় নিয়ম + এডমিন নিয়ন্ত্রণ — উভয় পদ্ধতিতে জরিমানা ব্যবস্থাপনা</div></div>
-    ${stats}${configPanel}${manualForm}
+    ${stats}${configPanel}${emiConfigPanel}${manualForm}
     <div class="card">
       ${ch("📋","সকল জরিমানার তালিকা")}
       <div style="overflow-x:auto"><table class="tbl">
@@ -5741,6 +6094,15 @@ function saveLateFeeConfig(){
   const maxCap=Number(document.getElementById("lfCap").value)||0;
   D.lateFeeConfig={enabled,graceDays,feeType,feeAmount,maxCap};
   logActivity("lateFeeConfig",`জরিমানা সেটিংস আপডেট হয়েছে: ${enabled?"সক্রিয়":"নিষ্ক্রিয়"}, গ্রেস ${graceDays} দিন, ${feeType==="percent"?feeAmount+"%":fmt(feeAmount)}`);
+  sv();toast("✅ সেটিংস সংরক্ষিত হয়েছে");goTab("latefee");
+}
+function saveEmiLateFeeConfig(){
+  const enabled=document.getElementById("efEnabled").checked;
+  let checkDay=Number(document.getElementById("efCheckDay").value)||28;
+  checkDay=Math.min(28,Math.max(1,checkDay));
+  const feePercent=Math.min(100,Math.max(0,Number(document.getElementById("efPercent").value)||0));
+  D.emiLateFeeConfig={enabled,checkDay,feePercent};
+  logActivity("emiLateFeeConfig",`ঋণের কিস্তি বিলম্বের জরিমানা সেটিংস আপডেট হয়েছে: ${enabled?"সক্রিয়":"নিষ্ক্রিয়"}, চেক-ডে ${checkDay} তারিখ, ${feePercent}%`);
   sv();toast("✅ সেটিংস সংরক্ষিত হয়েছে");goTab("latefee");
 }
 function addManualLateFee(){
@@ -6878,6 +7240,10 @@ function pgHealth(){
 // ══════════════════════════════════════════
 function pgReport(){
   const members=D.members||[];
+  const curYear=new Date().getFullYear();
+  const startYear=ORG_START.getFullYear();
+  const annualYearOptions=[];
+  for(let y=curYear;y>=startYear;y--) annualYearOptions.push(y);
 
   const reports=[
     {id:"savings",icon:"💰",title:"চাঁদার শিট রিপোর্ট",desc:"নভেম্বর ২০২১ থেকে সকল চাঁদার তথ্য"},
@@ -6927,6 +7293,20 @@ function pgReport(){
       ${isA()?`<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button onclick="fullExcelDownload()" style="background:#fff;color:#006400;border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit">⬇️ Excel ডাউনলোড</button>
         <button onclick="fullPDFDownload()" style="background:#fff;color:#dc2626;border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit">📄 PDF (জলছাপ সহ)</button>
+      </div>`:`<div style="color:rgba(255,255,255,.6);font-size:12px">⛔ শুধুমাত্র অ্যাডমিন ডাউনলোড করতে পারবেন</div>`}
+    </div>
+
+    <!-- বার্ষিক আর্থিক প্রতিবেদন -->
+    <div style="background:linear-gradient(135deg,#7c2d12,#c2410c);border-radius:14px;padding:18px;margin-bottom:16px;text-align:center">
+      <div style="font-size:28px;margin-bottom:6px">🗓️</div>
+      <div style="color:#fff;font-weight:800;font-size:16px;margin-bottom:4px">বার্ষিক আর্থিক প্রতিবেদন</div>
+      <div style="color:rgba(255,255,255,.75);font-size:12px;margin-bottom:12px">নির্দিষ্ট সাল বেছে স্বয়ংক্রিয়ভাবে বার্ষিক প্রতিবেদন তৈরি করুন</div>
+      ${isA()?`<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;align-items:center">
+        <select id="annualYearSel" style="padding:9px 12px;border-radius:9px;border:none;font-size:13px;font-family:inherit">
+          ${annualYearOptions.map(y=>`<option value="${y}"${y===curYear?" selected":""}>${y}</option>`).join("")}
+        </select>
+        <button onclick="annualExcelDownload()" style="background:#fff;color:#c2410c;border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit">⬇️ Excel ডাউনলোড</button>
+        <button onclick="annualPDFDownload()" style="background:#fff;color:#dc2626;border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit">📄 PDF (জলছাপ সহ)</button>
       </div>`:`<div style="color:rgba(255,255,255,.6);font-size:12px">⛔ শুধুমাত্র অ্যাডমিন ডাউনলোড করতে পারবেন</div>`}
     </div>
     <div class="card" style="margin-bottom:14px">
