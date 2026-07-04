@@ -31,7 +31,8 @@ html[data-theme="dark"] .field input,html[data-theme="dark"] .field select,html[
 html[data-theme="dark"] .chip{background:var(--white);color:var(--ink)}
 html[data-theme="dark"] .topbar{background:var(--white)}
 html[data-theme="dark"] .mobile-nav{background:var(--white)}
-body{font-family:'Hind Siliguri',sans-serif;background:var(--bg);color:var(--ink)}
+html{overflow-x:hidden}
+body{font-family:'Hind Siliguri',sans-serif;background:var(--bg);color:var(--ink);overflow-x:hidden}
 button,input,select,textarea{font-family:'Hind Siliguri',sans-serif}
 ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
 
@@ -247,6 +248,13 @@ html[data-theme="dark"] .ai-modal{background:var(--white)}
   .content{padding:12px;padding-bottom:75px}
   .grid4{grid-template-columns:1fr 1fr}.grid3{grid-template-columns:1fr 1fr}
   .mobile-nav{display:flex!important}
+  .topbar{padding:11px 12px;gap:6px}
+}
+@media(max-width:420px){
+  .topbar{padding:10px 8px}
+  #tb-search-kbd{display:none}
+  .topbar button[onclick="openGSearch()"]{padding:6px 9px}
+  #tb-badge .badge{padding:2px 6px!important;font-size:9px!important}
 }
 @media(min-width:769px){.mobile-nav{display:none!important}}
 </style>
@@ -348,7 +356,7 @@ const firebaseConfig = {
   <div class="main">
     <div class="viewer-bar" id="vbar" style="display:none">👁️ ভিউ মোড — শুধু দেখতে পারবেন</div>
     <div class="topbar">
-      <div style="display:flex;align-items:center;gap:11px;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0">
         <button class="hamburger" onclick="toggleSB()" style="flex-shrink:0">☰</button>
         <div style="min-width:0">
           <div style="font-size:17px;font-weight:800;white-space:nowrap" id="pt">হোম</div>
@@ -356,8 +364,8 @@ const firebaseConfig = {
           <div id="sync-badge" style="margin-top:2px"></div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-        <button onclick="openGSearch()" title="গ্লোবাল সার্চ (Ctrl+K)" style="background:var(--bg);border:1.5px solid var(--border);border-radius:9px;padding:7px 13px;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;white-space:nowrap">🔍 <span style="display:none" id="tb-search-label">সার্চ</span> <kbd style="font-size:10px;background:var(--border);border-radius:4px;padding:1px 5px;color:var(--muted)">Ctrl K</kbd></button>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <button onclick="openGSearch()" title="গ্লোবাল সার্চ (Ctrl+K)" style="background:var(--bg);border:1.5px solid var(--border);border-radius:9px;padding:7px 13px;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;white-space:nowrap">🔍 <span style="display:none" id="tb-search-label">সার্চ</span> <kbd id="tb-search-kbd" style="font-size:10px;background:var(--border);border-radius:4px;padding:1px 5px;color:var(--muted)">Ctrl K</kbd></button>
         <div class="bell-wrap" onclick="toggleNotif()">
           <span style="font-size:20px">🔔</span>
           <span id="bell-dot" class="bell-dot" style="display:none">0</span>
