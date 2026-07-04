@@ -730,6 +730,7 @@ const TRASH_META = {
   vote:        {arr:"votes",         icon:"🗳️", label:"ভোট"},
   meeting:     {arr:"meetings",      icon:"📅", label:"মিটিং"},
   msgTemplate: {arr:"msgTemplates",  icon:"✉️", label:"বার্তা টেম্পলেট"},
+  formerMember:{arr:"formerMembers", icon:"🚪", label:"পূর্ব সদস্য"},
 };
 function trashGetArr(entity){
   const meta=TRASH_META[entity];
@@ -3662,6 +3663,11 @@ function pgFormerMembers(){
           <input type="number" id="refund-${m.id}" placeholder="ফেরতযোগ্য পরিমাণ" value="${m.refundDue||""}" style="flex:1;min-width:120px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;font-family:inherit">
           <button onclick="setRefundDue(${m.id})" class="btn btn-sm btn-outline">💾 সেভ</button>
           ${!m.refunded?`<button onclick="markRefunded(${m.id})" class="btn btn-sm btn-g">✅ ফেরত দেওয়া হয়েছে চিহ্নিত করুন</button>`:`<button onclick="markRefunded(${m.id},false)" class="btn btn-sm btn-outline">↺ পুনরায় বাকি করুন</button>`}
+        </div>
+        ${m.note?`<div style="margin-top:8px;font-size:11.5px;color:#64748b;background:var(--bg);border-radius:8px;padding:8px 10px">📝 ${m.note}</div>`:""}
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <button onclick="openFormerMemberEdit(${m.id})" style="font-size:11px;background:#eff6ff;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#2563eb">✏️ এডিট</button>
+          <button onclick="delFormerMember(${m.id})" style="font-size:11px;background:#fee2e2;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#dc2626">🗑 মুছুন</button>
         </div>`:m.refundDue?`<div style="margin-top:8px;font-size:12px;color:#dc2626;font-weight:700">দায় (ফেরতযোগ্য): ${fmt(m.refundDue)}</div>`:""}
       </div>
     </div>`).join("");
@@ -3671,7 +3677,73 @@ function pgFormerMembers(){
     <div class="section-sub">যারা সংগঠন ছেড়ে চলে গেছেন তাদের ইতিহাস ও বকেয়া দায়</div>
     <div style="margin-top:14px">
       ${rows||`<div style="padding:40px;text-align:center;color:var(--muted)">কোনো পূর্ব সদস্য নেই</div>`}
+    </div>
+
+    <!-- পূর্ব সদস্য এডিট Modal -->
+    <div id="fm-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:center;justify-content:center;padding:16px">
+      <div style="background:var(--white);border-radius:14px;padding:20px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-weight:800;font-size:16px">✏️ পূর্ব সদস্যের তথ্য এডিট</div>
+          <button onclick="closeFormerMemberEdit()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
+        </div>
+        <input type="hidden" id="fm-edit-id">
+        <div class="field"><label>নাম</label><input type="text" id="fm-edit-name" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;box-sizing:border-box"></div>
+        <div class="grid2">
+          <div class="field"><label>মোবাইল</label><input type="text" id="fm-edit-phone" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;box-sizing:border-box"></div>
+          <div class="field"><label>পদবি</label><input type="text" id="fm-edit-role" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;box-sizing:border-box"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>যোগদানের তারিখ</label><input type="date" id="fm-edit-join" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;box-sizing:border-box"></div>
+          <div class="field"><label>বহির্গমনের তারিখ</label><input type="date" id="fm-edit-left" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;box-sizing:border-box"></div>
+        </div>
+        <div class="field"><label>নোট (ঐচ্ছিক)</label><textarea id="fm-edit-note" rows="3" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;box-sizing:border-box"></textarea></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-g" style="flex:1" onclick="saveFormerMemberEdit()">✅ সেভ করুন</button>
+          <button class="btn btn-outline" onclick="closeFormerMemberEdit()">বাতিল</button>
+        </div>
+      </div>
     </div>`;
+}
+
+function openFormerMemberEdit(id){
+  const m=(D.formerMembers||[]).find(x=>x.id===id);
+  if(!m) return;
+  document.getElementById("fm-edit-id").value=id;
+  document.getElementById("fm-edit-name").value=m.name||"";
+  document.getElementById("fm-edit-phone").value=m.phone||"";
+  document.getElementById("fm-edit-role").value=m.role||"";
+  document.getElementById("fm-edit-join").value=m.joinDate||"";
+  document.getElementById("fm-edit-left").value=m.leftDate||"";
+  document.getElementById("fm-edit-note").value=m.note||"";
+  document.getElementById("fm-edit-modal").style.display="flex";
+}
+function closeFormerMemberEdit(){
+  const el=document.getElementById("fm-edit-modal");
+  if(el) el.style.display="none";
+}
+function saveFormerMemberEdit(){
+  const id=Number(document.getElementById("fm-edit-id").value);
+  const name=document.getElementById("fm-edit-name").value.trim();
+  if(!name){toast("⚠️ নাম দিন","#d97706");return;}
+  const phone=document.getElementById("fm-edit-phone").value.trim();
+  const role=document.getElementById("fm-edit-role").value.trim();
+  const joinDate=document.getElementById("fm-edit-join").value;
+  const leftDate=document.getElementById("fm-edit-left").value;
+  const note=document.getElementById("fm-edit-note").value.trim();
+  D.formerMembers=(D.formerMembers||[]).map(m=>m.id===id?{...m,name,phone,role,joinDate,leftDate,note}:m);
+  logActivity("member",`পূর্ব সদস্যের তথ্য এডিট করা হয়েছে: ${name}`);
+  sv();toast("✅ তথ্য আপডেট হয়েছে");
+  closeFormerMemberEdit();
+  goTab("formermembers");
+}
+function delFormerMember(id){
+  const m=(D.formerMembers||[]).find(x=>x.id===id);
+  if(!m) return;
+  if(!confirm(`"${m.name}" কে পূর্ব সদস্য তালিকা থেকে স্থায়ীভাবে মুছে ফেলতে চান?`))return;
+  D.formerMembers=(D.formerMembers||[]).filter(x=>x.id!==id);
+  const tid=moveToTrash("formerMember",m.name,m);
+  logActivity("member",`পূর্ব সদস্য মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${m.name}`);
+  sv();undoToast("🗑 পূর্ব সদস্য মুছে ফেলা হয়েছে",tid);goTab("formermembers");
 }
 
 function setRefundDue(id){
@@ -6132,10 +6204,10 @@ function pgMeeting(){
           </div>
         </div>
 
-        ${mt.minutes?`<div style="background:#fffbeb;border-radius:8px;padding:10px;font-size:12px;margin-top:10px;white-space:pre-line;color:#374151"><b>কার্যবিবরণী:</b><br>${mt.minutes}</div>`:""}
+        ${renderMinutesPreview(mt)}
 
         ${isA()?`<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-          <button onclick="addMinutes(${mt.id})" style="font-size:11px;background:#fffbeb;border:none;border-radius:6px;padding:5px 10px;cursor:pointer">📝 কার্যবিবরণী</button>
+          <button onclick="openMinutesModal(${mt.id})" style="font-size:11px;background:#fffbeb;border:none;border-radius:6px;padding:5px 10px;cursor:pointer">📝 কার্যবিবরণী</button>
           <button onclick="meetingPDF(${mt.id})" style="font-size:11px;background:#fee2e2;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#dc2626">📄 PDF</button>
           <button onclick="delMeeting(${mt.id})" style="font-size:11px;background:#fee2e2;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#dc2626">🗑 মুছুন</button>
         </div>`:""}
@@ -6151,15 +6223,17 @@ function pgMeeting(){
     </div>
     ${addForm}${meetCards}
 
-    <!-- কার্যবিবরণী Modal -->
-    <div id="minutes-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;align-items:center;justify-content:center">
-      <div style="background:var(--white);border-radius:14px;padding:22px;width:92%;max-width:440px">
-        <div style="font-weight:700;font-size:16px;margin-bottom:12px">📝 কার্যবিবরণী লিখুন</div>
-        <input type="hidden" id="min-mid">
-        <textarea id="min-text" rows="6" style="width:100%;padding:10px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit" placeholder="আলোচিত বিষয়, সিদ্ধান্ত..."></textarea>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button class="btn btn-g" onclick="saveMinutes()">✅ সেভ</button>
-          <button class="btn btn-outline" onclick="document.getElementById('minutes-modal').style.display='none'">বাতিল</button>
+    <!-- কার্যবিবরণী Modal (গঠনমূলক: আলোচ্য বিষয়, সিদ্ধান্ত, করণীয়) -->
+    <div id="minutes-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto">
+      <div style="background:var(--white);border-radius:14px;padding:20px;width:100%;max-width:560px;margin:20px auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div style="font-weight:800;font-size:16px">📝 কার্যবিবরণী (Meeting Minutes)</div>
+          <button onclick="closeMinutesModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
+        </div>
+        <div id="minutes-modal-body"></div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn btn-g" style="flex:1" onclick="saveMinutesStructured()">✅ সেভ করুন</button>
+          <button class="btn btn-outline" onclick="closeMinutesModal()">বাতিল</button>
         </div>
       </div>
     </div>`;
@@ -6182,19 +6256,169 @@ function toggleAttend(mid,memId){
   sv();goTab("meeting");
 }
 
-function addMinutes(mid){
+// মিটিং কার্ডে কার্যবিবরণীর প্রিভিউ দেখায় — নতুন গঠনমূলক ডেটা থাকলে তা, নাহলে পুরনো প্লেইন-টেক্সট (ব্যাকওয়ার্ড কম্প্যাটিবিলিটি)
+function renderMinutesPreview(mt){
+  const md=mt.minutesData;
+  const hasStructured=md&&(((md.discussionPoints||[]).some(p=>p.topic||p.discussion||p.decision))||((md.actionItems||[]).some(a=>a.task))||md.chair||md.conductor||md.closing);
+  if(hasStructured){
+    const dp=(md.discussionPoints||[]).filter(p=>p.topic||p.discussion||p.decision);
+    const ai=(md.actionItems||[]).filter(a=>a.task);
+    const dpRows=dp.map((p,i)=>`
+      <div style="margin-bottom:8px;padding-bottom:8px;${i<dp.length-1?"border-bottom:1px dashed #e2e8f0":""}">
+        <div style="font-weight:700;font-size:12px;color:#374151">${i+1}. ${p.topic||"—"}</div>
+        ${p.discussion?`<div style="font-size:11.5px;color:#64748b;margin-top:2px">${p.discussion}</div>`:""}
+        ${p.decision?`<div style="font-size:11.5px;color:#006400;margin-top:3px;font-weight:600">✅ সিদ্ধান্ত: ${p.decision}</div>`:""}
+      </div>`).join("");
+    const aiRows=ai.map(a=>{
+      const done=a.status==="সম্পন্ন";
+      return `<tr>
+        <td style="padding:5px 6px;font-size:11.5px">${a.task}</td>
+        <td style="padding:5px 6px;font-size:11.5px">${a.assignee||"—"}</td>
+        <td style="padding:5px 6px;font-size:11.5px">${a.deadline?ds(a.deadline):"—"}</td>
+        <td style="padding:5px 6px"><span style="font-size:10px;font-weight:700;color:${done?"#16a34a":"#d97706"};background:${done?"#dcfce7":"#fffbeb"};padding:2px 8px;border-radius:6px">${a.status||"চলমান"}</span></td>
+      </tr>`;
+    }).join("");
+    return `<div style="background:#fffbeb;border-radius:10px;padding:12px;margin-top:10px">
+      <div style="font-weight:700;font-size:12.5px;color:#92400e;margin-bottom:8px">📝 কার্যবিবরণী</div>
+      ${(md.chair||md.conductor)?`<div style="font-size:11px;color:#64748b;margin-bottom:8px">${md.chair?"সভাপতিত্ব: <b>"+md.chair+"</b>":""}${md.chair&&md.conductor?" · ":""}${md.conductor?"লিখেছেন: <b>"+md.conductor+"</b>":""}</div>`:""}
+      ${dpRows?`<div style="margin-bottom:10px">${dpRows}</div>`:""}
+      ${aiRows?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden">
+        <thead><tr style="background:#fef3c7"><th style="padding:5px 6px;font-size:10.5px;text-align:left">করণীয়</th><th style="padding:5px 6px;font-size:10.5px;text-align:left">দায়িত্বে</th><th style="padding:5px 6px;font-size:10.5px;text-align:left">সময়সীমা</th><th style="padding:5px 6px;font-size:10.5px;text-align:left">অবস্থা</th></tr></thead>
+        <tbody>${aiRows}</tbody></table></div>`:""}
+      ${md.nextMeetingDate?`<div style="font-size:11px;color:#64748b;margin-top:8px">📅 পরবর্তী সভা: <b>${ds(md.nextMeetingDate)}</b></div>`:""}
+      ${md.closing?`<div style="font-size:11.5px;color:#374151;margin-top:6px;font-style:italic">${md.closing}</div>`:""}
+    </div>`;
+  }
+  if(mt.minutes){
+    return `<div style="background:#fffbeb;border-radius:8px;padding:10px;font-size:12px;margin-top:10px;white-space:pre-line;color:#374151"><b>কার্যবিবরণী:</b><br>${mt.minutes}</div>`;
+  }
+  return "";
+}
+// কার্যবিবরণী এডিট মোডাল খোলে, ড্রাফট window._minDraft-এ রাখে (রো যোগ/মুছার সময় বারবার লেখা তথ্য যাতে হারিয়ে না যায়)
+function openMinutesModal(mid){
   const mt=(D.meetings||[]).find(m=>m.id==mid);
-  document.getElementById("min-mid").value=mid;
-  document.getElementById("min-text").value=mt&&mt.minutes?mt.minutes:''||"";
+  if(!mt) return;
+  const md=mt.minutesData||{};
+  window._minDraft={
+    mid,
+    chair:md.chair||"",
+    conductor:md.conductor||"",
+    discussionPoints:(md.discussionPoints&&md.discussionPoints.length)?JSON.parse(JSON.stringify(md.discussionPoints)):[{topic:"",discussion:"",decision:""}],
+    actionItems:(md.actionItems&&md.actionItems.length)?JSON.parse(JSON.stringify(md.actionItems)):[{task:"",assignee:"",deadline:"",status:"চলমান"}],
+    nextMeetingDate:md.nextMeetingDate||"",
+    closing:md.closing!==undefined?md.closing:(mt.minutes||"")
+  };
+  renderMinutesModal();
   document.getElementById("minutes-modal").style.display="flex";
 }
+function closeMinutesModal(){
+  const el=document.getElementById("minutes-modal");
+  if(el) el.style.display="none";
+  window._minDraft=null;
+}
+// মোডালের বর্তমান ইনপুট মানগুলো DOM থেকে পড়ে ড্রাফট অবজেক্টে সিঙ্ক করে (রো যোগ/মুছার আগে অবশ্যই কল করতে হয়)
+function syncMinutesDraftFromDOM(){
+  const d=window._minDraft; if(!d) return;
+  const g=id=>{const el=document.getElementById(id);return el?el.value:"";};
+  d.chair=g("min-chair");
+  d.conductor=g("min-conductor");
+  d.nextMeetingDate=g("min-next");
+  d.closing=g("min-closing");
+  d.discussionPoints=d.discussionPoints.map((_,i)=>({
+    topic:g("dp-topic-"+i), discussion:g("dp-disc-"+i), decision:g("dp-dec-"+i)
+  }));
+  d.actionItems=d.actionItems.map((_,i)=>({
+    task:g("ai-task-"+i), assignee:g("ai-assignee-"+i), deadline:g("ai-deadline-"+i), status:g("ai-status-"+i)||"চলমান"
+  }));
+}
+function addDiscussionRow(){
+  syncMinutesDraftFromDOM();
+  window._minDraft.discussionPoints.push({topic:"",discussion:"",decision:""});
+  renderMinutesModal();
+}
+function removeDiscussionRow(i){
+  syncMinutesDraftFromDOM();
+  window._minDraft.discussionPoints.splice(i,1);
+  if(!window._minDraft.discussionPoints.length) window._minDraft.discussionPoints=[{topic:"",discussion:"",decision:""}];
+  renderMinutesModal();
+}
+function addActionRow(){
+  syncMinutesDraftFromDOM();
+  window._minDraft.actionItems.push({task:"",assignee:"",deadline:"",status:"চলমান"});
+  renderMinutesModal();
+}
+function removeActionRow(i){
+  syncMinutesDraftFromDOM();
+  window._minDraft.actionItems.splice(i,1);
+  if(!window._minDraft.actionItems.length) window._minDraft.actionItems=[{task:"",assignee:"",deadline:"",status:"চলমান"}];
+  renderMinutesModal();
+}
+// মোডাল বডি রি-রেন্ডার করে ড্রাফট অনুযায়ী (আলোচ্য বিষয় ও করণীয়ের ডাইনামিক রো-সহ)
+function renderMinutesModal(){
+  const d=window._minDraft; if(!d) return;
+  const members=D.members||[];
+  const esc=s=>(s||"").toString().replace(/"/g,"&quot;");
+  const nameOpts=val=>`<option value="">-- বেছে নিন --</option>`+members.map(m=>`<option value="${esc(m.name)}"${m.name===val?" selected":""}>${m.name}</option>`).join("");
+  const inp=(id,val,ph,type="text")=>`<input id="${id}" type="${type}" value="${esc(val)}" placeholder="${ph||""}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12.5px;font-family:inherit;box-sizing:border-box">`;
+  const ta=(id,val,ph)=>`<textarea id="${id}" placeholder="${ph||""}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12.5px;font-family:inherit;box-sizing:border-box;min-height:44px">${val||""}</textarea>`;
 
-function saveMinutes(){
-  const mid=Number(document.getElementById("min-mid").value);
-  const txt=document.getElementById("min-text").value;
-  D.meetings=(D.meetings||[]).map(m=>m.id==mid?{...m,minutes:txt}:m);
+  const dpHtml=d.discussionPoints.map((p,i)=>`
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:8px">
+      <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px">আলোচ্য বিষয় #${i+1} ${d.discussionPoints.length>1?`<span onclick="removeDiscussionRow(${i})" style="float:right;color:#dc2626;cursor:pointer;font-weight:600">✕ মুছুন</span>`:""}</div>
+      <div style="margin-bottom:6px">${inp("dp-topic-"+i,p.topic,"বিষয় (যেমন: নতুন বিনিয়োগ পরিকল্পনা)")}</div>
+      <div style="margin-bottom:6px">${ta("dp-disc-"+i,p.discussion,"আলোচনার সংক্ষিপ্ত বিবরণ")}</div>
+      <div>${ta("dp-dec-"+i,p.decision,"গৃহীত সিদ্ধান্ত")}</div>
+    </div>`).join("");
+
+  const aiHtml=d.actionItems.map((a,i)=>`
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:8px">
+      <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px">করণীয় #${i+1} ${d.actionItems.length>1?`<span onclick="removeActionRow(${i})" style="float:right;color:#dc2626;cursor:pointer;font-weight:600">✕ মুছুন</span>`:""}</div>
+      <div style="margin-bottom:6px">${inp("ai-task-"+i,a.task,"কী করতে হবে")}</div>
+      <div class="grid2" style="margin-bottom:6px">
+        <select id="ai-assignee-${i}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12.5px;font-family:inherit">${nameOpts(a.assignee)}</select>
+        <input id="ai-deadline-${i}" type="date" value="${a.deadline||""}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12.5px;font-family:inherit;box-sizing:border-box">
+      </div>
+      <select id="ai-status-${i}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12.5px;font-family:inherit">
+        <option${a.status==="চলমান"||!a.status?" selected":""}>চলমান</option>
+        <option${a.status==="সম্পন্ন"?" selected":""}>সম্পন্ন</option>
+      </select>
+    </div>`).join("");
+
+  const body=document.getElementById("minutes-modal-body");
+  if(!body) return;
+  body.innerHTML=`
+    <div class="grid2" style="margin-bottom:10px">
+      <div class="field" style="margin-bottom:0"><label>সভাপতিত্ব করেন</label>${inp("min-chair",d.chair,"সভাপতির নাম")}</div>
+      <div class="field" style="margin-bottom:0"><label>কার্যবিবরণী লিখেছেন</label>${inp("min-conductor",d.conductor,"সম্পাদক/লেখকের নাম")}</div>
+    </div>
+    <div style="font-weight:700;font-size:13px;margin:12px 0 8px;color:#006400">🗣️ আলোচ্য বিষয় ও সিদ্ধান্ত</div>
+    ${dpHtml}
+    <button onclick="addDiscussionRow()" style="background:#f0fdf4;border:1px dashed #86efac;border-radius:8px;padding:6px 12px;font-size:11.5px;color:#006400;cursor:pointer;font-family:inherit;margin-bottom:10px">➕ আরেকটি বিষয় যোগ করুন</button>
+
+    <div style="font-weight:700;font-size:13px;margin:12px 0 8px;color:#d97706">✅ সিদ্ধান্ত বাস্তবায়ন / করণীয়</div>
+    ${aiHtml}
+    <button onclick="addActionRow()" style="background:#fffbeb;border:1px dashed #fcd34d;border-radius:8px;padding:6px 12px;font-size:11.5px;color:#92400e;cursor:pointer;font-family:inherit;margin-bottom:10px">➕ আরেকটি করণীয় যোগ করুন</button>
+
+    <div class="grid2" style="margin-top:6px">
+      <div class="field" style="margin-bottom:0"><label>পরবর্তী সভার তারিখ</label><input id="min-next" type="date" value="${d.nextMeetingDate||""}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12.5px;font-family:inherit;box-sizing:border-box"></div>
+      <div class="field" style="margin-bottom:0"><label>সমাপনী মন্তব্য</label>${inp("min-closing",d.closing,"ঐচ্ছিক")}</div>
+    </div>
+  `;
+}
+function saveMinutesStructured(){
+  syncMinutesDraftFromDOM();
+  const d=window._minDraft;
+  if(!d) return;
+  const cleanDP=d.discussionPoints.filter(p=>p.topic||p.discussion||p.decision);
+  const cleanAI=d.actionItems.filter(a=>a.task);
+  D.meetings=(D.meetings||[]).map(m=>m.id==d.mid?{...m,minutesData:{
+    chair:d.chair,conductor:d.conductor,
+    discussionPoints:cleanDP,actionItems:cleanAI,
+    nextMeetingDate:d.nextMeetingDate,closing:d.closing
+  }}:m);
+  logActivity("meeting",`কার্যবিবরণী সংরক্ষণ করা হয়েছে`);
   sv();toast("✅ কার্যবিবরণী সেভ হয়েছে");
-  document.getElementById("minutes-modal").style.display="none";
+  closeMinutesModal();
   goTab("meeting");
 }
 
@@ -6212,19 +6436,36 @@ function meetingPDF(mid){
   const mt=(D.meetings||[]).find(m=>m.id==mid);if(!mt)return;
   const members=D.members||[];
   const attendance=mt.attendance||{};
-  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>body{font-family:Arial,sans-serif;padding:30px;color:#111;font-size:13px}
-  h1{color:#006400;border-bottom:3px solid #006400;padding-bottom:8px}
-  table{width:100%;border-collapse:collapse}th{background:#006400;color:#fff;padding:8px}td{padding:7px;border-bottom:1px solid #e2e8f0}
-  .agenda{background:#f8fafc;border-radius:8px;padding:12px;white-space:pre-line;margin:10px 0}</style></head><body>
-  <h1>🪁 স্বপ্নঘুড়ি — মিটিং রিপোর্ট</h1>
-  <p><b>বিষয়:</b> ${mt.title}<br><b>তারিখ:</b> ${mt.date||"—"}<br><b>স্থান:</b> ${mt.place||"—"}<br><b>ধরন:</b> ${mt.type||"সভা"}</p>
-  ${mt.agenda?`<div class="agenda"><b>এজেন্ডা:</b><br>${mt.agenda}</div>`:""}
-  <h2>উপস্থিতি</h2>
-  <table><thead><tr><th>সদস্য</th><th>উপস্থিত</th></tr></thead><tbody>
-  ${members.map(m=>`<tr><td>${m.name}</td><td>${attendance[m.id]?"✅ উপস্থিত":"❌ অনুপস্থিত"}</td></tr>`).join("")}
+  const presentCount=Object.values(attendance).filter(x=>x).length;
+  const md=mt.minutesData||{};
+  const dp=(md.discussionPoints||[]).filter(p=>p.topic||p.discussion||p.decision);
+  const ai=(md.actionItems||[]).filter(a=>a.task);
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${pdfStyle}</style></head><body>
+  ${pdfWM()}${pdfBtn()}
+  <h1>🪁 স্বপ্নঘুড়ি — সভার কার্যবিবরণী</h1>
+  <div class="meta">তৈরির তারিখ: ${new Date().toLocaleDateString("bn-BD")}</div>
+  <p><b>বিষয়:</b> ${mt.title}<br><b>তারিখ ও সময়:</b> ${mt.date?ds(mt.date):"—"}<br><b>স্থান:</b> ${mt.place||"—"}<br><b>ধরন:</b> ${mt.type||"সভা"}
+  ${md.chair?`<br><b>সভাপতিত্ব করেন:</b> ${md.chair}`:""}${md.conductor?`<br><b>কার্যবিবরণী লিখেছেন:</b> ${md.conductor}`:""}</p>
+  ${mt.agenda?`<h2>এজেন্ডা</h2><div style="background:#f8fafc;border-radius:8px;padding:12px;white-space:pre-line;margin:10px 0">${mt.agenda}</div>`:""}
+  <h2>উপস্থিতি (${bnNum(presentCount)}/${bnNum(members.length)} জন)</h2>
+  <table><thead><tr><th>সদস্য</th><th>উপস্থিতি</th></tr></thead><tbody>
+  ${members.map(m=>`<tr><td style="text-align:left">${m.name}</td><td style="color:${attendance[m.id]?"#16a34a":"#dc2626"};font-weight:600">${attendance[m.id]?"✅ উপস্থিত":"❌ অনুপস্থিত"}</td></tr>`).join("")}
   </tbody></table>
-  ${mt.minutes?`<h2>কার্যবিবরণী</h2><div class="agenda">${mt.minutes}</div>`:""}
+  ${dp.length?`<h2>আলোচ্য বিষয় ও গৃহীত সিদ্ধান্ত</h2>
+  <table><thead><tr><th style="width:6%">ক্র.</th><th>আলোচ্য বিষয়</th><th>আলোচনা</th><th>সিদ্ধান্ত</th></tr></thead><tbody>
+  ${dp.map((p,i)=>`<tr><td>${bnNum(i+1)}</td><td style="text-align:left">${p.topic||"—"}</td><td style="text-align:left">${p.discussion||"—"}</td><td style="text-align:left;color:#006400;font-weight:600">${p.decision||"—"}</td></tr>`).join("")}
+  </tbody></table>`:""}
+  ${ai.length?`<h2>সিদ্ধান্ত বাস্তবায়ন / করণীয়</h2>
+  <table><thead><tr><th style="width:6%">ক্র.</th><th>কাজ</th><th>দায়িত্বে</th><th>সময়সীমা</th><th>অবস্থা</th></tr></thead><tbody>
+  ${ai.map((a,i)=>`<tr><td>${bnNum(i+1)}</td><td style="text-align:left">${a.task}</td><td>${a.assignee||"—"}</td><td>${a.deadline?ds(a.deadline):"—"}</td><td style="color:${a.status==="সম্পন্ন"?"#16a34a":"#d97706"};font-weight:600">${a.status||"চলমান"}</td></tr>`).join("")}
+  </tbody></table>`:""}
+  ${!dp.length&&!ai.length&&mt.minutes?`<h2>কার্যবিবরণী</h2><div style="background:#f8fafc;border-radius:8px;padding:12px;white-space:pre-line;margin:10px 0">${mt.minutes}</div>`:""}
+  ${md.nextMeetingDate?`<p><b>পরবর্তী সভার তারিখ:</b> ${ds(md.nextMeetingDate)}</p>`:""}
+  ${md.closing?`<p style="font-style:italic">${md.closing}</p>`:""}
+  <table style="margin-top:40px;border:none"><tr style="border:none">
+    <td style="border:none;text-align:center;width:50%"><div style="border-top:1px solid #64748b;width:70%;margin:30px auto 6px">&nbsp;</div>সভাপতির স্বাক্ষর</td>
+    <td style="border:none;text-align:center;width:50%"><div style="border-top:1px solid #64748b;width:70%;margin:30px auto 6px">&nbsp;</div>সম্পাদকের স্বাক্ষর</td>
+  </tr></table>
   </body></html>`;
   const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);
 }
@@ -6909,7 +7150,17 @@ pdfDownload=function(type){
       ${mt.agenda?`<tr><td>এজেন্ডা</td><td style="text-align:left">${mt.agenda}</td></tr>`:""}
       <tr><td>উপস্থিত</td><td style="text-align:left;color:#16a34a">${present||"কেউ নয়"}</td></tr>
       <tr><td>অনুপস্থিত</td><td style="text-align:left;color:#dc2626">${absent||"সবাই উপস্থিত"}</td></tr>
-      ${mt.minutes?`<tr><td>কার্যবিবরণী</td><td style="text-align:left">${mt.minutes}</td></tr>`:""}
+      ${(()=>{
+        const md=mt.minutesData||{};
+        const dp=(md.discussionPoints||[]).filter(p=>p.topic||p.discussion||p.decision);
+        const ai=(md.actionItems||[]).filter(a=>a.task);
+        if(dp.length||ai.length){
+          const dpTxt=dp.map((p,i)=>`${i+1}. ${p.topic||""}${p.decision?" — সিদ্ধান্ত: "+p.decision:""}`).join("<br>");
+          const aiTxt=ai.map(a=>`• ${a.task}${a.assignee?" ("+a.assignee+")":""}${a.status?" ["+a.status+"]":""}`).join("<br>");
+          return `${dpTxt?`<tr><td>আলোচ্য বিষয়</td><td style="text-align:left">${dpTxt}</td></tr>`:""}${aiTxt?`<tr><td>করণীয়</td><td style="text-align:left">${aiTxt}</td></tr>`:""}`;
+        }
+        return mt.minutes?`<tr><td>কার্যবিবরণী</td><td style="text-align:left">${mt.minutes}</td></tr>`:"";
+      })()}
       </tbody></table></div>`;
     }).join("")}
     </body></html>`;
