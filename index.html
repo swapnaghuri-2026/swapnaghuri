@@ -455,6 +455,7 @@ const TABS = [
     {id:"news",icon:"📰",label:"নিউজ ফিড"},
     {id:"meeting",icon:"📅",label:"মিটিং"},
     {id:"msgtemplate",icon:"✉️",label:"বার্তা টেম্পলেট"},
+    {id:"complaint",icon:"📝",label:"অভিযোগ/পরামর্শ"},
     {id:"report",icon:"📊",label:"রিপোর্ট সেন্টার"},
     {id:"history",icon:"🕘",label:"কার্যক্রম ইতিহাস"},
     {id:"trash",icon:"🗑️",label:"ট্র্যাশ",adminOnly:true},
@@ -474,6 +475,7 @@ const SEED = {
   paymentInfo:{bank:[],mobile:[]},
   msgTemplates:[],
   formerMembers:[],
+  complaints:[],
   trash:[]
 };
 
@@ -718,6 +720,7 @@ const TRASH_META = {
   goal:        {arr:"goals",         icon:"🎯", label:"লক্ষ্যমাত্রা"},
   member:      {arr:"members",       icon:"👤", label:"সদস্য"},
   opinion:     {arr:"opinions",      icon:"💬", label:"মতামত"},
+  complaint:   {arr:"complaints",    icon:"📝", label:"অভিযোগ/পরামর্শ"},
   gallery:     {arr:"gallery",       icon:"🖼️", label:"গ্যালারি"},
   rule:        {arr:"rules",         icon:"📜", label:"নিয়ম"},
   bankInfo:    {arr:"bank", nested:"paymentInfo", icon:"🏦", label:"ব্যাংক তথ্য"},
@@ -1361,7 +1364,7 @@ function goTab(id){
   closeSB();
   const c=document.getElementById("content");
   c.className="content pa";c.innerHTML="";
-  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,trash:pgTrash,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate,formermembers:pgFormerMembers};
+  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,trash:pgTrash,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate,formermembers:pgFormerMembers,complaint:pgComplaint};
   if(pages[id]){
     try{
       c.innerHTML=pages[id]();
@@ -1504,6 +1507,13 @@ function getNotifications(){
   (D.loans||[]).filter(l=>l.remaining>0).forEach(l=>{
     list.push({id:"loan-"+l.id,icon:"🤝",text:gn(l.mid)+" — বকেয়া ঋণ "+fmt(l.remaining),date:"",type:"loan"});
   });
+  // অভিযোগ/পরামর্শ (শুধু অ্যাডমিন — অপেক্ষমাণ থাকলে)
+  if(isA()){
+    (D.complaints||[]).filter(c=>c.status==="অপেক্ষমাণ").forEach(c=>{
+      const preview=(c.text||"").slice(0,40)+((c.text||"").length>40?"...":"");
+      list.push({id:"complaint-"+c.id,icon:c.type==="অভিযোগ"?"📝":"💡",text:(c.type||"অভিযোগ")+": "+preview,date:c.date||"",type:"complaint"});
+    });
+  }
   // ডুপ্লিকেট বাদ
   const seen=new Set();
   return list.filter(n=>{if(seen.has(n.id))return false;seen.add(n.id);return true;});
@@ -3701,6 +3711,131 @@ function delOp(id){
   const tid=moveToTrash("opinion",`${gn(o.mid)}: ${(o.text||"").slice(0,40)}`,o);
   logActivity("opinion",`মতামত মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${gn(o.mid)}`);
   sv();undoToast("🗑 মতামত মুছে ফেলা হয়েছে",tid);goTab("opinion");
+}
+
+// ══════════════════════════════════════════
+// অভিযোগ/পরামর্শ সিস্টেম — সদস্যরা অভিযোগ বা পরামর্শ জমা দিতে পারবেন,
+// চাইলে বেনামে (Anonymous), অ্যাডমিন স্ট্যাটাস আপডেট ও উত্তর দিতে পারবেন।
+// ══════════════════════════════════════════
+const COMPLAINT_CATS=["আর্থিক","চাঁদা/ঋণ","ব্যবস্থাপনা","আচরণগত","নিয়মকানুন","অন্যান্য"];
+const COMPLAINT_STATUS=["অপেক্ষমাণ","পর্যালোচনাধীন","সমাধান হয়েছে","বাতিল"];
+const complaintStatusColor=s=>s==="সমাধান হয়েছে"?"#16a34a":s==="পর্যালোচনাধীন"?"#2563eb":s==="বাতিল"?"#64748b":"#d97706";
+function pgComplaint(){
+  const members=D.members||[];
+  const all=(D.complaints||[]).slice().reverse();
+  const fStatus=window._cpFilterStatus||"সব";
+  const fType=window._cpFilterType||"সব";
+  const list=all.filter(c=>(fStatus==="সব"||c.status===fStatus)&&(fType==="সব"||c.type===fType));
+
+  const pending=all.filter(c=>c.status==="অপেক্ষমাণ").length;
+  const resolved=all.filter(c=>c.status==="সমাধান হয়েছে").length;
+
+  const form=`<div class="card" style="margin-bottom:12px">${ch("📝","অভিযোগ / পরামর্শ জমা দিন","","p")}<div class="cb">
+    <div class="grid2">
+      <div class="field"><label>ধরন</label><select id="cpType"><option>অভিযোগ</option><option>পরামর্শ</option></select></div>
+      <div class="field"><label>বিভাগ</label><select id="cpCat">${COMPLAINT_CATS.map(c=>`<option>${c}</option>`).join("")}</select></div>
+    </div>
+    <div class="field" id="cpMemberField"><label>আপনি কে?</label><select id="cpM"><option value="">-- সদস্য বেছে নিন --</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>
+    <div class="field" style="display:flex;align-items:center;gap:8px;margin-top:-4px">
+      <input type="checkbox" id="cpAnon" style="width:auto" onchange="document.getElementById('cpMemberField').style.display=this.checked?'none':'block'">
+      <label for="cpAnon" style="margin:0;font-size:12px;color:#64748b;cursor:pointer">🕵️ বেনামে (Anonymous) জমা দিতে চাই — কেউ জানবে না কে জমা দিয়েছে</label>
+    </div>
+    <div class="field"><label>বিস্তারিত লিখুন</label><textarea id="cpText" placeholder="আপনার অভিযোগ বা পরামর্শ বিস্তারিত লিখুন..."></textarea></div>
+    <button class="btn" style="background:${GR.p};color:#fff" onclick="addComplaint()">📤 জমা দিন</button>
+  </div></div>`;
+
+  const stats=`<div class="grid4" style="margin-bottom:12px">
+    ${[["📋","মোট",all.length,"#006400"],["⏳","অপেক্ষমাণ",pending,"#d97706"],["✅","সমাধান হয়েছে",resolved,"#16a34a"],["📝","সর্বমোট অভিযোগ",all.filter(c=>c.type==="অভিযোগ").length,"#dc2626"]].map(([i,l,v,c])=>`
+      <div class="card" style="text-align:center;padding:10px"><div style="font-size:18px">${i}</div><div style="font-weight:800;font-size:16px;color:${c}">${v}</div><div style="font-size:10px;color:#94a3b8">${l}</div></div>`).join("")}
+  </div>`;
+
+  const filters=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <select onchange="window._cpFilterType=this.value;goTab('complaint')" style="padding:7px 10px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit">
+      ${["সব","অভিযোগ","পরামর্শ"].map(t=>`<option${t===fType?" selected":""}>${t}</option>`).join("")}
+    </select>
+    <select onchange="window._cpFilterStatus=this.value;goTab('complaint')" style="padding:7px 10px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit">
+      ${["সব",...COMPLAINT_STATUS].map(s=>`<option${s===fStatus?" selected":""}>${s}</option>`).join("")}
+    </select>
+  </div>`;
+
+  const cards=list.map(c=>{
+    const submitter=c.anonymous?"🕵️ বেনামে":gn(c.mid);
+    const typeColor=c.type==="অভিযোগ"?"#dc2626":"#2563eb";
+    const typeBg=c.type==="অভিযোগ"?"#fee2e2":"#eff6ff";
+    const sColor=complaintStatusColor(c.status);
+    return `<div class="card" style="margin-bottom:10px">
+      <div style="padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            ${bdg(c.type,typeColor,typeBg)}
+            ${bdg(c.category||"অন্যান্য","#475569","#f1f5f9")}
+            ${bdg(c.status,"#fff",sColor)}
+          </div>
+          ${isA()?`<button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delComplaint(${c.id})">🗑</button>`:""}
+        </div>
+        <div style="font-size:13px;line-height:1.75;margin-bottom:8px;color:var(--ink)">${c.text}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:${c.reply?"10px":"0"}">👤 ${submitter} · 🗓️ ${ds(c.date)}</div>
+        ${c.reply?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px;margin-top:8px">
+          <div style="font-size:11px;font-weight:700;color:#006400;margin-bottom:4px">✅ কমিটির উত্তর</div>
+          <div style="font-size:12.5px;color:#166534;line-height:1.6">${c.reply}</div>
+        </div>`:""}
+        ${isA()?`<div style="border-top:1px solid #f1f5f9;margin-top:10px;padding-top:10px">
+          <div class="grid2" style="margin-bottom:8px">
+            <div class="field" style="margin-bottom:0"><label style="font-size:10px">স্ট্যাটাস পরিবর্তন</label>
+              <select id="cps-${c.id}" style="width:100%;padding:6px;border-radius:7px;border:1.5px solid #e2e8f0;font-size:11.5px;font-family:inherit">
+                ${COMPLAINT_STATUS.map(s=>`<option${s===c.status?" selected":""}>${s}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+          <textarea id="cpr-${c.id}" placeholder="উত্তর লিখুন (ঐচ্ছিক)..." style="width:100%;min-height:50px;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12px;font-family:inherit;box-sizing:border-box;margin-bottom:8px">${c.reply||""}</textarea>
+          <button class="btn btn-sm btn-g" onclick="saveComplaintUpdate(${c.id})">✅ সেভ করুন</button>
+        </div>`:""}
+      </div>
+    </div>`;
+  }).join("")||`<div style="text-align:center;padding:40px;color:#94a3b8">📝 কোনো অভিযোগ/পরামর্শ নেই</div>`;
+
+  return `<div style="margin-bottom:12px"><div class="section-title">📝 অভিযোগ/পরামর্শ সিস্টেম</div><div class="section-sub">সদস্যদের অভিযোগ ও পরামর্শ — স্বচ্ছভাবে ট্র্যাক করুন</div></div>
+  ${stats}${form}${filters}${cards}`;
+}
+function addComplaint(){
+  const anon=document.getElementById("cpAnon").checked;
+  const mRaw=document.getElementById("cpM").value;
+  const type=document.getElementById("cpType").value;
+  const category=document.getElementById("cpCat").value;
+  const text=document.getElementById("cpText").value.trim();
+  if(!text){toast("⚠️ বিস্তারিত লিখুন","#d97706");return;}
+  if(!anon&&!mRaw){toast("⚠️ সদস্য বেছে নিন অথবা বেনামে জমা দিন","#d97706");return;}
+  D.complaints=[...(D.complaints||[]),{
+    id:Date.now(),
+    mid:anon?null:Number(mRaw),
+    anonymous:anon,
+    type,category,text,
+    date:new Date().toISOString().slice(0,10),
+    status:"অপেক্ষমাণ",
+    reply:"",
+    repliedAt:null,
+    createdAt:new Date().toISOString()
+  }];
+  logActivity("complaint",`নতুন ${type} জমা হয়েছে${anon?" (বেনামে)":""}: ${text.slice(0,40)}`);
+  sv();toast("✅ জমা হয়েছে, ধন্যবাদ!");goTab("complaint");
+}
+function saveComplaintUpdate(id){
+  if(!isA()){toast("⚠️ শুধু অ্যাডমিন পারবেন","#d97706");return;}
+  const statusEl=document.getElementById("cps-"+id);
+  const replyEl=document.getElementById("cpr-"+id);
+  const status=statusEl?statusEl.value:"অপেক্ষমাণ";
+  const reply=replyEl?replyEl.value.trim():"";
+  D.complaints=(D.complaints||[]).map(c=>c.id===id?{...c,status,reply,repliedAt:reply?new Date().toISOString():c.repliedAt}:c);
+  logActivity("complaint",`অভিযোগ/পরামর্শের স্ট্যাটাস আপডেট হয়েছে: ${status}`);
+  sv();toast("✅ আপডেট হয়েছে");goTab("complaint");
+}
+function delComplaint(id){
+  const c=(D.complaints||[]).find(x=>x.id===id);
+  if(!c)return;
+  D.complaints=(D.complaints||[]).filter(x=>x.id!==id);
+  const tid=moveToTrash("complaint",`${c.type}: ${(c.text||"").slice(0,40)}`,c);
+  logActivity("complaint",`অভিযোগ/পরামর্শ মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${(c.text||"").slice(0,40)}`);
+  sv();undoToast("🗑 মুছে ফেলা হয়েছে",tid);goTab("complaint");
 }
 
 function pgGallery(){
