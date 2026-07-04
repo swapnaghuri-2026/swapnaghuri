@@ -453,6 +453,7 @@ const TABS = [
     {id:"expenses",icon:"📤",label:"আয়-ব্যয় বিবরণী"},
     {id:"balance",icon:"⚖️",label:"ব্যালেন্স শিট"},
     {id:"duessheet",icon:"📊",label:"চাঁদার শিট"},
+    {id:"latefee",icon:"⏰",label:"জরিমানা/লেট ফি"},
   ]},
   {sec:"সদস্য ব্যবস্থাপনা",items:[
     {id:"members",icon:"👥",label:"সদস্যবৃন্দ"},
@@ -465,6 +466,7 @@ const TABS = [
     {id:"news",icon:"📰",label:"নিউজ ফিড"},
     {id:"meeting",icon:"📅",label:"মিটিং"},
     {id:"msgtemplate",icon:"✉️",label:"বার্তা টেম্পলেট"},
+    {id:"massmsg",icon:"📣",label:"গণ-বার্তা"},
     {id:"complaint",icon:"📝",label:"অভিযোগ/পরামর্শ"},
     {id:"report",icon:"📊",label:"রিপোর্ট সেন্টার"},
     {id:"history",icon:"🕘",label:"কার্যক্রম ইতিহাস"},
@@ -486,6 +488,9 @@ const SEED = {
   msgTemplates:[],
   formerMembers:[],
   complaints:[],
+  massMessages:[],
+  lateFeeConfig:{enabled:false, graceDays:15, feeType:"fixed", feeAmount:50, maxCap:0},
+  lateFees:[],
   trash:[]
 };
 
@@ -741,6 +746,8 @@ const TRASH_META = {
   meeting:     {arr:"meetings",      icon:"📅", label:"মিটিং"},
   msgTemplate: {arr:"msgTemplates",  icon:"✉️", label:"বার্তা টেম্পলেট"},
   formerMember:{arr:"formerMembers", icon:"🚪", label:"পূর্ব সদস্য"},
+  massMsg:     {arr:"massMessages",  icon:"📣", label:"গণ-বার্তা"},
+  lateFee:     {arr:"lateFees",      icon:"⏰", label:"জরিমানা/লেট ফি"},
 };
 function trashGetArr(entity){
   const meta=TRASH_META[entity];
@@ -1375,7 +1382,7 @@ function goTab(id){
   closeSB();
   const c=document.getElementById("content");
   c.className="content pa";c.innerHTML="";
-  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,trash:pgTrash,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate,formermembers:pgFormerMembers,complaint:pgComplaint};
+  const pages={home:pgHome,notice:pgNotice,news:pgNews,goals:pgGoals,savings:pgSavings,loans:pgLoans,invest:pgInvest,assets:pgAssets,expenses:pgExpenses,balance:pgBalance,members:pgMembers,opinion:pgOpinion,gallery:pgGallery,rules:pgRules,duessheet:pgDuesSheet,memberstat:pgMemberStat,voting:pgVoting,meeting:pgMeeting,health:pgHealth,report:pgReport,history:pgHistory,trash:pgTrash,visitors:pgVisitors,payment:pgPayment,msgtemplate:pgMsgTemplate,formermembers:pgFormerMembers,complaint:pgComplaint,massmsg:pgMassMsg,latefee:pgLateFee};
   if(pages[id]){
     try{
       c.innerHTML=pages[id]();
@@ -1505,6 +1512,10 @@ function getNotifications(){
   (D.notices||[]).slice().reverse().forEach(n=>{
     list.push({id:"notice-"+n.id,icon:"📢",text:"নতুন নোটিশ: "+n.title,date:n.date||"",type:"notice"});
   });
+  // গণ-বার্তা
+  (D.massMessages||[]).slice().reverse().forEach(n=>{
+    list.push({id:"massmsg-"+n.id,icon:"📣",text:"নতুন গণ-বার্তা: "+n.title,date:n.date||"",type:"massmsg"});
+  });
   // মিটিং
   (D.meetings||[]).filter(m=>m.date>=new Date().toISOString().slice(0,10)).slice(0,3).forEach(m=>{
     list.push({id:"meet-"+m.id,icon:"📅",text:"আসন্ন মিটিং: "+m.title+" ("+ds(m.date)+")",date:m.date,type:"meeting"});
@@ -1518,6 +1529,12 @@ function getNotifications(){
   (D.loans||[]).filter(l=>l.remaining>0).forEach(l=>{
     list.push({id:"loan-"+l.id,icon:"🤝",text:gn(l.mid)+" — বকেয়া ঋণ "+fmt(l.remaining),date:"",type:"loan"});
   });
+  // বকেয়া জরিমানা (শুধু অ্যাডমিন)
+  if(isA()){
+    (D.lateFees||[]).filter(f=>!f.waived&&!f.collected).forEach(f=>{
+      list.push({id:"latefee-"+f.id,icon:"⏰",text:gn(f.mid)+" — বকেয়া জরিমানা "+fmt(f.amount)+" ("+f.month+")",date:"",type:"latefee"});
+    });
+  }
   // অভিযোগ/পরামর্শ (শুধু অ্যাডমিন — অপেক্ষমাণ থাকলে)
   if(isA()){
     (D.complaints||[]).filter(c=>c.status==="অপেক্ষমাণ").forEach(c=>{
@@ -1587,6 +1604,7 @@ document.addEventListener("click",function(e){
 // HOME / DASHBOARD
 // ══════════════════
 function pgHome(){
+  try{ syncAutoLateFees(); }catch(e){ console.error("syncAutoLateFees error:",e); }
   const loans=D.loans||[], members=D.members||[], payments=D.payments||[];
   const totalLoan=loans.reduce((s,l)=>s+l.principal,0);
   const totalDue=loans.reduce((s,l)=>s+l.remaining,0);
@@ -2344,7 +2362,7 @@ function pgExpenses(){
   const totalInc=income.reduce((s,i)=>s+i.amount,0)+payments.reduce((s,p)=>s+p.amount,0);
   const totalExp=expenses.reduce((s,e)=>s+e.amount,0);
   const profit=totalInc-totalExp;
-  const incCats=["সদস্য চাঁদা","মুনাফা আয়","বিনিয়োগ আয়","জমি বিক্রয়","অনুদান","অন্যান্য"];
+  const incCats=["সদস্য চাঁদা","মুনাফা আয়","বিনিয়োগ আয়","জমি বিক্রয়","অনুদান","জরিমানা/লেট ফি","অন্যান্য"];
   const expCats=["পরিচালন ব্যয়","ঋণ বিতরণ","জমি ক্রয়","অফিস","যাতায়াত","বিবিধ"];
 
   const iForm=isA()?`<div class="card">${ch("📥","আয় যোগ করুন","","teal")}<div class="cb">
@@ -2836,6 +2854,7 @@ function delGoal(id){
 // MEMBERS
 // ══════════════════
 function pgMembers(){
+  syncAutoLateFees();
   const members=D.members||[], payments=D.payments||[], loans=D.loans||[];
   const mRoles=["সভাপতি","সম্পাদক","কোষাধ্যক্ষ","সদস্য","উপদেষ্টা"];
   const rG={সভাপতি:GR.gold,সম্পাদক:GR.b,কোষাধ্যক্ষ:GR.g,সদস্য:GR.g,উপদেষ্টা:GR.p};
@@ -2941,6 +2960,14 @@ function buildMemberCard(m,payments,loans,duesListAll,allMeetings,totalFundAll,r
         ${m.join?`<div style="font-size:11px;color:#94a3b8;margin-top:3px">যোগদান: ${m.join}</div>`:""}
         <div style="font-size:11px;color:#94a3b8;margin-top:3px">💼 তহবিলে অংশ: ${fmt(fundShare)}</div>
         <div style="font-size:11px;color:#1a8a00;margin-top:3px;font-weight:700">📌 বর্তমান চাঁদার হার: ${fmt(getApplicableRate(m.id,curMon))}</div>
+        ${dueChada>0?(function(){const rs=calcMemberRiskScore(m);return `<div style="margin-top:8px;background:${rs.levelColor}14;border:1px solid ${rs.levelColor}44;border-radius:8px;padding:7px 9px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:11px;font-weight:700;color:${rs.levelColor}">${rs.levelLabel}</span>
+            <span style="font-size:11px;font-weight:800;color:${rs.levelColor}">স্কোর ${rs.score}</span>
+          </div>
+          <div style="font-size:10px;color:#64748b;margin-top:3px">${rs.missedStreak>0?`⏳ ${rs.missedStreak} মাস ধারাবাহিক বকেয়া`:"✅ ধারাবাহিক বকেয়া নেই"}${rs.hasLoanDue?" · 🤝 ঋণও বকেয়া":""}</div>
+        </div>`;})():""}
+        ${(function(){const lf=getMemberLateFeeTotal(m.id);return lf>0?`<div style="margin-top:6px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:6px 9px;font-size:11px;color:#c2410c;font-weight:700">⏰ বকেয়া জরিমানা: ${fmt(lf)}</div>`:"";})()}
         <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
           <button onclick="openMemberProfile(${m.id})" style="font-size:11px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:5px 10px;cursor:pointer;color:#006400;font-weight:600">👤 প্রোফাইল</button>
           <button onclick="memberStatPDF(${m.id})" style="font-size:11px;background:#fee2e2;border:none;border-radius:6px;padding:5px 10px;cursor:pointer;color:#dc2626">📄 স্টেটমেন্ট PDF</button>
@@ -4032,8 +4059,8 @@ function delRule(i){
 // ══════════════════════════════════════════
 // FORMAT TEXT IN NOTICE
 // ══════════════════════════════════════════
-function fmtText(type) {
-  const ta = document.getElementById("ntB");
+function fmtText(type, taId="ntB") {
+  const ta = document.getElementById(taId);
   if(!ta) return;
   const start = ta.selectionStart, end = ta.selectionEnd;
   const sel = ta.value.substring(start, end);
@@ -5250,6 +5277,30 @@ function pgDuesSheet() {
       </div>
     </div>
 
+    <!-- বকেয়া সদস্যদের ঝুঁকি স্কোর -->
+    ${(()=>{
+      const atRisk=getDuesList().map(dm=>({m:dm,rs:calcMemberRiskScore(dm)})).sort((a,b)=>b.rs.score-a.rs.score);
+      if(!atRisk.length) return "";
+      const rows=atRisk.map(({m,rs})=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap">
+          <div style="flex:1;min-width:120px">
+            <div style="font-weight:700;font-size:13px">${m.name}</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px">${rs.missedStreak>0?`⏳ ${rs.missedStreak} মাস ধারাবাহিক বকেয়া`:"—"}${rs.hasLoanDue?" · 🤝 ঋণও বকেয়া":""} · 📅 উপস্থিতি ${rs.attPct}%</div>
+          </div>
+          <div style="font-size:12px;font-weight:700;color:#dc2626;white-space:nowrap">${fmt(rs.totalDue)}</div>
+          <div style="min-width:110px;text-align:right">
+            <span style="font-size:10px;font-weight:700;color:${rs.levelColor}">${rs.levelLabel}</span>
+            <div style="background:#e2e8f0;border-radius:99px;height:6px;overflow:hidden;margin-top:4px;width:90px">
+              <div style="background:${rs.levelColor};height:100%;width:${rs.score}%;border-radius:99px"></div>
+            </div>
+          </div>
+        </div>`).join("");
+      return `<div class="card" style="margin-bottom:14px">
+        ${ch("🎯","বকেয়া সদস্যদের ঝুঁকি স্কোর",`${atRisk.length} জন বকেয়াধারী — ঝুঁকি অনুযায়ী সাজানো`,"gold")}
+        <div style="max-height:420px;overflow-y:auto">${rows}</div>
+      </div>`;
+    })()}
+
     <!-- ফর্মুলা summary -->
     <div class="card" style="margin-bottom:12px">
       ${ch("📐","ফর্মুলা: নিয়মিত মাস (পরিবর্তনশীল হার) + বিশেষ চাঁদা = সর্বমোট")}
@@ -5488,6 +5539,254 @@ function getDuesList() {
     const totalDue = totalExpected - totalPaid;
     return { ...m, totalExpected, totalPaid, totalDue, months: memberMonths.length };
   }).filter(m => m.totalDue > 0).sort((a,b) => b.totalDue - a.totalDue);
+}
+
+// ══════════════════════════════════════════
+// বকেয়া সদস্যদের ঝুঁকি স্কোর (Risk Score)
+// একজন সদস্যের বকেয়ার ঝুঁকি নির্ণয় করে ৪টি বিষয় দেখে:
+// ১) মোট প্রত্যাশিত চাঁদার কত শতাংশ বকেয়া (দায়ের অনুপাত)
+// ২) সাম্প্রতিক কত মাস ধারাবাহিকভাবে চাঁদা দেননি
+// ৩) কোনো ঋণ বকেয়া আছে কিনা
+// ৪) মিটিং উপস্থিতির হার (কম উপস্থিতি = বিচ্ছিন্নতা/ঝুঁকির লক্ষণ)
+// স্কোর: ০ (ঝুঁকিহীন) — ১০০ (সর্বোচ্চ ঝুঁকি)
+// ══════════════════════════════════════════
+function calcMemberRiskScore(m){
+  const payments=(D.payments||[]).filter(p=>p.mid==m.id);
+  const loans=(D.loans||[]).filter(l=>l.mid==m.id);
+  const meetings=D.meetings||[];
+  const specialMonths=(D.specialMonths||[]).filter(s=>s.mid==m.id);
+
+  let startDate=ORG_START;
+  const jRaw=m.join||m.joinDate||"";
+  if(jRaw){
+    const parts=jRaw.split("-");
+    if(parts.length>=2){const jd=new Date(Number(parts[0]),Number(parts[1])-1,1);if(!isNaN(jd.getTime())&&jd>ORG_START)startDate=jd;}
+  }
+  const months=[];
+  let d=new Date(startDate.getFullYear(),startDate.getMonth(),1);
+  const now4=new Date();
+  while(d<=now4){months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d=new Date(d.getFullYear(),d.getMonth()+1,1);}
+
+  let totalExpected=0;
+  months.forEach(mon=>{const sp=specialMonths.find(s=>s.month===mon);totalExpected+=getApplicableRate(m.id,mon)+(sp?sp.amount:0);});
+  const totalPaid=payments.reduce((s,p)=>s+p.amount,0);
+  const totalDue=Math.max(0,totalExpected-totalPaid);
+  const dueRatio=totalExpected?Math.min(1,totalDue/totalExpected):0;
+
+  // সাম্প্রতিক ধারাবাহিক অপরিশোধিত মাস (শেষ মাস থেকে পিছনের দিকে গণনা)
+  let missedStreak=0;
+  for(let i=months.length-1;i>=0;i--){
+    const paid=payments.find(p=>p.month===months[i]);
+    if(paid) break;
+    missedStreak++;
+  }
+
+  const loanDue=loans.reduce((s,l)=>s+(l.remaining||0),0);
+  const hasLoanDue=loanDue>0;
+
+  const attCount=meetings.filter(mt=>(mt.attendance||{})[m.id]).length;
+  const attPct=meetings.length?Math.round(attCount/meetings.length*100):100;
+
+  const dueScore=dueRatio*100;
+  const streakScore=Math.min(100,missedStreak*15);
+  const loanScore=hasLoanDue?100:0;
+  const attScore=100-attPct;
+
+  const score=Math.max(0,Math.min(100,Math.round(dueScore*0.45+streakScore*0.30+loanScore*0.15+attScore*0.10)));
+  const level=score>=70?"critical":score>=45?"high":score>=20?"medium":"low";
+  const levelLabel=score>=70?"🔴 অতি উচ্চ ঝুঁকি":score>=45?"🟠 উচ্চ ঝুঁকি":score>=20?"🟡 মাঝারি ঝুঁকি":"🟢 নিম্ন ঝুঁকি";
+  const levelColor=score>=70?"#dc2626":score>=45?"#d97706":score>=20?"#ca8a04":"#16a34a";
+
+  return {score,level,levelLabel,levelColor,dueRatioPct:Math.round(dueRatio*100),missedStreak,hasLoanDue,loanDue,attPct,totalDue};
+}
+
+// ══════════════════════════════════════════
+// স্বয়ংক্রিয় জরিমানা/লেট ফি (Auto Late Fee)
+// এডমিন একটি নিয়ম সেট করেন (গ্রেস পিরিয়ড + জরিমানার হার) — সিস্টেম নিজে থেকেই
+// প্রতিটি বকেয়া মাসের জন্য জরিমানা তৈরি করে। পাশাপাশি এডমিন যেকোনো জরিমানা
+// এডিট/মওকুফ/মুছে ফেলতে পারেন, অথবা নিজে ম্যানুয়ালি জরিমানা যোগ করতে পারেন।
+// ══════════════════════════════════════════
+function getMemberMonthsList(m){
+  let startDate=ORG_START;
+  const jRaw=m.join||m.joinDate||"";
+  if(jRaw){
+    const parts=jRaw.split("-");
+    if(parts.length>=2){const jd=new Date(Number(parts[0]),Number(parts[1])-1,1);if(!isNaN(jd.getTime())&&jd>ORG_START)startDate=jd;}
+  }
+  const months=[];
+  let d=new Date(startDate.getFullYear(),startDate.getMonth(),1);
+  const now5=new Date();
+  while(d<=now5){months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d=new Date(d.getFullYear(),d.getMonth()+1,1);}
+  return months;
+}
+// একটি নির্দিষ্ট মাস কতদিন আগে "শেষ" হয়েছে (গ্রেস পিরিয়ড হিসাবের জন্য)
+function daysSinceMonthEnd(monthKey){
+  const [y,mo]=monthKey.split("-").map(Number);
+  const monthEnd=new Date(y,mo,0); // ঐ মাসের শেষ দিন
+  return Math.floor((Date.now()-monthEnd.getTime())/(24*60*60*1000));
+}
+// কনফিগ অনুযায়ী স্বয়ংক্রিয়ভাবে নতুন জরিমানা তৈরি করে (idempotent — একবার তৈরি হলে আবার তৈরি হয় না)
+function syncAutoLateFees(){
+  const cfg=D.lateFeeConfig||{enabled:false,graceDays:15,feeType:"fixed",feeAmount:50,maxCap:0};
+  if(!cfg.enabled) return;
+  if(!D.lateFees) D.lateFees=[];
+  const members=D.members||[];
+  const payments=D.payments||[];
+  let changed=false;
+  members.forEach(m=>{
+    const months=getMemberMonthsList(m);
+    const memberPayments=payments.filter(p=>p.mid==m.id);
+    months.forEach(mon=>{
+      const paid=memberPayments.find(p=>p.month===mon);
+      if(paid) return; // পরিশোধ হয়ে গেলে জরিমানা প্রযোজ্য নয়
+      if(daysSinceMonthEnd(mon)<cfg.graceDays) return; // এখনো গ্রেস পিরিয়ডের মধ্যে
+      const exists=D.lateFees.find(f=>f.mid==m.id&&f.month===mon&&f.type==="auto");
+      if(exists) return; // আগে থেকেই তৈরি আছে
+      let amount=cfg.feeType==="percent" ? Math.round(getApplicableRate(m.id,mon)*(cfg.feeAmount/100)) : Number(cfg.feeAmount||0);
+      if(cfg.maxCap>0) amount=Math.min(amount,cfg.maxCap);
+      if(amount<=0) return;
+      D.lateFees.push({id:Date.now()+"_"+Math.random().toString(36).slice(2,7),mid:m.id,month:mon,amount,type:"auto",reason:"",date:new Date().toISOString().slice(0,10),addedBy:"সিস্টেম",waived:false,collected:false,collectedAt:null,incomeId:null});
+      changed=true;
+    });
+  });
+  if(changed) sv();
+}
+function getMemberLateFeeTotal(mid){
+  return (D.lateFees||[]).filter(f=>f.mid==mid&&!f.waived&&!f.collected).reduce((s,f)=>s+f.amount,0);
+}
+function pgLateFee(){
+  if(!D.lateFees) D.lateFees=[];
+  if(!D.lateFeeConfig) D.lateFeeConfig={enabled:false,graceDays:15,feeType:"fixed",feeAmount:50,maxCap:0};
+  syncAutoLateFees();
+  const isAd=isA();
+  const cfg=D.lateFeeConfig;
+  const members=D.members||[];
+  const fees=(D.lateFees||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
+
+  const totalCharged=fees.reduce((s,f)=>s+f.amount,0);
+  const totalWaived=fees.filter(f=>f.waived).reduce((s,f)=>s+f.amount,0);
+  const totalCollected=fees.filter(f=>f.collected).reduce((s,f)=>s+f.amount,0);
+  const totalOutstanding=fees.filter(f=>!f.waived&&!f.collected).reduce((s,f)=>s+f.amount,0);
+
+  const stats=`<div class="grid4" style="margin-bottom:14px">
+    ${[["🧾","মোট জরিমানা",fmt(totalCharged),"#006400","#f0fdf4"],["⚠️","বকেয়া জরিমানা",fmt(totalOutstanding),"#dc2626","#fff1f2"],["✅","আদায়কৃত",fmt(totalCollected),"#16a34a","#f0fdf4"],["🎗️","মওকুফকৃত",fmt(totalWaived),"#7c3aed","#f5f3ff"]].map(([i,l,v,c,bg])=>`
+    <div class="kpi" style="background:${bg};text-align:center"><div class="ki">${i}</div><div class="kv" style="color:${c};font-size:16px">${v}</div><div class="kl">${l}</div></div>`).join("")}
+  </div>`;
+
+  const configPanel=isAd?`<div class="card" style="margin-bottom:12px">${ch("⚙️","স্বয়ংক্রিয় জরিমানা সেটিংস","সিস্টেম নিজে থেকেই বকেয়া মাসের জন্য জরিমানা তৈরি করবে","gold")}<div class="cb">
+    <div class="field" style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" id="lfEnabled" style="width:auto" ${cfg.enabled?"checked":""}>
+      <label for="lfEnabled" style="margin:0;cursor:pointer">✅ স্বয়ংক্রিয় জরিমানা ব্যবস্থা সক্রিয় করুন</label>
+    </div>
+    <div class="grid3">
+      <div class="field"><label>গ্রেস পিরিয়ড (দিন)</label><input type="number" id="lfGrace" value="${cfg.graceDays}" placeholder="15"></div>
+      <div class="field"><label>জরিমানার ধরন</label><select id="lfType" onchange="document.getElementById('lfAmtLabel').textContent=this.value==='percent'?'পরিমাণ (%)':'পরিমাণ (৳)'">
+        <option value="fixed" ${cfg.feeType==="fixed"?"selected":""}>নির্দিষ্ট টাকা</option>
+        <option value="percent" ${cfg.feeType==="percent"?"selected":""}>মাসিক চাঁদার হারের %</option>
+      </select></div>
+      <div class="field"><label id="lfAmtLabel">${cfg.feeType==="percent"?"পরিমাণ (%)":"পরিমাণ (৳)"}</label><input type="number" id="lfAmt" value="${cfg.feeAmount}" placeholder="50"></div>
+    </div>
+    <div class="field"><label>সর্বোচ্চ সীমা (৳, ঐচ্ছিক — ০ দিলে কোনো সীমা থাকবে না)</label><input type="number" id="lfCap" value="${cfg.maxCap}" placeholder="0"></div>
+    <div style="font-size:11px;color:#94a3b8;margin:-4px 0 10px">মাস শেষ হওয়ার ${cfg.graceDays} দিন পর কোনো মাসের চাঁদা বকেয়া থাকলে স্বয়ংক্রিয়ভাবে জরিমানা যোগ হবে। প্রতিটি বকেয়া মাসের জন্য একবারই জরিমানা তৈরি হয়।</div>
+    <button class="btn btn-gold" onclick="saveLateFeeConfig()">✅ সেটিংস সংরক্ষণ করুন</button>
+  </div></div>`:"";
+
+  const manualForm=isAd?`<div class="card" style="margin-bottom:12px">${ch("➕","ম্যানুয়াল জরিমানা যোগ করুন","বিশেষ ক্ষেত্রে সরাসরি জরিমানা ধার্য করুন","r")}<div class="cb">
+    <div class="grid2">
+      <div class="field"><label>সদস্য</label><select id="lfMid"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>
+      <div class="field"><label>মাস</label><input type="month" id="lfMonth" value="${curMon}"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>পরিমাণ (৳)</label><input type="number" id="lfManAmt" placeholder="0"></div>
+      <div class="field"><label>কারণ</label><input type="text" id="lfReason" placeholder="যেমন: সভায় অনুপস্থিতি"></div>
+    </div>
+    <button class="btn btn-r" onclick="addManualLateFee()">📤 জরিমানা যোগ করুন</button>
+  </div></div>`:"";
+
+  const rows=fees.map(f=>{
+    const statusBdg=f.waived?bdg("🎗️ মওকুফ","#7c3aed","#f5f3ff"):f.collected?bdg("✅ আদায়","#16a34a","#dcfce7"):bdg("⚠️ বকেয়া","#dc2626","#fee2e2");
+    const typeBdg=f.type==="auto"?bdg("⚙️ স্বয়ংক্রিয়","#2563eb","#eff6ff"):bdg("✍️ ম্যানুয়াল","#d97706","#fffbeb");
+    return `<tr>
+      <td style="font-weight:600;white-space:nowrap">${gn(f.mid)}</td>
+      <td style="white-space:nowrap">${f.month}</td>
+      <td style="font-weight:700;color:#dc2626;white-space:nowrap">${fmt(f.amount)}</td>
+      <td style="white-space:nowrap">${typeBdg}</td>
+      <td style="white-space:nowrap">${statusBdg}</td>
+      <td style="font-size:11px;color:#94a3b8">${f.reason||"-"}</td>
+      ${isAd?`<td style="white-space:nowrap;display:flex;gap:4px;flex-wrap:wrap">
+        ${!f.waived&&!f.collected?`<button class="btn btn-sm" style="padding:3px 8px;background:#f5f3ff;color:#7c3aed" onclick="waiveLateFee('${f.id}')">🎗️ মওকুফ</button>
+        <button class="btn btn-sm" style="padding:3px 8px;background:#dcfce7;color:#16a34a" onclick="collectLateFee('${f.id}')">✅ আদায়</button>`:""}
+        ${f.waived?`<button class="btn btn-sm" style="padding:3px 8px;background:#eff6ff;color:#2563eb" onclick="unwaiveLateFee('${f.id}')">↩️ বাতিল</button>`:""}
+        <button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delLateFee('${f.id}')">🗑</button>
+      </td>`:""}
+    </tr>`;
+  }).join("")||`<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:24px">কোনো জরিমানা নেই</td></tr>`;
+
+  return `
+    <div style="margin-bottom:12px"><div class="section-title">⏰ জরিমানা/লেট ফি</div><div class="section-sub">স্বয়ংক্রিয় নিয়ম + এডমিন নিয়ন্ত্রণ — উভয় পদ্ধতিতে জরিমানা ব্যবস্থাপনা</div></div>
+    ${stats}${configPanel}${manualForm}
+    <div class="card">
+      ${ch("📋","সকল জরিমানার তালিকা")}
+      <div style="overflow-x:auto"><table class="tbl">
+        <thead><tr><th>সদস্য</th><th>মাস</th><th>পরিমাণ</th><th>ধরন</th><th>অবস্থা</th><th>কারণ</th>${isAd?"<th></th>":""}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>`;
+}
+function saveLateFeeConfig(){
+  const enabled=document.getElementById("lfEnabled").checked;
+  const graceDays=Number(document.getElementById("lfGrace").value)||0;
+  const feeType=document.getElementById("lfType").value;
+  const feeAmount=Number(document.getElementById("lfAmt").value)||0;
+  const maxCap=Number(document.getElementById("lfCap").value)||0;
+  D.lateFeeConfig={enabled,graceDays,feeType,feeAmount,maxCap};
+  logActivity("lateFeeConfig",`জরিমানা সেটিংস আপডেট হয়েছে: ${enabled?"সক্রিয়":"নিষ্ক্রিয়"}, গ্রেস ${graceDays} দিন, ${feeType==="percent"?feeAmount+"%":fmt(feeAmount)}`);
+  sv();toast("✅ সেটিংস সংরক্ষিত হয়েছে");goTab("latefee");
+}
+function addManualLateFee(){
+  const mid=document.getElementById("lfMid").value;
+  const month=document.getElementById("lfMonth").value;
+  const amount=Number(document.getElementById("lfManAmt").value);
+  const reason=document.getElementById("lfReason").value.trim();
+  if(!showValidationErrors([
+    [!mid, "সদস্য নির্বাচন করুন"],
+    [!month, "মাস নির্বাচন করুন"],
+    [!!validateAmount(amount,"পরিমাণ"), validateAmount(amount,"পরিমাণ")||""],
+  ])) return;
+  if(!D.lateFees) D.lateFees=[];
+  D.lateFees.push({id:Date.now()+"_"+Math.random().toString(36).slice(2,7),mid:Number(mid),month,amount,type:"manual",reason,date:new Date().toISOString().slice(0,10),addedBy:"অ্যাডমিন",waived:false,collected:false,collectedAt:null,incomeId:null});
+  logActivity("lateFee",`ম্যানুয়াল জরিমানা যোগ হয়েছে: ${gn(Number(mid))} — ${fmt(amount)} (${month})`);
+  sv();toast("✅ জরিমানা যোগ হয়েছে");goTab("latefee");
+}
+function waiveLateFee(id){
+  const f=(D.lateFees||[]).find(x=>String(x.id)===String(id));
+  if(!f) return;
+  f.waived=true;
+  logActivity("lateFee",`জরিমানা মওকুফ করা হয়েছে: ${gn(f.mid)} — ${fmt(f.amount)} (${f.month})`);
+  sv();toast("🎗️ জরিমানা মওকুফ করা হয়েছে");goTab("latefee");
+}
+function unwaiveLateFee(id){
+  const f=(D.lateFees||[]).find(x=>String(x.id)===String(id));
+  if(!f) return;
+  f.waived=false;
+  sv();toast("↩️ মওকুফ বাতিল করা হয়েছে");goTab("latefee");
+}
+function collectLateFee(id){
+  const f=(D.lateFees||[]).find(x=>String(x.id)===String(id));
+  if(!f||f.collected) return;
+  const incId=Date.now();
+  D.income=[...(D.income||[]),{id:incId,title:`জরিমানা আদায় — ${gn(f.mid)} (${f.month})`,amount:f.amount,category:"জরিমানা/লেট ফি",date:new Date().toISOString().slice(0,10),note:f.reason||""}];
+  f.collected=true;f.collectedAt=new Date().toISOString();f.incomeId=incId;
+  logActivity("lateFee",`জরিমানা আদায় হয়েছে: ${gn(f.mid)} — ${fmt(f.amount)} (${f.month})`);
+  sv();toast("✅ জরিমানা আদায় ও আয় হিসেবে যোগ হয়েছে");goTab("latefee");
+}
+function delLateFee(id){
+  const f=(D.lateFees||[]).find(x=>String(x.id)===String(id));
+  if(!f) return;
+  D.lateFees=(D.lateFees||[]).filter(x=>String(x.id)!==String(id));
+  const tid=moveToTrash("lateFee",`${gn(f.mid)} — ${fmt(f.amount)} (${f.month})`,f);
+  logActivity("lateFee",`জরিমানা মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${gn(f.mid)} — ${fmt(f.amount)}`);
+  sv();undoToast("🗑 জরিমানা মুছে ফেলা হয়েছে",tid);goTab("latefee");
 }
 
 function renderChadaDues(){
@@ -6894,6 +7193,174 @@ function insertVar(text){
   ta.value=ta.value.substring(0,s)+text+ta.value.substring(e);
   ta.selectionStart=ta.selectionEnd=s+text.length;
   ta.focus();
+}
+
+// ══════════════════════════════════════════
+// গণ-বার্তা (Mass Message) — অ্যাডমিন একসাথে সব/বকেয়া/নির্দিষ্ট সদস্যকে
+// in-app বাল্ক নোটিশ পাঠাতে পারবেন। কে দেখেছেন তা ট্র্যাক হয় (সদস্য নিজে
+// "আমি দেখেছি" চিহ্নিত করেন — এই ডিভাইসে সংরক্ষিত পরিচয় দিয়ে)।
+// ══════════════════════════════════════════
+const MASSMSG_AUD_LABEL={all:"👥 সব সদস্য",due:"⚠️ বকেয়া সদস্যরা",custom:"🎯 নির্দিষ্ট সদস্য"};
+function pgMassMsg(){
+  if(!D.massMessages) D.massMessages=[];
+  const isAd=isA();
+  const members=D.members||[];
+  const dueMembers=getDuesList();
+  const myId=localStorage.getItem("sg_my_member_id")||"";
+
+  const stats=(()=>{
+    const msgs=D.massMessages||[];
+    const totalSent=msgs.length;
+    const totalRecipients=msgs.reduce((s,m)=>s+(m.recipientIds||[]).length,0);
+    const totalSeen=msgs.reduce((s,m)=>s+(m.seenBy||[]).length,0);
+    const seenPct=totalRecipients?Math.round(totalSeen/totalRecipients*100):0;
+    return `<div class="grid3" style="margin-bottom:12px">
+      ${[["📣","মোট বার্তা",totalSent,"#006400"],["👥","মোট প্রাপক",totalRecipients,"#2563eb"],["👁️","দেখেছেন",seenPct+"%","#16a34a"]].map(([i,l,v,c])=>`
+        <div class="card" style="text-align:center;padding:10px"><div style="font-size:18px">${i}</div><div style="font-weight:800;font-size:16px;color:${c}">${v}</div><div style="font-size:10px;color:#94a3b8">${l}</div></div>`).join("")}
+    </div>`;
+  })();
+
+  const form=isAd?`<div class="card" style="margin-bottom:12px">${ch("📣","নতুন গণ-বার্তা পাঠান","","gold")}<div class="cb">
+    <div class="field"><label>শিরোনাম</label><input id="mmT" placeholder="বার্তার শিরোনাম"></div>
+    <div class="field"><label>বিবরণ</label>
+      <div style="border:1.5px solid var(--border);border-radius:9px;overflow:hidden">
+        <div style="background:var(--bg);padding:6px 10px;display:flex;gap:6px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <button type="button" onclick="fmtText('bold','mmB')" style="background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:5px;padding:3px 8px;cursor:pointer;font-weight:700;font-size:12px">B</button>
+          <button type="button" onclick="fmtText('italic','mmB')" style="background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:5px;padding:3px 8px;cursor:pointer;font-style:italic;font-size:12px">I</button>
+          <button type="button" onclick="fmtText('ul','mmB')" style="background:var(--white);color:var(--ink);border:1px solid var(--border);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:12px">• তালিকা</button>
+        </div>
+        <textarea id="mmB" placeholder="বার্তা লিখুন..." style="width:100%;min-height:110px;padding:10px 13px;border:none;font-size:14px;font-family:inherit;outline:none;resize:vertical;background:var(--white);color:var(--ink)"></textarea>
+      </div>
+    </div>
+    ${(D.msgTemplates||[]).length?`<div class="field"><label>দ্রুত টেমপ্লেট থেকে পূরণ করুন (ঐচ্ছিক)</label><select id="mmTplPick" onchange="fillFromTemplate(this.value)"><option value="">-- টেমপ্লেট বেছে নিন --</option>${D.msgTemplates.map(t=>`<option value="${t.id}">${t.title}</option>`).join("")}</select></div>`:""}
+    <div class="field"><label>বার্তা পাবেন</label>
+      <select id="mmAud" onchange="document.getElementById('mmCustomWrap').style.display=this.value==='custom'?'block':'none'">
+        <option value="all">👥 সব সদস্য (${members.length} জন)</option>
+        <option value="due">⚠️ বকেয়া সদস্যরা (${dueMembers.length} জন)</option>
+        <option value="custom">🎯 নির্দিষ্ট সদস্য নির্বাচন করুন</option>
+      </select>
+    </div>
+    <div class="field" id="mmCustomWrap" style="display:none">
+      <label>সদস্য নির্বাচন করুন</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:180px;overflow-y:auto;padding:8px;border:1.5px solid var(--border);border-radius:9px">
+        ${members.map(m=>`<label style="display:flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer"><input type="checkbox" class="mm-mem-chk" value="${m.id}" style="width:auto"> ${m.name}</label>`).join("")}
+      </div>
+    </div>
+    <button class="btn btn-gold" onclick="addMassMsg()">📤 পাঠান</button>
+  </div></div>`:"";
+
+  const idPicker=`<div class="card" style="margin-bottom:12px"><div class="cb" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px">
+    <label style="font-size:12px;color:#64748b;font-weight:600;margin:0;white-space:nowrap">👤 আপনি কে?</label>
+    <select id="mmMyId" onchange="setMyMemberId(this.value)" style="flex:1;min-width:150px;padding:7px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;font-family:inherit">
+      <option value="">-- বার্তা দেখেছেন তা চিহ্নিত করতে নির্বাচন করুন --</option>
+      ${members.map(m=>`<option value="${m.id}" ${String(m.id)===String(myId)?"selected":""}>${m.name}</option>`).join("")}
+    </select>
+  </div></div>`;
+
+  const msgs=(D.massMessages||[]).slice().reverse();
+  const list=msgs.map(m=>{
+    const total=(m.recipientIds||[]).length;
+    const seen=(m.seenBy||[]).length;
+    const pct=total?Math.round(seen/total*100):0;
+    const iSeen=myId&&(m.seenBy||[]).includes(Number(myId));
+    return `<div class="card" style="margin-bottom:10px">
+      <div style="padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            ${bdg(m.audienceLabel||MASSMSG_AUD_LABEL[m.audience]||"👥 সব সদস্য","#475569","#f1f5f9")}
+            ${bdg(total+" জন প্রাপক","#2563eb","#eff6ff")}
+          </div>
+          ${isAd?`<button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delMassMsg(${m.id})">🗑</button>`:""}
+        </div>
+        <div style="font-weight:700;font-size:14px;margin-bottom:6px">${m.title}</div>
+        <div style="font-size:13px;line-height:1.75;margin-bottom:9px;white-space:pre-wrap">${renderNoticeBody(m.body)}</div>
+        <div style="font-size:11px;color:#94a3b8;margin-bottom:9px">🗓️ ${ds(m.date)}</div>
+        <div style="margin-bottom:9px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:4px"><span>👁️ দেখেছেন ${seen}/${total}</span><span>${pct}%</span></div>
+          ${pb(pct,"#16a34a",7)}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sm" style="background:${iSeen?"#dcfce7":"#f0fdf4"};color:#16a34a;border:1px solid #bbf7d0" ${iSeen?"disabled":""} onclick="markMMSeen(${m.id})">${iSeen?"✅ দেখেছি":"👁️ আমি দেখেছি"}</button>
+          <button class="btn btn-sm btn-outline" onclick="copyMassMsg(${m.id})">📋 কপি করুন</button>
+          ${isAd?`<button class="btn btn-sm btn-outline" onclick="toggleMMDetail(${m.id})">📋 কারা দেখেছেন?</button>`:""}
+        </div>
+        ${isAd?`<div id="mmdetail-${m.id}" style="display:none;margin-top:10px;border-top:1px solid #f1f5f9;padding-top:10px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${(m.recipientIds||[]).map(rid=>{const sn=(m.seenBy||[]).includes(rid);return `<span style="font-size:11px;background:${sn?"#dcfce7":"#fef2f2"};color:${sn?"#16a34a":"#dc2626"};padding:4px 9px;border-radius:20px">${sn?"✅":"⭕"} ${gn(rid)}</span>`;}).join("")}
+          </div>
+        </div>`:""}
+      </div>
+    </div>`;
+  }).join("")||`<div style="text-align:center;padding:40px;color:#94a3b8">📣 কোনো গণ-বার্তা পাঠানো হয়নি</div>`;
+
+  return `<div style="margin-bottom:12px"><div class="section-title">📣 গণ-বার্তা</div><div class="section-sub">সদস্যদের বাল্ক নোটিশ পাঠান — কে দেখেছেন তা ট্র্যাক করুন</div></div>
+  ${stats}${form}${idPicker}${list}`;
+}
+function fillFromTemplate(id){
+  if(!id)return;
+  const t=(D.msgTemplates||[]).find(x=>x.id===id);
+  if(!t)return;
+  document.getElementById("mmT").value=t.title;
+  document.getElementById("mmB").value=t.body;
+}
+function addMassMsg(){
+  const title=document.getElementById("mmT").value.trim();
+  const body=document.getElementById("mmB").value.trim();
+  const aud=document.getElementById("mmAud").value;
+  if(!showValidationErrors([
+    [!title, "বার্তার শিরোনাম দিন"],
+    [!body, "বার্তার বিবরণ লিখুন"],
+  ])) return;
+  const members=D.members||[];
+  let recipientIds=[], audienceLabel="";
+  if(aud==="all"){ recipientIds=members.map(m=>m.id); audienceLabel=MASSMSG_AUD_LABEL.all; }
+  else if(aud==="due"){ recipientIds=getDuesList().map(m=>m.id); audienceLabel=MASSMSG_AUD_LABEL.due; }
+  else { recipientIds=Array.from(document.querySelectorAll(".mm-mem-chk:checked")).map(c=>Number(c.value)); audienceLabel=MASSMSG_AUD_LABEL.custom; }
+  if(!recipientIds.length){ toast("⚠️ কমপক্ষে ১ জন প্রাপক নির্বাচন করুন","#d97706"); return; }
+  D.massMessages=[...(D.massMessages||[]),{
+    id:Date.now(), title, body, audience:aud, audienceLabel,
+    recipientIds, date:new Date().toISOString().slice(0,10),
+    createdAt:new Date().toISOString(), seenBy:[]
+  }];
+  logActivity("massmsg",`গণ-বার্তা পাঠানো হয়েছে: ${title} (${audienceLabel}, ${recipientIds.length} জন)`);
+  sv();toast(`✅ ${recipientIds.length} জনকে বার্তা পাঠানো হয়েছে`);goTab("massmsg");
+}
+function setMyMemberId(v){
+  if(v) localStorage.setItem("sg_my_member_id",v);
+  else localStorage.removeItem("sg_my_member_id");
+  toast("✅ সংরক্ষিত হয়েছে");
+  goTab("massmsg");
+}
+function markMMSeen(id){
+  const myId=localStorage.getItem("sg_my_member_id");
+  if(!myId){ toast("⚠️ প্রথমে 'আপনি কে' নির্বাচন করুন","#d97706"); return; }
+  const m=(D.massMessages||[]).find(x=>x.id===id);
+  if(!m) return;
+  const mid=Number(myId);
+  if(!(m.recipientIds||[]).includes(mid)){ toast("⚠️ এই বার্তাটি আপনার জন্য পাঠানো হয়নি","#d97706"); return; }
+  m.seenBy=Array.from(new Set([...(m.seenBy||[]),mid]));
+  sv();toast("✅ দেখেছেন হিসেবে চিহ্নিত হয়েছে");goTab("massmsg");
+}
+function copyMassMsg(id){
+  const m=(D.massMessages||[]).find(x=>x.id===id);
+  if(!m) return;
+  const text=`${m.title}\n\n${m.body}`;
+  navigator.clipboard.writeText(text).then(()=>toast("📋 কপি হয়েছে!")).catch(()=>{
+    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);toast("📋 কপি হয়েছে!");
+  });
+}
+function toggleMMDetail(id){
+  const el=document.getElementById("mmdetail-"+id);
+  if(!el) return;
+  el.style.display=el.style.display==="none"?"block":"none";
+}
+function delMassMsg(id){
+  const m=(D.massMessages||[]).find(x=>x.id===id);
+  if(!m) return;
+  D.massMessages=(D.massMessages||[]).filter(x=>x.id!==id);
+  const tid=moveToTrash("massMsg",m.title,m);
+  logActivity("massmsg",`গণ-বার্তা মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${m.title}`);
+  sv();undoToast("🗑 গণ-বার্তা মুছে ফেলা হয়েছে",tid);goTab("massmsg");
 }
 
 function clearHistory(){
