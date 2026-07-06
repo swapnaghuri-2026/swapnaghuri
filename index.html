@@ -38,9 +38,9 @@ button,input,select,textarea{font-family:'Hind Siliguri',sans-serif}
 
 .app{display:flex;min-height:100vh}
 .sidebar{width:235px;background:linear-gradient(180deg,#071a07 0%,#006400 50%,#006400 100%);position:fixed;top:0;left:0;bottom:0;display:flex;flex-direction:column;z-index:200;overflow-y:auto;transition:transform .3s}
-.main{margin-left:235px;flex:1;min-height:100vh;display:flex;flex-direction:column}
+.main{margin-left:235px;flex:1;min-width:0;min-height:100vh;display:flex;flex-direction:column}
 .topbar{background:var(--white);border-bottom:1px solid var(--border);padding:13px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 1px 6px rgba(0,0,0,.06)}
-.content{padding:22px;flex:1;max-width:1100px;width:100%}
+.content{padding:22px;flex:1;min-width:0;max-width:1100px;width:100%}
 
 .sb-logo{padding:22px 18px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
 .sb-nav{flex:1;padding:10px 8px}
