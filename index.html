@@ -511,9 +511,13 @@ const isA=()=>role==="admin";
 // _dirty: true মানে local-এ unsaved পরিবর্তন আছে যা Firebase-এ যায়নি
 window._dirty = false;
 window._syncRetries = 0;
+window._saveInFlight = false;   // এই মুহূর্তে Firebase-এ লেখা চলছে কিনা
+window._saveQueued = false;     // চলমান সেভের মাঝেই আরেকটা পরিবর্তন এলে এটা true হবে
 const MAX_SYNC_RETRIES = 3;
-const SYNC_RETRY_DELAYS = [3000, 8000, 20000]; // 3s, 8s, 20s
+const SYNC_RETRY_DELAYS = [800, 2500, 6000]; // দ্রুত রিট্রাই: ০.৮s, ২.৫s, ৬s
 
+// sv(): সবসময় লোকালে সাথে সাথে সেভ হয়, আর ক্লাউডে একটার পর একটা (queue) লেখা হয় —
+// যাতে দুইটা সেভ একসাথে/উল্টো-পাল্টা ক্রমে গিয়ে একটা আরেকটাকে ওভাররাইট করে ডেটা হারিয়ে না ফেলে
 const sv=()=>{
   const okLocal=LS.set(SK,D);
   if(!okLocal){
@@ -523,6 +527,12 @@ const sv=()=>{
   }
   window._dirty = true;
   updateSyncStatus("saving");
+  if(window._saveInFlight){
+    // আগের সেভ এখনো চলছে — এখনই আরেকটা পাঠালে দুইটা রিকোয়েস্ট ক্রস হয়ে যেতে পারে।
+    // তাই বর্তমান সেভ শেষ হওয়ার সাথে সাথেই সর্বশেষ D আবার পাঠানো হবে (কোনো পরিবর্তন বাদ যাবে না)।
+    window._saveQueued = true;
+    return;
+  }
   _syncToFirebase(0);
   try{ maybeAutoBackup(); }catch(e){}
 };
@@ -530,16 +540,26 @@ const sv=()=>{
 function _syncToFirebase(attempt){
   try{
     if(typeof firebase!=='undefined'&&firebase.apps&&firebase.apps.length){
-      firebase.database().ref('sg_data').set(JSON.stringify(D))
+      window._saveInFlight = true;
+      const payload = JSON.stringify(D); // পাঠানোর মুহূর্তের সবচেয়ে সাম্প্রতিক D
+      firebase.database().ref('sg_data').set(payload)
         .then(()=>{
-          window._dirty = false;
           window._syncRetries = 0;
+          window._saveInFlight = false;
+          if(window._saveQueued){
+            // চলাকালীন নতুন পরিবর্তন এসেছিল — সেটা এখনই সাথে সাথে পাঠাও
+            window._saveQueued = false;
+            _syncToFirebase(0);
+            return;
+          }
+          window._dirty = false;
           updateSyncStatus("synced");
         })
         .catch(err=>{
           console.warn("Firebase sync error (attempt "+(attempt+1)+"):", err);
+          window._saveInFlight = false;
           if(attempt < MAX_SYNC_RETRIES - 1){
-            const delay = SYNC_RETRY_DELAYS[attempt]||20000;
+            const delay = SYNC_RETRY_DELAYS[attempt]||6000;
             updateSyncStatus("retrying");
             setTimeout(()=>_syncToFirebase(attempt+1), delay);
           } else {
@@ -549,13 +569,30 @@ function _syncToFirebase(attempt){
           }
         });
     } else {
+      window._saveInFlight = false;
       updateSyncStatus(okLocal?"offline":"error");
     }
   }catch(e){
+    window._saveInFlight = false;
     console.error("Firebase sync exception:", e);
     updateSyncStatus("error");
   }
 }
+
+// অ্যাপ মিনিমাইজ/বন্ধ/ট্যাব পরিবর্তনের সময় যদি এখনো সেভ না হওয়া (dirty) পরিবর্তন থাকে,
+// সতর্ক করা হবে যাতে সেভ শেষ হওয়ার আগেই অ্যাপ বন্ধ করে চাঁদার এন্ট্রি হারিয়ে না যায়
+window.addEventListener("beforeunload", function(e){
+  if(window._dirty){
+    e.preventDefault();
+    e.returnValue = "ডেটা এখনো ক্লাউডে সম্পূর্ণ সেভ হয়নি — একটু অপেক্ষা করুন।";
+    return e.returnValue;
+  }
+});
+document.addEventListener("visibilitychange", function(){
+  if(document.visibilityState==="hidden" && window._dirty){
+    toast("⏳ ক্লাউডে সেভ এখনো চলছে — অ্যাপ পুরোপুরি বন্ধ করার আগে একটু অপেক্ষা করুন","#d97706");
+  }
+});
 
 function updateSyncStatus(status){
   window._syncStatus=status;
@@ -902,15 +939,17 @@ function subscribeFirebaseData(){
     firebase.database().ref('sg_data').on('value',function(snap){
       try{
         if(snap.exists()&&role){
+          // স্থানীয়ভাবে এখনো সেভ-না-হওয়া (dirty) পরিবর্তন বা চলমান সেভ থাকলে,
+          // ক্লাউড থেকে আসা ডেটা দিয়ে D ওভাররাইট করা হবে না — নাহলে ঠিক এই কারণেই
+          // সদ্য যোগ করা এন্ট্রি (যেমন চাঁদা) হারিয়ে যেতে পারত।
+          // বর্তমান সেভ সম্পূর্ণ হওয়ার পর দরকার হলে আবার '_dirty' false অবস্থায় স্বাভাবিকভাবেই আপডেট আসবে।
+          if(window._dirty || window._saveInFlight){
+            return;
+          }
           var fd=JSON.parse(snap.val());
           if(fd&&fd.members){
-            // Conflict detection: local-এ unsaved পরিবর্তন থাকলে সতর্ক করো
-            if(window._dirty){
-              toast("⚠️ ক্লাউড থেকে নতুন ডেটা এসেছে — লোকাল পরিবর্তন মার্জ হচ্ছে","#d97706");
-            }
             D=fd;
             if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];
-            window._dirty=false;
             LS.set(SK,D);
             if(curTab)goTab(curTab);
           }
