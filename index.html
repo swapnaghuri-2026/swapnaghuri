@@ -308,6 +308,7 @@ const firebaseConfig = {
       </div>
       <div id="pwerr" style="color:#f87171;font-size:12px;text-align:center;margin:8px 0;display:none">❌ ভুল পাসওয়ার্ড</div>
       <button class="btn btn-g btn-full" id="adminLoginBtn" onclick="login('admin')">🔐 অ্যাডমিন প্রবেশ</button>
+      <button type="button" onclick="forgotPassword()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:12px;text-decoration:underline;cursor:pointer;display:block;margin:10px auto 0;font-family:inherit">পাসওয়ার্ড ভুলে গেছেন?</button>
     </div>
   </div>
   <div style="color:rgba(255,255,255,.2);font-size:11px;margin-top:18px;text-align:center">সকল সদস্য ব্যবহার করতে পারবেন</div>
@@ -887,6 +888,38 @@ function enterApp(r){
   trackVisitor();
   goTab("home");
   subscribeFirebaseData();
+  if(r==="admin") startSessionTimeout();
+}
+// ══════════════════
+// সেশন টাইমআউট — শেয়ার করা ফোনে অ্যাডমিন লগইন খোলা থেকে গেলে ঝুঁকি কমাতে
+// ৩০ মিনিট নিষ্ক্রিয় থাকলে, অথবা লগইনের ৭ দিন পার হলে, স্বয়ংক্রিয়ভাবে লগআউট হয়ে যাবে
+// ══════════════════
+const SESSION_IDLE_LIMIT_MS = 30*60*1000;      // ৩০ মিনিট নিষ্ক্রিয়তা
+const SESSION_ABSOLUTE_LIMIT_MS = 7*24*60*60*1000; // ৭ দিন
+let _sessionTimeoutInterval=null;
+function _touchSessionActivity(){
+  if(role==="admin") localStorage.setItem("sg_lastActivity", String(Date.now()));
+}
+function startSessionTimeout(){
+  if(!localStorage.getItem("sg_loginTime")) localStorage.setItem("sg_loginTime", String(Date.now()));
+  _touchSessionActivity();
+  ["click","keydown","touchstart","scroll"].forEach(function(evt){
+    document.addEventListener(evt,_touchSessionActivity,{passive:true});
+  });
+  if(_sessionTimeoutInterval) clearInterval(_sessionTimeoutInterval);
+  _sessionTimeoutInterval=setInterval(function(){
+    if(role!=="admin") return;
+    const now=Date.now();
+    const last=parseInt(localStorage.getItem("sg_lastActivity")||now,10);
+    const loginTime=parseInt(localStorage.getItem("sg_loginTime")||now,10);
+    if(now-last > SESSION_IDLE_LIMIT_MS){
+      toast("⏳ দীর্ঘক্ষণ নিষ্ক্রিয় থাকায় নিরাপত্তার জন্য অ্যাডমিন সেশন বন্ধ করা হলো","#d97706");
+      logout();
+    }else if(now-loginTime > SESSION_ABSOLUTE_LIMIT_MS){
+      toast("⏳ ৭ দিন পার হয়েছে — নিরাপত্তার জন্য আবার লগইন করুন","#d97706");
+      logout();
+    }
+  },60*1000); // প্রতি মিনিটে চেক
 }
 // ক্লাউড ডেটা সিঙ্ক — একবারই সাবস্ক্রাইব হবে (আগে login()-এর ভেতরে ও পেজের নিচে দুই জায়গায় ডুপ্লিকেট হতো)
 function subscribeFirebaseData(){
@@ -945,6 +978,31 @@ function togglePwView(){
   if(inp.type==="password"){ inp.type="text"; btn.textContent="🙈"; }
   else{ inp.type="password"; btn.textContent="👁️"; }
 }
+// পাসওয়ার্ড রিকভারি — ইমেইল বক্সে লেখা ঠিকানায় Firebase রিসেট লিংক পাঠায়
+async function forgotPassword(){
+  const email=document.getElementById("admEmail").value.trim();
+  const errEl=document.getElementById("pwerr");
+  if(!email){
+    errEl.textContent="❌ প্রথমে উপরের বক্সে আপনার অ্যাডমিন ইমেইল লিখুন, তারপর 'পাসওয়ার্ড ভুলে গেছেন?' চাপুন";
+    errEl.style.display="block";
+    return;
+  }
+  if(typeof firebase==="undefined"||!firebase.auth){
+    errEl.textContent="⏳ নিরাপত্তা মডিউল লোড হচ্ছে — কয়েক সেকেন্ড পর আবার চেষ্টা করুন";
+    errEl.style.display="block";
+    return;
+  }
+  try{
+    await firebase.auth().sendPasswordResetEmail(email);
+    errEl.style.color="#4ade80";
+    errEl.textContent="✅ "+email+" এ পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে — ইমেইল (স্প্যাম ফোল্ডারও) চেক করুন";
+    errEl.style.display="block";
+  }catch(err){
+    errEl.style.color="#f87171";
+    errEl.textContent="❌ "+authErrorMsg(err);
+    errEl.style.display="block";
+  }
+}
 async function login(r){
   try{
     const errEl=document.getElementById("pwerr");
@@ -953,11 +1011,13 @@ async function login(r){
       const email=(document.getElementById("admEmail").value||"").trim();
       const p=document.getElementById("pw").value;
       if(!email||!p){
+        errEl.style.color="#f87171";
         errEl.textContent="❌ ইমেইল ও পাসওয়ার্ড দুটোই দিন";
         errEl.style.display="block";
         return;
       }
       if(typeof firebase==="undefined"||!firebase.auth){
+        errEl.style.color="#f87171";
         errEl.textContent="⏳ নিরাপত্তা মডিউল লোড হচ্ছে — কয়েক সেকেন্ড পর আবার চেষ্টা করুন";
         errEl.style.display="block";
         return;
@@ -969,6 +1029,7 @@ async function login(r){
         cred=await firebase.auth().signInWithEmailAndPassword(email,p);
       }catch(authErr){
         console.error("Firebase auth error:",authErr);
+        errEl.style.color="#f87171";
         errEl.textContent=authErrorMsg(authErr);
         errEl.style.display="block";
         if(btn){btn.disabled=false;btn.textContent="🔐 অ্যাডমিন প্রবেশ";}
@@ -978,6 +1039,7 @@ async function login(r){
         const roleSnap=await firebase.database().ref('roles/'+cred.user.uid).once('value');
         if(roleSnap.val()!=="admin"){
           await firebase.auth().signOut();
+          errEl.style.color="#f87171";
           errEl.textContent="⛔ এই অ্যাকাউন্টের অ্যাডমিন অনুমতি নেই (roles/"+cred.user.uid+" এ 'admin' পাওয়া যায়নি)";
           errEl.style.display="block";
           if(btn){btn.disabled=false;btn.textContent="🔐 অ্যাডমিন প্রবেশ";}
@@ -986,6 +1048,7 @@ async function login(r){
       }catch(dbErr){
         console.error("Firebase role-check error:",dbErr);
         await firebase.auth().signOut().catch(()=>{});
+        errEl.style.color="#f87171";
         errEl.textContent="❌ লগইন হয়েছে কিন্তু roles যাচাইয়ে সমস্যা: "+(dbErr.code||dbErr.message||dbErr);
         errEl.style.display="block";
         if(btn){btn.disabled=false;btn.textContent="🔐 অ্যাডমিন প্রবেশ";}
@@ -1005,6 +1068,9 @@ function logout(){
   try{ if(typeof firebase!=="undefined"&&firebase.auth){ firebase.auth().signOut(); } }catch(e){}
   role=null;
   localStorage.removeItem("sg_role");
+  localStorage.removeItem("sg_lastActivity");
+  localStorage.removeItem("sg_loginTime");
+  if(_sessionTimeoutInterval){ clearInterval(_sessionTimeoutInterval); _sessionTimeoutInterval=null; }
   window._fbSubscribed=false;
   document.getElementById("ls").style.display="flex";
   document.getElementById("app").style.display="none";
