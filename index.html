@@ -538,7 +538,7 @@ function _syncToFirebase(attempt){
         });
     } else {
       window._saveInFlight = false;
-      updateSyncStatus(okLocal?"offline":"error");
+      updateSyncStatus("offline");
     }
   }catch(e){
     window._saveInFlight = false;
@@ -934,8 +934,11 @@ function subscribeFirebaseData(){
           var fd=JSON.parse(snap.val());
           if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];LS.set(SK,D);if(curTab)goTab(curTab);}
         }
+        // ক্লাউড থেকে সফলভাবে সর্বশেষ ডেটা পাওয়া গেছে — তাই এখনই ব্যাজে সঠিক অবস্থা দেখাও,
+        // ব্যবহারকারী নিজে কিছু এডিট করার আগ পর্যন্ত "যাচাই হয়নি" দেখিয়ে বিভ্রান্ত না করে
+        updateSyncStatus("synced");
       }catch(e){}
-    });
+    }).catch(function(){ updateSyncStatus("error"); });
     firebase.database().ref('sg_data').on('value',function(snap){
       try{
         if(snap.exists()&&role){
@@ -952,6 +955,7 @@ function subscribeFirebaseData(){
             if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];
             LS.set(SK,D);
             if(curTab)goTab(curTab);
+            updateSyncStatus("synced");
           }
         }
       }catch(e){console.error("Firebase listener error:",e);}
