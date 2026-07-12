@@ -5,7 +5,7 @@
 
 // ⚠️ নতুন ভার্সন ডিপ্লয় করার সময় CACHE_NAME-এর সংখ্যা বাড়িয়ে দিন,
 // নাহলে পুরনো ব্যবহারকারীরা ক্যাশ করা পুরনো index.html দেখতে পারেন।
-const CACHE_NAME = "swapnaghuri-shell-v1";
+const CACHE_NAME = "swapnaghuri-shell-v2";
 
 const SHELL_FILES = [
   "./index.html",
