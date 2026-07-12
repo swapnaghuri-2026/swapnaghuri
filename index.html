@@ -215,11 +215,7 @@ html[data-theme="dark"] [style*="border-bottom:1px solid #f1f5f9"]{border-color:
 html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{color-scheme:dark}
 
 /* AI Report modal */
-.ai-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9990;display:none;align-items:center;justify-content:center}
-.ai-modal-bg.show{display:flex}
-.ai-modal{background:var(--white);border-radius:16px;width:min(620px,95vw);max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
-html[data-theme="dark"] .ai-modal{background:var(--white)}
-.ai-typing{display:inline-block;width:6px;height:14px;background:var(--g2);border-radius:2px;animation:blink .7s infinite}
+
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 
 .stat-box{text-align:center;background:#f8fafc;border-radius:9px;padding:9px 6px}
@@ -389,36 +385,6 @@ const firebaseConfig = {
       <button onclick="closeGSearchBtn()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--muted)">✕</button>
     </div>
     <div id="gsearch-body"><div class="gsearch-empty">উপরে টাইপ করুন — নাম, মোবাইল, সদস্য আইডি, এনআইডি, ঋণ, সঞ্চয় সব খোঁজা যাবে</div></div>
-  </div>
-</div>
-
-<!-- AI Report Modal -->
-<div class="ai-modal-bg" id="ai-modal-bg" onclick="closeAIModal(event)">
-  <div class="ai-modal" id="ai-modal">
-    <div style="background:linear-gradient(135deg,#006400,#1a8a00);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-radius:16px 16px 0 0">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:22px">🤖</span>
-        <div>
-          <div style="color:#fff;font-weight:800;font-size:15px">AI রিপোর্ট বিশ্লেষক</div>
-          <div style="color:rgba(255,255,255,.65);font-size:11px">Claude AI দিয়ে স্মার্ট বিশ্লেষণ</div>
-        </div>
-      </div>
-      <button onclick="closeAIModalBtn()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;padding:6px 10px;color:#fff;cursor:pointer;font-size:14px">✕</button>
-    </div>
-    <div style="padding:16px">
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('সমিতির সার্বিক আর্থিক অবস্থা বিশ্লেষণ করো')">📊 আর্থিক অবস্থা</button>
-        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('কোন সদস্যের বকেয়া সবচেয়ে বেশি এবং কী করণীয়?')">⚠️ বকেয়া বিশ্লেষণ</button>
-        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('ঋণ আদায়ের পরিস্থিতি ও পরামর্শ দাও')">🤝 ঋণ পরামর্শ</button>
-        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('বিনিয়োগের ফলাফল ও ভবিষ্যৎ পরিকল্পনা দাও')">📈 বিনিয়োগ পরামর্শ</button>
-        <button class="btn btn-sm btn-outline" onclick="aiQuickAsk('আগামী ৩ মাসের জন্য কী কী পদক্ষেপ নেওয়া উচিত?')">🎯 কর্মপরিকল্পনা</button>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px">
-        <input type="text" id="ai-question" placeholder="যেকোনো প্রশ্ন করুন..." style="flex:1;padding:10px 13px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit;background:var(--white);color:var(--ink);outline:none" onkeydown="if(event.key==='Enter')askAI()">
-        <button class="btn btn-g" onclick="askAI()" id="ai-send-btn">পাঠান</button>
-      </div>
-      <div id="ai-answer" style="min-height:80px;background:#f8fafc;border-radius:10px;padding:14px;font-size:13px;line-height:1.7;color:var(--ink);white-space:pre-wrap;display:none"></div>
-    </div>
   </div>
 </div>
 
@@ -7314,16 +7280,6 @@ function pgReport(){
       <div class="section-sub">সব রিপোর্ট এক জায়গায় — PDF ও Excel ডাউনলোড</div>
     </div>
 
-    <!-- AI রিপোর্ট -->
-    <div style="background:linear-gradient(135deg,#3b0764,#6d28d9);border-radius:14px;padding:18px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-      <div style="font-size:36px">🤖</div>
-      <div style="flex:1;min-width:180px">
-        <div style="color:#fff;font-weight:800;font-size:15px;margin-bottom:3px">AI দিয়ে রিপোর্ট বিশ্লেষণ</div>
-        <div style="color:rgba(255,255,255,.7);font-size:12px">আর্থিক অবস্থা, বকেয়া, ঋণ, বিনিয়োগ — সব বিশ্লেষণ করুন Claude AI দিয়ে</div>
-      </div>
-      <button onclick="openAIModal()" style="background:#fff;color:#6d28d9;border:none;border-radius:10px;padding:11px 18px;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap">🤖 AI বিশ্লেষণ শুরু করুন</button>
-    </div>
-
     <!-- সম্পূর্ণ হিসাব ডাউনলোড -->
     <div style="background:linear-gradient(135deg,#006400,#1a8a00);border-radius:14px;padding:18px;margin-bottom:16px;text-align:center">
       <div style="font-size:28px;margin-bottom:6px">📊</div>
@@ -7894,71 +7850,6 @@ function runGSearch(q){
 // প্রতিটি কি-স্ট্রোকে সম্পূর্ণ ডেটাসেট স্ক্যান না করে, টাইপিং থামলে একবার সার্চ চালায় (performance optimization)
 const runGSearchLive=debounce(runGSearch,220);
 
-// ══════════════════════════════════════════
-// AI REPORT MODAL
-// ══════════════════════════════════════════
-function openAIModal(){document.getElementById("ai-modal-bg").classList.add("show");}
-function closeAIModal(e){if(e&&e.target!==document.getElementById("ai-modal-bg"))return;closeAIModalBtn();}
-function closeAIModalBtn(){document.getElementById("ai-modal-bg").classList.remove("show");document.getElementById("ai-answer").style.display="none";}
-function aiQuickAsk(q){document.getElementById("ai-question").value=q;askAI();}
-async function askAI(){
-  const q=document.getElementById("ai-question").value.trim();
-  if(!q){toast("⚠️ প্রশ্ন লিখুন","#d97706");return;}
-  const btn=document.getElementById("ai-send-btn");
-  const ans=document.getElementById("ai-answer");
-  btn.disabled=true;btn.textContent="⏳...";
-  ans.style.display="block";
-  ans.innerHTML=`বিশ্লেষণ করছি <span class="ai-typing"></span>`;
-
-  // সমিতির ডেটা সংক্ষেপ তৈরি
-  const members=D.members||[];
-  const payments=D.payments||[];
-  const loans=D.loans||[];
-  const expenses=D.expenses||[];
-  const income=D.income||[];
-  const investments=D.investments||[];
-  const totalFund=calcFund();
-  const totalLoan=loans.reduce((s,l)=>s+l.principal,0);
-  const totalDue=loans.reduce((s,l)=>s+l.remaining,0);
-  const totalPaid=payments.reduce((s,p)=>s+p.amount,0);
-  const totalExp=expenses.reduce((s,e)=>s+e.amount,0);
-  const totalInc=income.reduce((s,i)=>s+i.amount,0)+totalPaid;
-  const totalInvest=investments.reduce((s,i)=>s+i.amount,0);
-  const duesList=(typeof getDuesList==="function")?getDuesList():[];
-  const topDue=duesList.filter(m=>m.totalDue>0).sort((a,b)=>b.totalDue-a.totalDue).slice(0,5).map(m=>`${m.name}: ৳${m.totalDue}`).join(", ");
-  const hs=calcHealthScore();
-
-  const context=`আপনি স্বপ্নঘুড়ি সমিতির AI আর্থিক বিশ্লেষক। বাংলায় উত্তর দিন।
-সমিতির তথ্য:
-- মোট সদস্য: ${members.length} জন
-- মোট তহবিল ব্যালেন্স: ৳${totalFund.toLocaleString("bn-BD")}
-- মোট আয়: ৳${totalInc.toLocaleString("bn-BD")}
-- মোট ব্যয়: ৳${totalExp.toLocaleString("bn-BD")}
-- মোট চাঁদা আদায়: ৳${totalPaid.toLocaleString("bn-BD")}
-- মোট ঋণ বিতরণ: ৳${totalLoan.toLocaleString("bn-BD")}
-- মোট বকেয়া ঋণ: ৳${totalDue.toLocaleString("bn-BD")}
-- মোট বিনিয়োগ: ৳${totalInvest.toLocaleString("bn-BD")}
-- স্বাস্থ্য স্কোর: ${hs.score}/100 (${hs.scoreLabel})
-- চাঁদা আদায়ের হার: ${hs.collectionRate}%
-- ঋণ উদ্ধারের হার: ${hs.loanRecovery}%
-- বকেয়া চাঁদা (শীর্ষ): ${topDue||"কেউ নেই"}
-ব্যবহারকারীর প্রশ্ন: ${q}
-সংক্ষিপ্ত ও স্পষ্ট পরামর্শ দিন।`;
-
-  try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:context}]})
-    });
-    const data=await res.json();
-    const text=(data.content||[]).filter(c=>c.type==="text").map(c=>c.text).join("");
-    ans.innerHTML=text||"উত্তর পাওয়া যায়নি।";
-  }catch(e){
-    ans.innerHTML="❌ AI সংযোগ ব্যর্থ হয়েছে। ইন্টারনেট সংযোগ চেক করুন।";
-  }
-  btn.disabled=false;btn.textContent="পাঠান";
-}
 
 // ── সব PDF-এর জন্য common style ও watermark ──
 const pdfStyle=`
