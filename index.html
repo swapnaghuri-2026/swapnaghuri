@@ -469,6 +469,9 @@ const SEED = {
 let role=(localStorage.getItem("sg_role")==="viewer"?"viewer":null), curTab="home", D=null;
 const LS={get:k=>{try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){console.error("storage save failed",e);return false;}}};
 const fmt=n=>"৳"+Number(n||0).toLocaleString("bn-BD");
+// নাম/টেক্সটের মতো ব্যবহারকারীর টাইপ করা তথ্য পেজে দেখানোর আগে নিরাপদ করা হয় (XSS প্রতিরোধ) —
+// যাতে কারো নামে ভুলবশত/ইচ্ছাকৃতভাবে HTML কোড লেখা থাকলেও তা কোড হিসেবে না চলে, শুধু সাধারণ টেক্সট হিসেবে দেখায়
+const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 const now=new Date();
 const curMon=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
 const BNM=["জানু","ফেব্রু","মার্চ","এপ্রিল","মে","জুন","জুলাই","আগস্ট","সেপ্টে","অক্টো","নভে","ডিসে"];
@@ -711,6 +714,11 @@ function logActivity(type, text){
     by: isA() ? "অ্যাডমিন" : "ভিউয়ার",
     at: new Date().toISOString()
   }];
+  // ইতিহাস অসীম বড় হতে থাকলে প্রতিটা সেভ ধীরে ধীরে ভারী হয়ে যায় —
+  // তাই সবসময় সর্বশেষ ৫০০টা এন্ট্রি রাখা হয়, তার বেশি পুরনোগুলো স্বয়ংক্রিয়ভাবে ছেঁটে ফেলা হয়
+  if(D.activityLog.length > 500){
+    D.activityLog = D.activityLog.slice(D.activityLog.length - 500);
+  }
 }
 function delActivity(id){
   D.activityLog=(D.activityLog||[]).filter(a=>String(a.id)!==String(id));
@@ -931,12 +939,16 @@ function subscribeFirebaseData(){
     firebase.database().ref('sg_data').once('value').then(function(snap){
       try{
         if(snap.exists()){
-          var fd=JSON.parse(snap.val());
-          if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];LS.set(SK,D);if(curTab)goTab(curTab);}
+          // যদি ইতিমধ্যে লোকালে সেভ-না-হওয়া (dirty) পরিবর্তন বা চলমান সেভ থাকে,
+          // তাহলে এই প্রাথমিক (initial) ফেচ D ওভাররাইট করবে না — নাহলে অসম্পূর্ণ এন্ট্রি হারানোর ঝুঁকি থাকে
+          if(!window._dirty && !window._saveInFlight){
+            var fd=JSON.parse(snap.val());
+            if(fd&&fd.members){D=fd;if(!D.rateHistory)D.rateHistory=[];if(!D.activityLog)D.activityLog=[];if(!D.liabilities)D.liabilities=[];if(!D.paymentInfo)D.paymentInfo={bank:[],mobile:[]};if(!D.formerMembers)D.formerMembers=[];if(!D.trash)D.trash=[];LS.set(SK,D);if(curTab)goTab(curTab);}
+          }
         }
-        // ক্লাউড থেকে সফলভাবে সর্বশেষ ডেটা পাওয়া গেছে — তাই এখনই ব্যাজে সঠিক অবস্থা দেখাও,
-        // ব্যবহারকারী নিজে কিছু এডিট করার আগ পর্যন্ত "যাচাই হয়নি" দেখিয়ে বিভ্রান্ত না করে
-        updateSyncStatus("synced");
+        // "সেভ হয়েছে" তখনই দেখাও যখন সত্যিই কোনো সেভ-না-হওয়া পরিবর্তন নেই —
+        // নাহলে ভুলভাবে "সেভ হয়েছে" দেখিয়ে বিভ্রান্ত করা হবে
+        if(!window._dirty && !window._saveInFlight) updateSyncStatus("synced");
       }catch(e){}
     }).catch(function(){ updateSyncStatus("error"); });
     firebase.database().ref('sg_data').on('value',function(snap){
@@ -1165,14 +1177,14 @@ function maybeAutoBackup(){
     const lastAt = last ? new Date(last.at).getTime() : 0;
     if(Date.now()-lastAt > AUTO_BACKUP_INTERVAL_MS){
       saveAutoBackup(D,"দৈনিক স্বয়ংক্রিয় ব্যাকআপ");
-      cloudAutoBackup();       // ক্লাউডে (Firebase) স্থায়ী দৈনিক ব্যাকআপ — কখনো মুছে ফেলা হয় না
+      cloudAutoBackup();       // ক্লাউডে (Firebase) স্থায়ী দৈনিক ব্যাকআপ — গত ৬ মাসের রাখা হয়
       autoDownloadBackup();    // ফোনে দিনে একবার স্বয়ংক্রিয় JSON ফাইল ডাউনলোড
     }
   }catch(e){}
 }
 
 // ══════════════════════════════════════════
-// ক্লাউড স্বয়ংক্রিয় ব্যাকআপ (Firebase-এ, কখনো ট্রিম/মুছে ফেলা হয় না)
+// ক্লাউড স্বয়ংক্রিয় ব্যাকআপ (Firebase-এ, গত ১৮০ দিনের রাখা হয়, তার পুরনোগুলো স্বয়ংক্রিয়ভাবে মুছে যায়)
 // প্রতিদিন একটা করে স্ন্যাপশট 'sg_backups/{YYYY-MM-DD}' নোডে জমা থাকে
 // ব্রাউজার ক্যাশ/localStorage মুছে গেলেও এই ব্যাকআপ অক্ষত থাকবে
 // ══════════════════════════════════════════
@@ -1185,6 +1197,29 @@ function cloudAutoBackup(){
       at:new Date().toISOString(),
       memberCount:(D.members||[]).length
     }).catch(function(e){ console.error("cloud auto backup failed",e); });
+    pruneOldCloudBackups();
+  }catch(e){}
+}
+
+// ৬ মাসের বেশি পুরনো ব্যাকআপ ধীরে ধীরে জমে Firebase-এর স্টোরেজ ভরে ফেলতে পারে,
+// তাই গত ৬ মাসের ব্যাকআপ রেখে তার চেয়ে পুরনোগুলো স্বয়ংক্রিয়ভাবে মুছে ফেলা হয়।
+// সপ্তাহে সর্বোচ্চ একবার চেক করা হয়, যাতে প্রতিদিন অতিরিক্ত ডেটা পড়তে না হয়।
+function pruneOldCloudBackups(){
+  try{
+    const lastPrune=localStorage.getItem("sg_last_backup_prune");
+    const now=Date.now();
+    if(lastPrune && (now-parseInt(lastPrune,10)) < 7*24*60*60*1000) return;
+    localStorage.setItem("sg_last_backup_prune", String(now));
+    const cutoff=new Date(now - 180*24*60*60*1000).toISOString().split("T")[0]; // ১৮০ দিন আগে
+    firebase.database().ref('sg_backups').once('value').then(function(snap){
+      if(!snap.exists()) return;
+      snap.forEach(function(child){
+        const dateKey=child.key;
+        if(/^\d{4}-\d{2}-\d{2}$/.test(dateKey) && dateKey < cutoff){
+          firebase.database().ref('sg_backups/'+dateKey).remove().catch(function(){});
+        }
+      });
+    }).catch(function(){});
   }catch(e){}
 }
 
@@ -1487,12 +1522,7 @@ function goTab(id){
       </div>`;
       // Error log-এ রেকর্ড করো
       try{
-        D.activityLog=[...(D.activityLog||[]),{
-          id:Date.now()+"_err",type:"error",
-          text:"Page render error ["+id+"]: "+err.message,
-          by:isA()?"অ্যাডমিন":"ভিউয়ার",
-          at:new Date().toISOString()
-        }];
+        logActivity("error","Page render error ["+id+"]: "+err.message);
       }catch(e2){}
     }
   }
@@ -1765,7 +1795,7 @@ function pgHome(){
 
   const chadaDueRows=duesList.filter(m=>m.totalDue>0).sort((a,b)=>b.totalDue-a.totalDue).map(m=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #f1f5f9">
-      <div style="display:flex;align-items:center;gap:9px">${av(m.name,32,"linear-gradient(135deg,#006400,#1a8a00)",m.id)}<span style="font-weight:600;font-size:13px">${m.name}</span></div>
+      <div style="display:flex;align-items:center;gap:9px">${av(m.name,32,"linear-gradient(135deg,#006400,#1a8a00)",m.id)}<span style="font-weight:600;font-size:13px">${esc(m.name)}</span></div>
       ${bdg(fmt(m.totalDue),"#dc2626","#fee2e2")}
     </div>`).join("")||`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো বকেয়া চাঁদা নেই 🎉</div>`;
 
@@ -1899,7 +1929,7 @@ function pgSavings(){
   const allTotal=payments.reduce((s,p)=>s+p.amount,0);
 
   const form=isA()?`<div class="card">${ch("💰","চাঁদা যোগ করুন")}<div class="cb">
-    <div class="field"><label>সদস্য</label><select id="pMem"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>
+    <div class="field"><label>সদস্য</label><select id="pMem"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select></div>
     <div class="grid2">
       <div class="field"><label>পরিমাণ (৳)</label><input type="number" id="pAmt" value="5000"></div>
       <div class="field"><label>মাস</label><input type="month" id="pMon" value="${curMon}"></div>
@@ -1911,7 +1941,7 @@ function pgSavings(){
   const mRows=members.map(m=>{
     const p=filtered.find(x=>x.mid==m.id);
     const allPaid=payments.filter(x=>x.mid==m.id).reduce((s,x)=>s+x.amount,0);
-    return `<tr><td><b>${m.name}</b></td><td>${p?bdg(fmt(p.amount)+" ✓","#1a8a00","#dcfce7"):bdg("বাকি ✗","#dc2626","#fee2e2")}</td>
+    return `<tr><td><b>${esc(m.name)}</b></td><td>${p?bdg(fmt(p.amount)+" ✓","#1a8a00","#dcfce7"):bdg("বাকি ✗","#dc2626","#fee2e2")}</td>
       <td style="color:#1a8a00;font-weight:700">${fmt(allPaid)}</td>
       <td>${isA()&&p?`<button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delPay(${p.id})">🗑</button>`:""}</td></tr>`;}).join("");
 
@@ -2034,7 +2064,7 @@ function pgLoans(){
   },0);
 
   const form=isA()?`<div class="card">${ch("📝","নতুন ঋণ যোগ করুন")}<div class="cb">
-    <div class="field"><label>সদস্য</label><select id="lMem"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>
+    <div class="field"><label>সদস্য</label><select id="lMem"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select></div>
     <div class="grid3">
       <div class="field"><label>মূল ঋণ (৳)</label><input type="number" id="lAmt" placeholder="0"></div>
       <div class="field"><label>মুনাফার হার % <span style="font-size:10px;color:#94a3b8">(ঐচ্ছিক)</span></label><input type="number" id="lRate" value="0" min="0" max="100"></div>
@@ -2115,7 +2145,7 @@ function pgLoans(){
         <input type="hidden" id="el-id">
         <div class="field"><label>সদস্য</label>
           <select id="el-mid" style="width:100%;padding:9px 12px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
-            ${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}
+            ${members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}
           </select>
         </div>
         <div class="grid2">
@@ -2474,7 +2504,7 @@ function pgAssets(){
       <div style="font-weight:800;font-size:15px;color:${catColors[c]||"#64748b"}">${fmt(subtotal)}</div>
     </div>
     <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>সম্পদ</th><th>মূল্য (৳)</th><th>তারিখ</th><th>বিবরণ</th>${isA()?"<th></th>":""}</tr></thead><tbody>
-      ${items.map(a=>`<tr><td><b>${a.name}</b></td><td style="font-weight:700;color:${catColors[c]||"#64748b"}">${fmt(a.value)}</td><td style="color:#94a3b8;font-size:12px">${ds(a.date)}</td><td style="color:#94a3b8;font-size:12px">${a.note||"-"}</td>${isA()?`<td><button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delAsset(${a.id})">🗑</button></td>`:""}</tr>`).join("")}
+      ${items.map(a=>`<tr><td><b>${esc(a.name)}</b></td><td style="font-weight:700;color:${catColors[c]||"#64748b"}">${fmt(a.value)}</td><td style="color:#94a3b8;font-size:12px">${ds(a.date)}</td><td style="color:#94a3b8;font-size:12px">${a.note||"-"}</td>${isA()?`<td><button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delAsset(${a.id})">🗑</button></td>`:""}</tr>`).join("")}
     </tbody></table></div></div>`;}).join("");
 
   return `
@@ -2523,8 +2553,8 @@ function delAsset(id){
   const a=(D.assets||[]).find(x=>x.id===id);
   if(!a)return;
   D.assets=(D.assets||[]).filter(a=>a.id!==id);
-  const tid=moveToTrash("asset",`${a.name} — ${fmt(a.value)}`,a);
-  logActivity("asset",`সম্পদ মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${a.name} — ${fmt(a.value)}`);
+  const tid=moveToTrash("asset",`${esc(a.name)} — ${fmt(a.value)}`,a);
+  logActivity("asset",`সম্পদ মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${esc(a.name)} — ${fmt(a.value)}`);
   sv();undoToast("🗑 সম্পদ মুছে ফেলা হয়েছে",tid);goTab("assets");
 }
 
@@ -2773,7 +2803,7 @@ function pgBalance(){
 
         ${liabilities.length?liabilities.map(l=>`
           <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f1f5f9">
-            <span style="font-size:13px;color:#374151">${l.name}${l.type?" ("+l.type+")":""}</span>
+            <span style="font-size:13px;color:#374151">${esc(l.name)}${l.type?" ("+l.type+")":""}</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-weight:700;color:#dc2626">${fmt(l.amount)}</span>
               ${isA()?`<button onclick="delLiability(${l.id})" style="background:#fff1f2;color:#dc2626;border:1px solid #fecaca;border-radius:7px;padding:3px 9px;font-size:12px;cursor:pointer">🗑 মুছুন</button>`:""}
@@ -2881,8 +2911,8 @@ function delLiability(id){
   const l=(D.liabilities||[]).find(x=>x.id===id);
   if(!l)return;
   D.liabilities=(D.liabilities||[]).filter(x=>x.id!==id);
-  const tid=moveToTrash("liability",`${l.name} — ${fmt(l.amount)}`,l);
-  logActivity("liability",`দায় মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${l.name} — ${fmt(l.amount)}`);
+  const tid=moveToTrash("liability",`${esc(l.name)} — ${fmt(l.amount)}`,l);
+  logActivity("liability",`দায় মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${esc(l.name)} — ${fmt(l.amount)}`);
   sv();undoToast("🗑 দায় মুছে ফেলা হয়েছে",tid);goTab("balance");
 }
 
@@ -3093,7 +3123,7 @@ function buildMemberCard(m,payments,loans,duesListAll,allMeetings,totalFundAll,r
     const attPct=allMeetings.length?Math.round(attCount/allMeetings.length*100):0;
     const fundShare=totalFundAll/Math.max(1,members.length);
     const g=rG[m.role]||GR.g;
-    return `<div data-name="${m.name}" style="background:var(--white);border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden">
+    return `<div data-name="${esc(m.name)}" style="background:var(--white);border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden">
       <div style="height:5px;background:${g}"></div>
       <div style="padding:14px">
         <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
@@ -3101,7 +3131,7 @@ function buildMemberCard(m,payments,loans,duesListAll,allMeetings,totalFundAll,r
             ? `<label title="ছবি পরিবর্তন" style="cursor:pointer;flex-shrink:0"><img src="${m.photo}" loading="lazy" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid ${g}"><input type="file" accept="image/*" onchange="changeMemberPhoto(${m.id},this)" style="display:none"></label>`
             : `<label title="ছবি যোগ করুন" style="cursor:pointer;flex-shrink:0">${av(m.name,44,g,m.id)}<input type="file" accept="image/*" onchange="changeMemberPhoto(${m.id},this)" style="display:none"></label>`}
           <div style="flex:1">
-            <div style="font-weight:700;font-size:15px;color:var(--ink);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(0,100,0,.3)" onclick="openMemberProfile(${m.id})">${m.name}</div>
+            <div style="font-weight:700;font-size:15px;color:var(--ink);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(0,100,0,.3)" onclick="openMemberProfile(${m.id})">${esc(m.name)}</div>
             <span style="font-size:10px;background:#dcfce7;color:#1a8a00;border-radius:5px;padding:2px 7px;font-weight:700">${m.role||"সদস্য"}</span>
           </div>
           ${isA()?`<div style="display:flex;gap:5px">
@@ -3231,7 +3261,7 @@ function openMemberProfile(mid){
       <div style="display:flex;align-items:center;gap:14px">
         ${m.photo?`<img src="${m.photo}" loading="lazy" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff;border:3px solid rgba(255,255,255,.3)">${m.name?m.name[0]:""}</div>`}
         <div>
-          <div style="font-size:18px;font-weight:800;color:#fff">${m.name}</div>
+          <div style="font-size:18px;font-weight:800;color:#fff">${esc(m.name)}</div>
           <div style="font-size:12px;color:rgba(255,255,255,.8);margin-top:2px">${m.role||"সদস্য"} | আইডি: #${String(mid).slice(-4)}</div>
           <div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:2px">যোগদান: ${m.join||"—"}</div>
         </div>
@@ -3656,7 +3686,7 @@ function memberProfilePDF(mid){
   <div style="background:linear-gradient(135deg,#006400,#1a8a00);padding:20px;border-radius:12px;margin-bottom:20px;display:flex;align-items:center;gap:16px">
     ${m.photo?`<img src="${m.photo}" loading="lazy" style="width:70px;height:70px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.5)">`:`<div style="width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:#fff">${m.name?m.name[0]:""}</div>`}
     <div>
-      <h1 style="color:#fff;margin:0;font-size:20px;border:none">${m.name}</h1>
+      <h1 style="color:#fff;margin:0;font-size:20px;border:none">${esc(m.name)}</h1>
       <div style="color:rgba(255,255,255,.8);font-size:13px">${m.role||"সদস্য"} | আইডি: #${String(mid).slice(-4)}</div>
       <div style="color:rgba(255,255,255,.7);font-size:12px">যোগদান: ${m.join||"—"}</div>
     </div>
@@ -3733,6 +3763,17 @@ function changeMemberPhoto(mid,input){
 function uploadMemberDoc(mid,field,input){
   const f=input.files[0];if(!f)return;
   if(f.size>5242880){toast("⚠️ ফাইল ৫ MB-র কম হতে হবে","#d97706");return;}
+  // ছবি হলে (এনআইডি/ডকুমেন্টের ছবি) কমপ্রেস করে ছোট করে সেভ করা হয় — এতে ডেটার আকার
+  // অনেক কমে, ফলে প্রতিটা সেভ (এমনকি অন্য কোনো ছোট পরিবর্তনও) দ্রুত হয়। PDF কমপ্রেস করা যায় না,
+  // তাই PDF-এর ক্ষেত্রে আগের মতোই সরাসরি সেভ হবে।
+  if(f.type && f.type.startsWith("image")){
+    compressImage(f,1000,dataUrl=>{
+      if(!dataUrl){toast("⚠️ ফাইল প্রসেস করা যায়নি","#dc2626");return;}
+      const m=(D.members||[]).find(x=>x.id==mid);
+      if(m){m[field]=dataUrl;sv();toast("✅ ফাইল আপলোড হয়েছে (ছোট করে সেভ করা হয়েছে)");closeMemberProfile();openMemberProfile(mid);}
+    },0.75);
+    return;
+  }
   const r=new FileReader();
   r.onload=e=>{
     const m=(D.members||[]).find(x=>x.id==mid);
@@ -3812,7 +3853,7 @@ function delMember(id){
   if(!m)return;
   D.members=(D.members||[]).filter(m=>m.id!==id);
   const tid=moveToTrash("member",m.name,m);
-  logActivity("member",`সদস্য মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${m.name}`);
+  logActivity("member",`সদস্য মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${esc(m.name)}`);
   sv();undoToast("🗑 সদস্য মুছে ফেলা হয়েছে",tid);goTab("members");
 }
 
@@ -3824,7 +3865,7 @@ function moveToFormerMember(id){
   if(!m){toast("সদস্য পাওয়া যায়নি","#d97706");return;}
   const totalPaid=(D.payments||[]).filter(p=>p.mid==id).reduce((s,p)=>s+p.amount,0);
   const totalLoanOut=(D.loans||[]).filter(l=>l.mid==id).reduce((s,l)=>s+l.remaining,0);
-  const msg=`"${m.name}" কে পূর্ব সদস্য তালিকায় স্থানান্তর করতে চান?\n\nমোট জমা দিয়েছেন: ৳${totalPaid.toLocaleString("bn-BD")}\nবকেয়া ঋণ: ৳${totalLoanOut.toLocaleString("bn-BD")}\n\nতিনি বর্তমান সদস্য তালিকা থেকে সরে যাবেন।`;
+  const msg=`"${esc(m.name)}" কে পূর্ব সদস্য তালিকায় স্থানান্তর করতে চান?\n\nমোট জমা দিয়েছেন: ৳${totalPaid.toLocaleString("bn-BD")}\nবকেয়া ঋণ: ৳${totalLoanOut.toLocaleString("bn-BD")}\n\nতিনি বর্তমান সদস্য তালিকা থেকে সরে যাবেন।`;
   if(!confirm(msg))return;
   if(!D.formerMembers) D.formerMembers=[];if(!D.trash) D.trash=[];
   D.formerMembers.push({
@@ -3841,7 +3882,7 @@ function moveToFormerMember(id){
     note:""
   });
   D.members=(D.members||[]).filter(x=>x.id!==id);
-  logActivity("member",`${m.name} কে পূর্ব সদস্য তালিকায় স্থানান্তর করা হয়েছে`);
+  logActivity("member",`${esc(m.name)} কে পূর্ব সদস্য তালিকায় স্থানান্তর করা হয়েছে`);
   sv();toast("✅ পূর্ব সদস্য তালিকায় স্থানান্তরিত হয়েছে","#1a8a00");
   goTab("members");
 }
@@ -3854,7 +3895,7 @@ function pgFormerMembers(){
       <div style="padding:14px 16px">
         <div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-weight:700;font-size:14px">${m.name}</div>
+            <div style="font-weight:700;font-size:14px">${esc(m.name)}</div>
             <div style="font-size:11px;color:var(--muted)">${m.role||"সদস্য"} ${m.phone?(" · "+m.phone):""}</div>
             <div style="font-size:11px;color:var(--muted);margin-top:3px">যোগদান: ${m.joinDate||"—"} · বহির্গমন: ${m.leftDate||"—"}</div>
           </div>
@@ -3951,10 +3992,10 @@ function saveFormerMemberEdit(){
 function delFormerMember(id){
   const m=(D.formerMembers||[]).find(x=>x.id===id);
   if(!m) return;
-  if(!confirm(`"${m.name}" কে পূর্ব সদস্য তালিকা থেকে স্থায়ীভাবে মুছে ফেলতে চান?`))return;
+  if(!confirm(`"${esc(m.name)}" কে পূর্ব সদস্য তালিকা থেকে স্থায়ীভাবে মুছে ফেলতে চান?`))return;
   D.formerMembers=(D.formerMembers||[]).filter(x=>x.id!==id);
   const tid=moveToTrash("formerMember",m.name,m);
-  logActivity("member",`পূর্ব সদস্য মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${m.name}`);
+  logActivity("member",`পূর্ব সদস্য মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${esc(m.name)}`);
   sv();undoToast("🗑 পূর্ব সদস্য মুছে ফেলা হয়েছে",tid);goTab("formermembers");
 }
 
@@ -3967,7 +4008,7 @@ function setRefundDue(id){
 function markRefunded(id,val=true){
   D.formerMembers=(D.formerMembers||[]).map(m=>m.id===id?{...m,refunded:val}:m);
   const m=D.formerMembers.find(x=>x.id===id);
-  if(m) logActivity("member",`${m.name} — ${val?"ফেরত প্রদান সম্পন্ন":"ফেরত প্রদান বাতিল করা হয়েছে"}`);
+  if(m) logActivity("member",`${esc(m.name)} — ${val?"ফেরত প্রদান সম্পন্ন":"ফেরত প্রদান বাতিল করা হয়েছে"}`);
   sv();toast(val?"✅ ফেরত দেওয়া হয়েছে চিহ্নিত হলো":"↺ পুনরায় বাকি করা হলো");goTab("formermembers");
 }
 
@@ -3979,7 +4020,7 @@ function markRefunded(id,val=true){
 function pgOpinion(){
   const ops=D.opinions||[], members=D.members||[];
   const form=`<div class="card">${ch("✍️","মতামত দিন","","p")}<div class="cb">
-    <div class="field"><label>আপনি কে?</label><select id="opM"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>
+    <div class="field"><label>আপনি কে?</label><select id="opM"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select></div>
     <div class="field"><label>মতামত / পরামর্শ</label><textarea id="opT" placeholder="আপনার মতামত লিখুন..."></textarea></div>
     <button class="btn" style="background:${GR.p};color:#fff" onclick="addOp()">📤 পাঠান</button>
   </div></div>`;
@@ -4019,7 +4060,7 @@ function pgComplaint(){
       <div class="field"><label>ধরন</label><select id="cpType"><option>অভিযোগ</option><option>পরামর্শ</option></select></div>
       <div class="field"><label>বিভাগ</label><select id="cpCat">${COMPLAINT_CATS.map(c=>`<option>${c}</option>`).join("")}</select></div>
     </div>
-    <div class="field" id="cpMemberField"><label>আপনি কে?</label><select id="cpM"><option value="">-- সদস্য বেছে নিন --</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>
+    <div class="field" id="cpMemberField"><label>আপনি কে?</label><select id="cpM"><option value="">-- সদস্য বেছে নিন --</option>${members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select></div>
     <div class="field" style="display:flex;align-items:center;gap:8px;margin-top:-4px">
       <input type="checkbox" id="cpAnon" style="width:auto" onchange="document.getElementById('cpMemberField').style.display=this.checked?'none':'block'">
       <label for="cpAnon" style="margin:0;font-size:12px;color:#64748b;cursor:pointer">🕵️ বেনামে (Anonymous) জমা দিতে চাই — কেউ জানবে না কে জমা দিয়েছে</label>
@@ -4178,8 +4219,8 @@ function prevFile(i){
     if(isImg) prev=`<img src="${e.target.result}" style="max-height:120px;border-radius:7px;object-fit:cover">`;
     else if(isVid) prev=`<video src="${e.target.result}" style="max-height:120px;border-radius:7px" controls></video>`;
     else if(isAud) prev=`<div style="font-size:28px">🎵</div><audio src="${e.target.result}" controls style="width:100%"></audio>`;
-    else prev=`<div style="font-size:36px">📄</div><div style="font-size:12px;color:#64748b">${f.name}</div>`;
-    document.getElementById("ipv").innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;gap:8px">${prev}<div style="font-size:11px;color:#1a8a00;font-weight:600">✅ প্রস্তুত: ${f.name}</div></div>`;
+    else prev=`<div style="font-size:36px">📄</div><div style="font-size:12px;color:#64748b">${esc(f.name)}</div>`;
+    document.getElementById("ipv").innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;gap:8px">${prev}<div style="font-size:11px;color:#1a8a00;font-weight:600">✅ প্রস্তুত: ${esc(f.name)}</div></div>`;
   };
   r.readAsDataURL(f);
 }
@@ -5051,7 +5092,7 @@ function pdfDownload(type){
   } else if(type==="assets"){
     title="সম্পদের হিসাব";
     tableHTML=`<table><thead><tr><th style="text-align:left">সম্পদ</th><th>ক্যাটাগরি</th><th>মূল্য</th><th>তারিখ</th></tr></thead><tbody>
-      ${assets.map(a=>`<tr><td style="text-align:left">${a.name}</td><td>${a.category}</td><td>${fmtBn(a.value)}</td><td>${a.date}</td></tr>`).join("")}
+      ${assets.map(a=>`<tr><td style="text-align:left">${esc(a.name)}</td><td>${a.category}</td><td>${fmtBn(a.value)}</td><td>${a.date}</td></tr>`).join("")}
       <tr style="background:#f0fdf4;font-weight:800"><td colspan="2" style="text-align:left">সর্বমোট</td><td>${fmtBn(assets.reduce((s,a)=>s+a.value,0))}</td><td></td></tr>
     </tbody></table>`;
   } else if(type==="expenses"){
@@ -5089,10 +5130,10 @@ function pdfDownload(type){
       <tr><td style="text-align:left;padding-left:16px">আদায়যোগ্য ঋণ</td><td>${fmtBn(totalLoanOutP)}</td></tr>
       <tr><td style="text-align:left;padding-left:16px">বিনিয়োগ</td><td>${fmtBn(totalInvestP)}</td></tr>
       <tr><td style="text-align:left;padding-left:16px">বকেয়া চাঁদা (আদায়যোগ্য)</td><td>${fmtBn(totalDueChadaP)}</td></tr>
-      ${assets.map(a=>`<tr><td style="text-align:left;padding-left:16px">${a.name} (${a.category})</td><td>${fmtBn(a.value)}</td></tr>`).join("")}
+      ${assets.map(a=>`<tr><td style="text-align:left;padding-left:16px">${esc(a.name)} (${a.category})</td><td>${fmtBn(a.value)}</td></tr>`).join("")}
       <tr style="font-weight:800;background:#dcfce7"><td style="text-align:left">মোট সম্পদ</td><td>${fmtBn(totalAssetP)}</td></tr>
       <tr style="background:#fff1f2"><td colspan="2" style="text-align:left;font-weight:800;color:#dc2626">🔴 দায় (Liabilities)</td></tr>
-      ${liabilitiesP.map(l=>`<tr><td style="text-align:left;padding-left:16px">${l.name} (${l.type||""})</td><td>${fmtBn(l.amount)}</td></tr>`).join("")||`<tr><td style="text-align:left;padding-left:16px;color:#94a3b8">কোনো ম্যানুয়াল দায় নেই</td><td>—</td></tr>`}
+      ${liabilitiesP.map(l=>`<tr><td style="text-align:left;padding-left:16px">${esc(l.name)} (${l.type||""})</td><td>${fmtBn(l.amount)}</td></tr>`).join("")||`<tr><td style="text-align:left;padding-left:16px;color:#94a3b8">কোনো ম্যানুয়াল দায় নেই</td><td>—</td></tr>`}
       ${totalFormerDueP>0?`<tr><td style="text-align:left;padding-left:16px">পূর্ব সদস্যদের ফেরতযোগ্য পাওনা</td><td>${fmtBn(totalFormerDueP)}</td></tr>`:""}
       <tr style="font-weight:800;background:#fee2e2"><td style="text-align:left">মোট দায়</td><td>${fmtBn(totalLiabilityP)}</td></tr>
       <tr style="background:#f5f3ff"><td colspan="2" style="text-align:left;font-weight:800;color:#7c3aed">💜 মূলধন (Equity)</td></tr>
@@ -5305,7 +5346,7 @@ function pgPayment(){
   const bankCards=bank.length?bank.map(b=>`
     <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:14px 16px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div><div style="font-weight:800;font-size:15px;color:#0369a1">🏦 ${b.name}</div>
+        <div><div style="font-weight:800;font-size:15px;color:#0369a1">🏦 ${esc(b.name)}</div>
         <div style="font-size:12px;color:#64748b;margin-top:2px">${b.branch?b.branch+" শাখা":""}</div></div>
         ${isA()?`<button onclick="delBankInfo(${b.id})" style="background:#fee2e2;border:none;border-radius:7px;padding:4px 9px;cursor:pointer;color:#dc2626;font-size:12px">🗑</button>`:""}
       </div>
@@ -5385,8 +5426,8 @@ function delBankInfo(id){
   const b=(D.paymentInfo.bank||[]).find(x=>x.id===id);
   if(!b)return;
   D.paymentInfo.bank=D.paymentInfo.bank.filter(b=>b.id!==id);
-  const tid=moveToTrash("bankInfo",`${b.name} — ${b.number}`,b);
-  logActivity("payment",`ব্যাংক অ্যাকাউন্ট মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${b.name}`);
+  const tid=moveToTrash("bankInfo",`${esc(b.name)} — ${b.number}`,b);
+  logActivity("payment",`ব্যাংক অ্যাকাউন্ট মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${esc(b.name)}`);
   sv();undoToast("🗑 মুছে ফেলা হয়েছে",tid);goTab("payment");
 }
 
@@ -5467,7 +5508,7 @@ function pgDuesSheet() {
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:16px">
           ${members.map(m=>`
             <div style="background:#f0fdf4;border-radius:9px;padding:10px;text-align:center">
-              <div style="font-weight:700;font-size:12.5px;color:#071a07;line-height:1.3;word-break:break-word">${m.name}</div>
+              <div style="font-weight:700;font-size:12.5px;color:#071a07;line-height:1.3;word-break:break-word">${esc(m.name)}</div>
               <div style="font-weight:800;color:#1a8a00;font-size:15px;margin-top:3px">${fmt(getApplicableRate(m.id,curMon))}</div>
             </div>`).join("")}
         </div>
@@ -5537,7 +5578,7 @@ function pgDuesSheet() {
 
   const summaryCards = memberSummary.map(({m, spCount, spTotal, regularTotal, monthCount, totalExpected, totalPaid, totalDue}) => `
     <div style="background:${totalDue>0?"#fff1f2":"#f0fdf4"};border-radius:11px;padding:12px 14px;border:1.5px solid ${totalDue>0?"#fecaca":"#bbf7d0"}">
-      <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#071a07">${m.name}</div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#071a07">${esc(m.name)}</div>
       <div style="font-size:11px;color:#64748b;margin-bottom:5px;line-height:1.8">
         ফর্মুলা: ${monthCount} মাস × পরিবর্তনশীল হার = ${fmt(regularTotal)}${spCount>0?" + বিশেষ চাঁদা "+fmt(spTotal)+" ("+spCount+" বার)":""} = ${fmt(totalExpected)}
       </div>
@@ -5597,8 +5638,8 @@ function pgDuesSheet() {
 
     const yearDue = yearExpected - yearPaid;
 
-    return `<tr data-name="${m.name}">
-      <td style="position:sticky;left:0;background:var(--white);color:var(--ink);z-index:5;font-weight:700;font-size:13px;padding:8px 12px;border-right:2px solid #e2e8f0">${m.name}</td>
+    return `<tr data-name="${esc(m.name)}">
+      <td style="position:sticky;left:0;background:var(--white);color:var(--ink);z-index:5;font-weight:700;font-size:13px;padding:8px 12px;border-right:2px solid #e2e8f0">${esc(m.name)}</td>
       ${cells}
       <td style="font-weight:700;color:#1a8a00;text-align:center;background:#f0fdf4">${fmt(yearPaid)}</td>
       <td style="font-weight:700;color:${yearDue>0?"#dc2626":"#1a8a00"};text-align:center;background:${yearDue>0?"#fff1f2":"#f0fdf4"}">${yearDue>0?fmt(yearDue):"✅"}</td>
@@ -5664,7 +5705,7 @@ function pgDuesSheet() {
       const rows=atRisk.map(({m,rs})=>`
         <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap">
           <div style="flex:1;min-width:120px">
-            <div style="font-weight:700;font-size:13px">${m.name}</div>
+            <div style="font-weight:700;font-size:13px">${esc(m.name)}</div>
             <div style="font-size:10px;color:#94a3b8;margin-top:2px">${rs.missedStreak>0?`⏳ ${rs.missedStreak} মাস ধারাবাহিক বকেয়া`:"—"}${rs.hasLoanDue?" · 🤝 ঋণও বকেয়া":""} · 📅 উপস্থিতি ${rs.attPct}%</div>
           </div>
           <div style="font-size:12px;font-weight:700;color:#dc2626;white-space:nowrap">${fmt(rs.totalDue)}</div>
@@ -6122,7 +6163,7 @@ function pgLateFee(){
 
   const manualForm=isAd?`<div class="card" style="margin-bottom:12px">${ch("➕","ম্যানুয়াল জরিমানা যোগ করুন","বিশেষ ক্ষেত্রে সরাসরি জরিমানা ধার্য করুন","r")}<div class="cb">
     <div class="grid2">
-      <div class="field"><label>সদস্য</label><select id="lfMid"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${m.name}</option>`).join("")}</select></div>
+      <div class="field"><label>সদস্য</label><select id="lfMid"><option value="">-- সদস্য --</option>${members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("")}</select></div>
       <div class="field"><label>মাস</label><input type="month" id="lfMonth" value="${curMon}"></div>
     </div>
     <div class="grid2">
@@ -6233,7 +6274,7 @@ function renderChadaDues(){
   return list.map(m=>`
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #f5f5f5">
       <div>
-        <div style="font-weight:600;font-size:14px">${m.name}</div>
+        <div style="font-weight:600;font-size:14px">${esc(m.name)}</div>
         <div style="font-size:11px;color:#94a3b8">${m.months} মাসের হিসাব · পরিশোধ ${fmt(m.totalPaid)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -6252,7 +6293,7 @@ function buildDueMsg(m){
   const memberDues=duesList.find(x=>x.id==m.id);
   const chadaDue=memberDues?memberDues.totalDue:0;
   if(chadaDue===0&&loanDue===0) return null;
-  return `আসসালামু আলাইকুম ${m.name} ভাই,\n\n🪁 *স্বপ্নঘুড়ি* সংগঠনে আপনার বকেয়া:\n\n`
+  return `আসসালামু আলাইকুম ${esc(m.name)} ভাই,\n\n🪁 *স্বপ্নঘুড়ি* সংগঠনে আপনার বকেয়া:\n\n`
     +(chadaDue>0?`💰 মাসিক চাঁদা বকেয়া: *${fmt(chadaDue)}*\n`:"")
     +(loanDue>0?`🤝 ঋণ বকেয়া: *${fmt(loanDue)}*\n`:"")
     +`📊 সর্বমোট: *${fmt(chadaDue+loanDue)}*\n\nঅনুগ্রহ করে দ্রুত পরিশোধ করুন।\n🔗 https://swapnaghuri-2026.github.io/swapnaghuri`;
@@ -6314,7 +6355,7 @@ function buildGroupDueMsg(){
   if(!duesList.length){
     return `আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nসবার চাঁদা ও ঋণ যথাসময়ে পরিশোধ করা হয়েছে। সবাইকে ধন্যবাদ! ✅\n\nতারিখ: ${today}\nস্বপ্নঘুড়ি সংগঠন`;
   }
-  const lines=duesList.map((m,i)=>`${i+1}. ${m.name} — ৳${Number(m.totalDue).toLocaleString("bn-BD")}`).join("\n");
+  const lines=duesList.map((m,i)=>`${i+1}. ${esc(m.name)} — ৳${Number(m.totalDue).toLocaleString("bn-BD")}`).join("\n");
   return `আসসালামু আলাইকুম,\n\nপ্রিয় সদস্যবৃন্দ,\n\nনিম্নলিখিত সদস্যদের ${curMonthBn} মাস পর্যন্ত চাঁদা/ঋণ বকেয়া রয়েছে। অনুগ্রহ করে দ্রুত পরিশোধ করুন:\n\n${lines}\n\nবিস্তারিত দেখুন:\nhttps://swapnaghuri-2026.github.io/swapnaghuri\n\nতারিখ: ${today}\nধন্যবাদ 🪁\nস্বপ্নঘুড়ি সংগঠন`;
 }
 
@@ -6343,7 +6384,7 @@ function showMsgPanel(){
       <div style="font-weight:700;font-size:12px;color:#334155;margin:14px 0 8px">অথবা একজনকে আলাদাভাবে পাঠান:</div>
       ${duesList.map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:9px;background:#f8fafc;margin-bottom:6px;border:1px solid #e2e8f0">
         <div>
-          <div style="font-weight:700;font-size:13px;color:#0f172a">${m.name}</div>
+          <div style="font-weight:700;font-size:13px;color:#0f172a">${esc(m.name)}</div>
           <div style="font-size:11px;color:#dc2626;font-weight:600">বকেয়া: ${fmt(m.totalDue)}</div>
         </div>
         <div style="display:flex;gap:6px">
@@ -6353,7 +6394,7 @@ function showMsgPanel(){
       </div>`).join("")}
       ${members.filter(m=>!duesList.find(d=>d.id==m.id)).map(m=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:9px;background:#f0fdf4;margin-bottom:6px;border:1px solid #bbf7d0">
         <div>
-          <div style="font-weight:700;font-size:13px;color:#0f172a">${m.name}</div>
+          <div style="font-weight:700;font-size:13px;color:#0f172a">${esc(m.name)}</div>
           <div style="font-size:11px;color:#16a34a;font-weight:600">✅ বকেয়া নেই</div>
         </div>
         <div style="display:flex;gap:6px">
@@ -6431,7 +6472,7 @@ function downloadReport(type, year){
         if(paid) totalPaid += paid.amount;
         return paid?paid.amount:"0";
       });
-      csv += `${m.name},${row.join(",")},${totalExp},${totalPaid},${totalExp-totalPaid}\n`;
+      csv += `${esc(m.name)},${row.join(",")},${totalExp},${totalPaid},${totalExp-totalPaid}\n`;
     });
 
   } else if(type==="income-expense"){
@@ -6617,7 +6658,7 @@ function pgMemberStat(){
       <div style="display:flex;align-items:center;gap:14px;padding:16px">
         ${av(m.name,56,"linear-gradient(135deg,#006400,#1a8a00)",m.id)}
         <div>
-          <div style="font-weight:800;font-size:18px">${m.name}</div>
+          <div style="font-weight:800;font-size:18px">${esc(m.name)}</div>
           <div style="font-size:13px;color:#64748b">${m.role||"সদস্য"} · যোগদান: ${m.join||m.joinDate||"নভে ২০২১"}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
             ${bdg(m.role||"সদস্য","#fff","#006400")}
@@ -6715,7 +6756,7 @@ function memberStatPDF(mid){
   </style></head><body>
   ${pdfWM()}${pdfBtn()}
   <h1>🪁 স্বপ্নঘুড়ি — সদস্য স্টেটমেন্ট</h1>
-  <div class="meta"><b>নাম:</b> ${m.name} | <b>পদ:</b> ${m.role||"সদস্য"} | <b>তারিখ:</b> ${new Date().toLocaleDateString("bn-BD")}</div>
+  <div class="meta"><b>নাম:</b> ${esc(m.name)} | <b>পদ:</b> ${m.role||"সদস্য"} | <b>তারিখ:</b> ${new Date().toLocaleDateString("bn-BD")}</div>
   <div style="margin-bottom:16px">
     <div class="kpi"><div class="kv">${fmtBn(totalPaid)}</div><div class="kl">মোট চাঁদা</div></div>
     <div class="kpi"><div class="kv" style="color:#dc2626">${fmtBn(totalExp-totalPaid)}</div><div class="kl">চাঁদা বকেয়া</div></div>
@@ -6755,7 +6796,7 @@ function memberStatXL(mid){
   let d=new Date(ORG_START);
   while(d<=new Date()){allMonths.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d=new Date(d.getFullYear(),d.getMonth()+1,1);}
   const bom="\uFEFF";
-  let csv=`স্বপ্নঘুড়ি — ${m.name} — সদস্য স্টেটমেন্ট\n\n`;
+  let csv=`স্বপ্নঘুড়ি — ${esc(m.name)} — সদস্য স্টেটমেন্ট\n\n`;
   csv+="চাঁদার ইতিহাস\nমাস,নির্ধারিত,পরিশোধ,অবস্থা\n";
   allMonths.forEach(mon=>{
     const sp=specialMonths.find(s=>s.month===mon);
@@ -6773,7 +6814,7 @@ function memberStatXL(mid){
   const blob=new Blob([bom+csv],{type:"text/csv;charset=utf-8;"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
-  a.href=url;a.download=`${m.name}_statement.csv`;a.click();URL.revokeObjectURL(url);
+  a.href=url;a.download=`${esc(m.name)}_statement.csv`;a.click();URL.revokeObjectURL(url);
   toast("✅ Excel ডাউনলোড শুরু হয়েছে");
 }
 
@@ -7105,7 +7146,7 @@ function renderMinutesModal(){
   const d=window._minDraft; if(!d) return;
   const members=D.members||[];
   const esc=s=>(s||"").toString().replace(/"/g,"&quot;");
-  const nameOpts=val=>`<option value="">-- বেছে নিন --</option>`+members.map(m=>`<option value="${esc(m.name)}"${m.name===val?" selected":""}>${m.name}</option>`).join("");
+  const nameOpts=val=>`<option value="">-- বেছে নিন --</option>`+members.map(m=>`<option value="${esc(m.name)}"${m.name===val?" selected":""}>${esc(m.name)}</option>`).join("");
   const inp=(id,val,ph,type="text")=>`<input id="${id}" type="${type}" value="${esc(val)}" placeholder="${ph||""}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12.5px;font-family:inherit;box-sizing:border-box">`;
   const ta=(id,val,ph)=>`<textarea id="${id}" placeholder="${ph||""}" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid #e2e8f0;font-size:12.5px;font-family:inherit;box-sizing:border-box;min-height:44px">${val||""}</textarea>`;
 
@@ -7196,7 +7237,7 @@ function meetingPDF(mid){
   ${mt.agenda?`<h2>এজেন্ডা</h2><div style="background:#f8fafc;border-radius:8px;padding:12px;white-space:pre-line;margin:10px 0">${mt.agenda}</div>`:""}
   <h2>উপস্থিতি (${bnNum(presentCount)}/${bnNum(members.length)} জন)</h2>
   <table><thead><tr><th>সদস্য</th><th>উপস্থিতি</th></tr></thead><tbody>
-  ${members.map(m=>`<tr><td style="text-align:left">${m.name}</td><td style="color:${attendance[m.id]?"#16a34a":"#dc2626"};font-weight:600">${attendance[m.id]?"✅ উপস্থিত":"❌ অনুপস্থিত"}</td></tr>`).join("")}
+  ${members.map(m=>`<tr><td style="text-align:left">${esc(m.name)}</td><td style="color:${attendance[m.id]?"#16a34a":"#dc2626"};font-weight:600">${attendance[m.id]?"✅ উপস্থিত":"❌ অনুপস্থিত"}</td></tr>`).join("")}
   </tbody></table>
   ${dp.length?`<h2>আলোচ্য বিষয় ও গৃহীত সিদ্ধান্ত</h2>
   <table><thead><tr><th style="width:6%">ক্র.</th><th>আলোচ্য বিষয়</th><th>আলোচনা</th><th>সিদ্ধান্ত</th></tr></thead><tbody>
@@ -7296,7 +7337,7 @@ function pgHealth(){
               const mScore=Math.max(0,Math.round(100-(mDue/Math.max(1,mExp)*50)-(mLoan>0?20:0)));
               const sc=mScore>=80?"#16a34a":mScore>=60?"#d97706":"#dc2626";
               return `<tr>
-                <td style="font-weight:600;white-space:nowrap">${m.name}</td>
+                <td style="font-weight:600;white-space:nowrap">${esc(m.name)}</td>
                 <td style="text-align:right;color:#16a34a;white-space:nowrap">${fmt(mPaid)}</td>
                 <td style="text-align:right;color:${mDue>0?"#dc2626":"#16a34a"};white-space:nowrap">${mDue>0?fmt(mDue):"✅"}</td>
                 <td style="text-align:right;color:${mLoan>0?"#dc2626":"#16a34a"};white-space:nowrap">${mLoan>0?fmt(mLoan):"✅"}</td>
@@ -7689,7 +7730,7 @@ function pgMassMsg(){
     <div class="field" id="mmCustomWrap" style="display:none">
       <label>সদস্য নির্বাচন করুন</label>
       <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:180px;overflow-y:auto;padding:8px;border:1.5px solid var(--border);border-radius:9px">
-        ${members.map(m=>`<label style="display:flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer"><input type="checkbox" class="mm-mem-chk" value="${m.id}" style="width:auto"> ${m.name}</label>`).join("")}
+        ${members.map(m=>`<label style="display:flex;align-items:center;gap:5px;background:#f1f5f9;border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer"><input type="checkbox" class="mm-mem-chk" value="${m.id}" style="width:auto"> ${esc(m.name)}</label>`).join("")}
       </div>
     </div>
     <button class="btn btn-gold" onclick="addMassMsg()">📤 পাঠান</button>
@@ -7699,7 +7740,7 @@ function pgMassMsg(){
     <label style="font-size:12px;color:#64748b;font-weight:600;margin:0;white-space:nowrap">👤 আপনি কে?</label>
     <select id="mmMyId" onchange="setMyMemberId(this.value)" style="flex:1;min-width:150px;padding:7px 10px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;font-family:inherit">
       <option value="">-- বার্তা দেখেছেন তা চিহ্নিত করতে নির্বাচন করুন --</option>
-      ${members.map(m=>`<option value="${m.id}" ${String(m.id)===String(myId)?"selected":""}>${m.name}</option>`).join("")}
+      ${members.map(m=>`<option value="${m.id}" ${String(m.id)===String(myId)?"selected":""}>${esc(m.name)}</option>`).join("")}
     </select>
   </div></div>`;
 
@@ -7967,7 +8008,7 @@ pdfDownload=function(type){
       const mp=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
       const mDue=(duesList.find(d=>d.id==m.id)||{}).totalDue||0;
       const ml=loans.filter(l=>l.mid==m.id).reduce((s,l)=>s+l.remaining,0);
-      return `<tr><td>${bnNum(i+1)}</td><td style="text-align:left;font-weight:600">${m.name}</td><td>${m.role||"সদস্য"}</td><td>${m.phone||"—"}</td><td>${fmtBn(mp)}</td><td style="color:${mDue>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(mDue)}</td><td style="color:${ml>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(ml)}</td></tr>`;
+      return `<tr><td>${bnNum(i+1)}</td><td style="text-align:left;font-weight:600">${esc(m.name)}</td><td>${m.role||"সদস্য"}</td><td>${m.phone||"—"}</td><td>${fmtBn(mp)}</td><td style="color:${mDue>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(mDue)}</td><td style="color:${ml>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(ml)}</td></tr>`;
     }).join("")}
     </tbody></table></body></html>`;
     const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);
@@ -7984,7 +8025,7 @@ pdfDownload=function(type){
       const n=Object.values(v.votes||{}).filter(x=>x==="না").length;
       return `<div class="card"><h2>${v.title}</h2><p>${v.desc||""}</p>
       <table><thead><tr><th>সদস্য</th><th>ভোট</th></tr></thead><tbody>
-      ${members.map(m=>`<tr><td style="text-align:left">${m.name}</td><td style="color:${(v.votes||{})[m.id]==="হ্যাঁ"?"#16a34a":(v.votes||{})[m.id]==="না"?"#dc2626":"#94a3b8"};font-weight:600">${(v.votes||{})[m.id]||"ভোট দেননি"}</td></tr>`).join("")}
+      ${members.map(m=>`<tr><td style="text-align:left">${esc(m.name)}</td><td style="color:${(v.votes||{})[m.id]==="হ্যাঁ"?"#16a34a":(v.votes||{})[m.id]==="না"?"#dc2626":"#94a3b8"};font-weight:600">${(v.votes||{})[m.id]||"ভোট দেননি"}</td></tr>`).join("")}
       <tr style="background:#f0fdf4;font-weight:800"><td>ফলাফল</td><td>✅ হ্যাঁ: ${bnNum(y)} | ❌ না: ${bnNum(n)}</td></tr></tbody></table></div>`;
     }).join("")}
     </body></html>`;
@@ -8037,7 +8078,7 @@ pdfDownload=function(type){
       const mp=payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
       const mDue=(duesList.find(d=>d.id==m.id)||{}).totalDue||0;
       const ml=loans.filter(l=>l.mid==m.id).reduce((s,l)=>s+l.remaining,0);
-      return `<tr><td style="text-align:left;font-weight:600">${m.name}</td><td>${fmtBn(mp)}</td><td style="color:${mDue>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(mDue)}</td><td style="color:${ml>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(ml)}</td></tr>`;
+      return `<tr><td style="text-align:left;font-weight:600">${esc(m.name)}</td><td>${fmtBn(mp)}</td><td style="color:${mDue>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(mDue)}</td><td style="color:${ml>0?"#dc2626":"#16a34a"};font-weight:600">${fmtBn(ml)}</td></tr>`;
     }).join("")}
     </tbody></table></body></html>`;
     const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),600);
@@ -8048,21 +8089,24 @@ pdfDownload=function(type){
 
 
 (function(){
+  // Firebase SDK ভার্সন — সর্বশেষ আপডেট: জুলাই ২০২৬ (তখনকার latest ছিল 12.15.0)
+  // প্রতি ১-২ বছর পরপর https://firebase.google.com/support/release-notes/js
+  // এ গিয়ে latest ভার্সন চেক করে এখানে (৩ জায়গায়) নম্বরটা বদলে দেওয়া ভালো অভ্যাস
   var s1=document.createElement('script');
-  s1.src='https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js';
+  s1.src='https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js';
   s1.onload=function(){
     var s2=document.createElement('script');
-    s2.src='https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js';
+    s2.src='https://www.gstatic.com/firebasejs/12.15.0/firebase-database-compat.js';
     s2.onload=function(){
       var s3=document.createElement('script');
-      s3.src='https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js';
+      s3.src='https://www.gstatic.com/firebasejs/12.15.0/firebase-auth-compat.js';
       s3.onload=function(){
         try{
           if(!firebase.apps.length){
             firebase.initializeApp(firebaseConfig);
           }
           if(role && D){
-            updateSyncStatus("synced");
+            if(!window._dirty && !window._saveInFlight) updateSyncStatus("synced");
             subscribeFirebaseData();
           }
           // ── প্রকৃত অ্যাডমিন সেশন পুনরুদ্ধার: Firebase নিজে টোকেন যাচাই করে, লোকাল স্টোরেজকে অন্ধভাবে বিশ্বাস করা হয় না ──
