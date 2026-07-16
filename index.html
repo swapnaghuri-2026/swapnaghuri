@@ -972,6 +972,59 @@ function subscribeFirebaseData(){
         }
       }catch(e){console.error("Firebase listener error:",e);}
     });
+
+    // ══════════════════════════════════════════
+    // ভোট ও অভিযোগ — এই দুটো আলাদা Firebase নোডে (sg_votes, sg_complaints) রাখা হয়,
+    // মূল sg_data ব্লবের বাইরে। কারণ: sg_data একটাই বড় টেক্সট হিসেবে সেভ হয়, তাই তার
+    // ভেতরের কোনো একটা অংশে (যেমন শুধু ভোট) আলাদা করে সবাইকে লেখার অনুমতি দেওয়া যায় না।
+    // আলাদা নোড হওয়ায় Firebase Rules দিয়ে নির্দিষ্ট করে দেওয়া যায় — ভোট দেওয়া/অভিযোগ জমা
+    // দেওয়া যেকোনো লগইন করা ব্যবহারকারী (ভিউয়ারসহ) পারবেন, কিন্তু পোল তৈরি/অভিযোগের
+    // অবস্থা বদলানো শুধু অ্যাডমিন পারবেন।
+    // ══════════════════════════════════════════
+    firebase.database().ref('sg_votes').on('value',function(snap){
+      try{
+        const obj=snap.val()||{};
+        const arr=Object.keys(obj).map(k=>({...obj[k],id:isNaN(Number(k))?k:Number(k)}));
+        if(arr.length){ D.votes=arr; if(curTab==="voting") goTab("voting"); }
+      }catch(e){}
+    });
+    firebase.database().ref('sg_complaints').on('value',function(snap){
+      try{
+        const obj=snap.val()||{};
+        const arr=Object.keys(obj).map(k=>({...obj[k],id:isNaN(Number(k))?k:Number(k)}));
+        if(arr.length){ D.complaints=arr; if(curTab==="complaint") goTab("complaint"); }
+      }catch(e){}
+    });
+    // একবারের জন্য: পুরনো ব্লবে থাকা ভোট/অভিযোগ (যদি থাকে) নতুন আলাদা নোডে তুলে দেওয়া —
+    // শুধু অ্যাডমিন করবেন (কারণ শুধু অ্যাডমিনেরই sg_votes/sg_complaints পুরোপুরি লেখার অনুমতি আছে)
+    if(role==="admin"){
+      try{
+        firebase.database().ref('sg_votes').once('value').then(function(vs){
+          if(!vs.exists()||!vs.val()){ mirrorVotesToFirebase(); }
+        }).catch(function(){});
+        firebase.database().ref('sg_complaints').once('value').then(function(cs){
+          if(!cs.exists()||!cs.val()){ mirrorComplaintsToFirebase(); }
+        }).catch(function(){});
+      }catch(e){}
+    }
+  }catch(e){}
+}
+// অ্যাডমিনের করা ভোট-সংক্রান্ত পরিবর্তন (নতুন পোল তৈরি/মোছা) আলাদা নোডেও প্রতিফলিত করা হয়,
+// যাতে ভিউয়াররা সরাসরি সেই নোডে ভোট দিতে পারেন
+function mirrorVotesToFirebase(){
+  try{
+    if(typeof firebase==="undefined"||!firebase.apps||!firebase.apps.length) return;
+    const obj={};
+    (D.votes||[]).forEach(v=>{ obj[String(v.id)]=v; });
+    firebase.database().ref('sg_votes').set(obj).catch(function(e){console.error("mirror votes failed",e);});
+  }catch(e){}
+}
+function mirrorComplaintsToFirebase(){
+  try{
+    if(typeof firebase==="undefined"||!firebase.apps||!firebase.apps.length) return;
+    const obj={};
+    (D.complaints||[]).forEach(c=>{ obj[String(c.id)]=c; });
+    firebase.database().ref('sg_complaints').set(obj).catch(function(e){console.error("mirror complaints failed",e);});
   }catch(e){}
 }
 function authErrorMsg(err){
@@ -4130,7 +4183,7 @@ function addComplaint(){
   const text=document.getElementById("cpText").value.trim();
   if(!text){toast("⚠️ বিস্তারিত লিখুন","#d97706");return;}
   if(!anon&&!mRaw){toast("⚠️ সদস্য বেছে নিন অথবা বেনামে জমা দিন","#d97706");return;}
-  D.complaints=[...(D.complaints||[]),{
+  const entry={
     id:Date.now(),
     mid:anon?null:Number(mRaw),
     anonymous:anon,
@@ -4140,9 +4193,23 @@ function addComplaint(){
     reply:"",
     repliedAt:null,
     createdAt:new Date().toISOString()
-  }];
-  logActivity("complaint",`নতুন ${type} জমা হয়েছে${anon?" (বেনামে)":""}: ${text.slice(0,40)}`);
-  sv();toast("✅ জমা হয়েছে, ধন্যবাদ!");goTab("complaint");
+  };
+  D.complaints=[...(D.complaints||[]),entry];
+  LS.set(SK,D);
+  goTab("complaint");
+  // অ্যাডমিন হলে স্বাভাবিক নিয়মে (পুরো ডেটাসহ) সেভ হয়; ভিউয়ার হলে সরাসরি আলাদা
+  // অভিযোগ-নোডে (sg_complaints) নতুন এন্ট্রি হিসেবে পাঠানো হয় — এটার জন্য অ্যাডমিন হওয়া লাগে না
+  if(isA()){
+    logActivity("complaint",`নতুন ${type} জমা হয়েছে${anon?" (বেনামে)":""}: ${text.slice(0,40)}`);
+    sv();mirrorComplaintsToFirebase();
+    toast("✅ জমা হয়েছে, ধন্যবাদ!");
+  } else {
+    try{
+      firebase.database().ref('sg_complaints/'+entry.id).set(entry)
+        .then(()=>toast("✅ জমা হয়েছে, ধন্যবাদ!"))
+        .catch(()=>toast("⚠️ জমা দেওয়া যায়নি, ইন্টারনেট চেক করুন","#dc2626"));
+    }catch(e){ toast("⚠️ জমা দেওয়া যায়নি","#dc2626"); }
+  }
 }
 function saveComplaintUpdate(id){
   if(!isA()){toast("⚠️ শুধু অ্যাডমিন পারবেন","#d97706");return;}
@@ -4152,7 +4219,7 @@ function saveComplaintUpdate(id){
   const reply=replyEl?replyEl.value.trim():"";
   D.complaints=(D.complaints||[]).map(c=>c.id===id?{...c,status,reply,repliedAt:reply?new Date().toISOString():c.repliedAt}:c);
   logActivity("complaint",`অভিযোগ/পরামর্শের স্ট্যাটাস আপডেট হয়েছে: ${status}`);
-  sv();toast("✅ আপডেট হয়েছে");goTab("complaint");
+  sv();mirrorComplaintsToFirebase();toast("✅ আপডেট হয়েছে");goTab("complaint");
 }
 function delComplaint(id){
   const c=(D.complaints||[]).find(x=>x.id===id);
@@ -4160,7 +4227,7 @@ function delComplaint(id){
   D.complaints=(D.complaints||[]).filter(x=>x.id!==id);
   const tid=moveToTrash("complaint",`${c.type}: ${(c.text||"").slice(0,40)}`,c);
   logActivity("complaint",`অভিযোগ/পরামর্শ মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${(c.text||"").slice(0,40)}`);
-  sv();undoToast("🗑 মুছে ফেলা হয়েছে",tid);goTab("complaint");
+  sv();mirrorComplaintsToFirebase();undoToast("🗑 মুছে ফেলা হয়েছে",tid);goTab("complaint");
 }
 
 function pgGallery(){
@@ -6824,6 +6891,18 @@ function memberStatXL(mid){
 function pgVoting(){
   const votes=D.votes||[];
   const members=D.members||[];
+  const myId=getVotingIdentity();
+  const identityCard=`
+    <div class="card" style="margin-bottom:12px;background:#f0fdf4;border:1px solid #86efac">
+      <div class="cb">
+        <label style="font-size:12.5px;font-weight:700;color:#006400;display:block;margin-bottom:6px">🙋 আপনি কে? (ভোট দেওয়ার জন্য)</label>
+        <select onchange="setVotingIdentity(this)" style="width:100%;padding:9px;border-radius:9px;border:1.5px solid var(--border);font-size:13px;font-family:inherit">
+          <option value="">-- বেছে নিন --</option>
+          ${members.map(m=>`<option value="${m.id}" ${String(m.id)===myId?"selected":""}>${esc(m.name)}</option>`).join("")}
+        </select>
+        <div style="font-size:11px;color:#64748b;margin-top:5px">একবার বেছে নিলে এই ফোনে মনে থাকবে, বারবার নির্বাচন করতে হবে না</div>
+      </div>
+    </div>`;
   const addForm=isA()?`
     <div class="card" style="margin-bottom:12px">
       ${ch("➕","নতুন ভোট তৈরি করুন")}
@@ -6844,7 +6923,7 @@ function pgVoting(){
     </div>`:"";
 
   const voteCards=votes.length?votes.map(v=>{
-    const myVote=(v.votes||{})[window._uid||"admin"];
+    const myVote=myId?(v.votes||{})[myId]:undefined;
     const yesCount=Object.values(v.votes||{}).filter(x=>x==="হ্যাঁ").length;
     const noCount=Object.values(v.votes||{}).filter(x=>x==="না").length;
     const totalVotes=Object.keys(v.votes||{}).length;
@@ -6882,10 +6961,10 @@ function pgVoting(){
           }).join("")}
         </div>
 
-        ${!ended&&!myVote?`<div style="display:flex;gap:8px">
+        ${!ended&&!myVote?(myId?`<div style="display:flex;gap:8px">
           <button class="btn btn-g" onclick="castVote(${v.id},'হ্যাঁ')">✅ হ্যাঁ</button>
           <button class="btn btn-r" onclick="castVote(${v.id},'না')">❌ না</button>
-        </div>`:`<div style="font-size:12px;color:#64748b">${myVote?`আপনি ভোট দিয়েছেন: <b>${myVote}</b>`:"ভোট শেষ"}</div>`}
+        </div>`:`<div style="font-size:12px;color:#d97706">⚠️ ভোট দিতে উপরে থেকে 'আপনি কে?' বেছে নিন</div>`):`<div style="font-size:12px;color:#64748b">${myVote?`আপনি ভোট দিয়েছেন: <b>${myVote}</b>`:"ভোট শেষ"}</div>`}
 
         ${isA()?`<div style="margin-top:8px"><button onclick="delVote(${v.id})" style="font-size:11px;background:#fee2e2;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;color:#dc2626">🗑 মুছুন</button></div>`:""}
       </div>
@@ -6898,7 +6977,7 @@ function pgVoting(){
       <div class="section-sub">সদস্যদের মতামত ও সিদ্ধান্ত</div></div>
       <button class="btn btn-sm" style="background:#dc2626;color:#fff" onclick="pdfDownload('voting')">📄 PDF রিপোর্ট</button>
     </div>
-    ${addForm}${voteCards}`;
+    ${identityCard}${addForm}${voteCards}`;
 }
 
 function addVote(){
@@ -6908,14 +6987,37 @@ function addVote(){
   if(!title){toast("⚠️ বিষয় লিখুন","#d97706");return;}
   D.votes=[...(D.votes||[]),{id:Date.now(),title,desc,endDate,votes:{},createdAt:new Date().toISOString().split("T")[0]}];
   logActivity("vote",`নতুন ভোট তৈরি হয়েছে: ${title}`);
-  sv();toast("✅ ভোট তৈরি হয়েছে");goTab("voting");
+  sv();mirrorVotesToFirebase();toast("✅ ভোট তৈরি হয়েছে");goTab("voting");
 }
 
+function getVotingIdentity(){
+  return localStorage.getItem("sg_voting_as")||"";
+}
+function setVotingIdentity(sel){
+  const val=sel.value||"";
+  if(val) localStorage.setItem("sg_voting_as",val);
+  else localStorage.removeItem("sg_voting_as");
+  goTab("voting");
+}
 function castVote(vid,val){
-  const uid=window._uid||"admin";
-  var memId=((D.members||[]).find(function(m){return m.id==uid;})||{}).id||uid;
+  const memId=getVotingIdentity();
+  if(!memId){toast("⚠️ প্রথমে উপরে থেকে 'আপনি কে?' বেছে নিন","#d97706");return;}
   D.votes=(D.votes||[]).map(function(v){return v.id==vid?{...v,votes:{...(v.votes||{}),[memId]:val}}:v;});
-  sv();toast("✅ ভোট দেওয়া হয়েছে");goTab("voting");
+  LS.set(SK,D);
+  goTab("voting");
+  // অ্যাডমিন সাধারণ নিয়মে সেভ করেন; ভিউয়ার সরাসরি ভোট-নোডে নিজের উত্তরটুকু লেখেন —
+  // এতে অ্যাডমিন হওয়া লাগে না, শুধু লগইন থাকলেই হয়
+  if(isA()){
+    sv();mirrorVotesToFirebase();
+  } else {
+    try{
+      firebase.database().ref('sg_votes/'+vid+'/votes/'+memId).set(val)
+        .then(()=>toast("✅ ভোট দেওয়া হয়েছে"))
+        .catch(()=>toast("⚠️ ভোট জমা দেওয়া যায়নি, ইন্টারনেট চেক করুন","#dc2626"));
+      return;
+    }catch(e){ toast("⚠️ ভোট জমা দেওয়া যায়নি","#dc2626"); return; }
+  }
+  toast("✅ ভোট দেওয়া হয়েছে");
 }
 
 function delVote(id){
@@ -6925,7 +7027,7 @@ function delVote(id){
   D.votes=(D.votes||[]).filter(v=>v.id!==id);
   const tid=moveToTrash("vote",v.title,v);
   logActivity("vote",`ভোট মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${v.title}`);
-  sv();undoToast("🗑 ভোট মুছে ফেলা হয়েছে",tid);goTab("voting");
+  sv();mirrorVotesToFirebase();undoToast("🗑 ভোট মুছে ফেলা হয়েছে",tid);goTab("voting");
 }
 
 // ══════════════════════════════════════════
