@@ -1803,7 +1803,8 @@ function pgHome(){
   // ব্যালেন্স শিট পেজের সূত্রের সাথে মিল রাখার জন্য former members-এর দায়ও যোগ করা হলো
   const totalManualLiability=(D.liabilities||[]).reduce((s,l)=>s+l.amount,0);
   const totalFormerMemberDue=(D.formerMembers||[]).filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
-  const totalLiability=totalManualLiability+totalFormerMemberDue;
+  const totalAdvanceChada=getTotalAdvanceChada();
+  const totalLiability=totalManualLiability+totalFormerMemberDue+totalAdvanceChada;
 
   const pinned=(D.notices||[]).find(n=>n.pinned);
   const duesList=getDuesList();
@@ -1991,10 +1992,13 @@ function pgSavings(){
     <button class="btn btn-g" onclick="addPayment()">✅ সেভ করুন</button>
   </div></div>`:"";
 
+  const balMap=getMemberBalanceMap();
   const mRows=members.map(m=>{
     const p=filtered.find(x=>x.mid==m.id);
     const allPaid=payments.filter(x=>x.mid==m.id).reduce((s,x)=>s+x.amount,0);
-    return `<tr><td><b>${esc(m.name)}</b></td><td>${p?bdg(fmt(p.amount)+" ✓","#1a8a00","#dcfce7"):bdg("বাকি ✗","#dc2626","#fee2e2")}</td>
+    const bal=balMap[m.id];
+    const advTag=bal&&bal.advance>0?`<div style="font-size:10.5px;color:#2563eb;font-weight:600;margin-top:2px">🔵 অগ্রিম জমা: ${fmt(bal.advance)}${bal.advanceMonths>0?` — আর ${bal.advanceMonths} মাস চাঁদা লাগবে না`:""}</div>`:"";
+    return `<tr><td><b>${esc(m.name)}</b>${advTag}</td><td>${p?bdg(fmt(p.amount)+" ✓","#1a8a00","#dcfce7"):bdg("বাকি ✗","#dc2626","#fee2e2")}</td>
       <td style="color:#1a8a00;font-weight:700">${fmt(allPaid)}</td>
       <td>${isA()&&p?`<button class="btn btn-sm btn-r" style="padding:3px 8px" onclick="delPay(${p.id})">🗑</button>`:""}</td></tr>`;}).join("");
 
@@ -2750,6 +2754,12 @@ function pgBalance(){
   const duesListB=getDuesList();
   const totalDueChadaB=duesListB.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
 
+  // ── ৬. সদস্যদের অগ্রিম চাঁদা (প্রত্যাশিতের চেয়ে বেশি জমা — এটা প্রকৃতপক্ষে একটা দায়) ──
+  // নগদ তহবিলে (cashBalance) এই টাকা ইতিমধ্যে যোগ হয়ে আছে, কিন্তু এটা এখনো "অর্জিত" চাঁদা নয়
+  // (ভবিষ্যৎ মাসের জন্য অগ্রিম গ্রহণ), তাই সম্পদের পাশে দ্বিতীয়বার না ধরে দায়ের পাশে দেখানো হলো —
+  // এতে মূলধন (Equity) মিথ্যা বাড়িয়ে দেখাবে না।
+  const totalAdvanceChada = getTotalAdvanceChada();
+
   // ═══ মোট সম্পদ ═══
   const totalAsset = Math.max(0,cashBalance) + totalLoanOut + totalInvest + fixedAssetTotal + currentAssetTotal + otherAssetTotal + totalDueChadaB;
 
@@ -2758,7 +2768,8 @@ function pgBalance(){
   const totalManualLiability=liabilities.reduce((s,l)=>s+l.amount,0);
   // খ) পূর্ব সদস্যদের ফেরতযোগ্য পাওনা (যা এখনো ফেরত দেওয়া হয়নি)
   const totalFormerMemberDue=formerMembers.filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
-  const totalLiability = totalManualLiability + totalFormerMemberDue;
+  // গ) সদস্যদের অগ্রিম চাঁদা (deferred/unearned — ভবিষ্যতে সমন্বয় হবে)
+  const totalLiability = totalManualLiability + totalFormerMemberDue + totalAdvanceChada;
 
   // ═══ মূলধন (Equity) — সবসময় বিয়োগ করেই বের করা হয়, আলাদা সূত্র দিয়ে নয় ═══
   // মূলধন = মোট সম্পদ − মোট দায় (মূল হিসাব সমীকরণ)
@@ -2863,6 +2874,7 @@ function pgBalance(){
             </div>
           </div>`).join(""):`<div style="padding:6px 0;font-size:12px;color:#94a3b8">কোনো ম্যানুয়াল দায় যোগ করা হয়নি</div>`}
         ${totalFormerMemberDue>0?rw("পূর্ব সদস্যদের ফেরতযোগ্য পাওনা",fmt(totalFormerMemberDue)):""}
+        ${totalAdvanceChada>0?rw("সদস্যদের অগ্রিম চাঁদা (দায়)",fmt(totalAdvanceChada)):""}
 
 
         <div style="background:#dc2626;border-radius:9px;padding:12px 16px;margin:14px 0 20px">
@@ -3282,6 +3294,7 @@ function openMemberProfile(mid){
   const loans=(D.loans||[]).filter(l=>l.mid==mid);
   const duesList=getDuesList();
   const dueRec=duesList.find(x=>x.id==mid)||{};
+  const memberBal=getMemberBalanceMap()[mid];
   const meetings=D.meetings||[];
   const attCount=meetings.filter(mt=>(mt.attendance||{})[mid]).length;
   const attPct=meetings.length?Math.round(attCount/meetings.length*100):0;
@@ -3397,6 +3410,10 @@ function openMemberProfile(mid){
         </div>
         ${row("মোট জমাকৃত চাঁদা",fmt(totalPaid),"#16a34a")}
         ${row("মোট বকেয়া চাঁদা",fmt(totalDueChada),"#dc2626")}
+        ${memberBal&&memberBal.advance>0?`<div style="background:#eff6ff;border-radius:10px;padding:10px;margin:8px 0;text-align:center">
+          <div style="font-size:11px;color:#2563eb">🔵 অগ্রিম জমা</div>
+          <div style="font-size:18px;font-weight:800;color:#2563eb">${fmt(memberBal.advance)}${memberBal.advanceMonths>0?` <span style="font-size:11px;font-weight:600">— আর ${memberBal.advanceMonths} মাস চাঁদা লাগবে না</span>`:""}</div>
+        </div>`:""}
         ${row("মোট ঋণ গ্রহণ",fmt(totalLoan),"#d97706")}
         ${row("অবশিষ্ট ঋণ",fmt(totalLoanDue),"#dc2626")}
         ${row("তহবিলে অংশ",fmt(fundShare),"#7c3aed")}
@@ -4689,7 +4706,8 @@ function xlDownload(type){
     const formerMembersX=D.formerMembers||[];
     const totalManualLiabX=liabilitiesX.reduce((s,l)=>s+l.amount,0);
     const totalFormerDueX=formerMembersX.filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
-    const totalLiabilityX=totalManualLiabX+totalFormerDueX;
+    const totalAdvanceChadaX=getTotalAdvanceChada();
+    const totalLiabilityX=totalManualLiabX+totalFormerDueX+totalAdvanceChadaX;
     const totalEquityX=totalAssetX-totalLiabilityX;
 
     rows.push(["বিবরণ","পরিমাণ"]);
@@ -4703,6 +4721,7 @@ function xlDownload(type){
     rows.push(["=== দায় (Liabilities) ===",""]);
     liabilitiesX.forEach(l=>{ rows.push([l.name+" ("+(l.type||"")+")",l.amount]); });
     if(totalFormerDueX>0) rows.push(["পূর্ব সদস্যদের ফেরতযোগ্য পাওনা",totalFormerDueX]);
+    if(totalAdvanceChadaX>0) rows.push(["সদস্যদের অগ্রিম চাঁদা (দায়)",totalAdvanceChadaX]);
     rows.push(["মোট দায়",totalLiabilityX]);
     rows.push(["=== মূলধন (Equity) ===",""]);
     rows.push(["মূলধন (সম্পদ - দায়)",totalEquityX]);
@@ -4730,7 +4749,8 @@ function fullExcelDownload(){
   const totDueChada=duesList.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
   const totManualLiability=liabilities.reduce((s,l)=>s+l.amount,0);
   const totFormerMemberDue=(D.formerMembers||[]).filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
-  const totLiability=totManualLiability+totFormerMemberDue;
+  const totAdvanceChada=getTotalAdvanceChada();
+  const totLiability=totManualLiability+totFormerMemberDue+totAdvanceChada;
   const totNetAsset=totAsset+totInvest+totLoanOut+totDueChada+Math.max(0,cashFund);
 
   const sheets=[];
@@ -4860,7 +4880,8 @@ function fullPDFDownload(){
   const totDueChada=duesList.reduce((s,m)=>s+Math.max(0,m.totalDue||0),0);
   const totManualLiability=liabilities.reduce((s,l)=>s+l.amount,0);
   const totFormerMemberDue=(D.formerMembers||[]).filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
-  const totLiability=totManualLiability+totFormerMemberDue;
+  const totAdvanceChada=getTotalAdvanceChada();
+  const totLiability=totManualLiability+totFormerMemberDue+totAdvanceChada;
   const totNetAsset=totAsset+totInvest+totLoanOut+totDueChada+Math.max(0,cashFund);
   const now2=new Date().toLocaleDateString("bn-BD");
 
@@ -5188,7 +5209,8 @@ function pdfDownload(type){
     const formerMembersP=D.formerMembers||[];
     const totalManualLiabP=liabilitiesP.reduce((s,l)=>s+l.amount,0);
     const totalFormerDueP=formerMembersP.filter(m=>!m.refunded).reduce((s,m)=>s+(m.refundDue||0),0);
-    const totalLiabilityP=totalManualLiabP+totalFormerDueP;
+    const totalAdvanceChadaP=getTotalAdvanceChada();
+    const totalLiabilityP=totalManualLiabP+totalFormerDueP+totalAdvanceChadaP;
     const totalEquityP=totalAssetP-totalLiabilityP;
 
     tableHTML=`<table><thead><tr><th style="text-align:left">বিবরণ</th><th>পরিমাণ</th></tr></thead><tbody>
@@ -5202,6 +5224,7 @@ function pdfDownload(type){
       <tr style="background:#fff1f2"><td colspan="2" style="text-align:left;font-weight:800;color:#dc2626">🔴 দায় (Liabilities)</td></tr>
       ${liabilitiesP.map(l=>`<tr><td style="text-align:left;padding-left:16px">${esc(l.name)} (${l.type||""})</td><td>${fmtBn(l.amount)}</td></tr>`).join("")||`<tr><td style="text-align:left;padding-left:16px;color:#94a3b8">কোনো ম্যানুয়াল দায় নেই</td><td>—</td></tr>`}
       ${totalFormerDueP>0?`<tr><td style="text-align:left;padding-left:16px">পূর্ব সদস্যদের ফেরতযোগ্য পাওনা</td><td>${fmtBn(totalFormerDueP)}</td></tr>`:""}
+      ${totalAdvanceChadaP>0?`<tr><td style="text-align:left;padding-left:16px">সদস্যদের অগ্রিম চাঁদা (দায়)</td><td>${fmtBn(totalAdvanceChadaP)}</td></tr>`:""}
       <tr style="font-weight:800;background:#fee2e2"><td style="text-align:left">মোট দায়</td><td>${fmtBn(totalLiabilityP)}</td></tr>
       <tr style="background:#f5f3ff"><td colspan="2" style="text-align:left;font-weight:800;color:#7c3aed">💜 মূলধন (Equity)</td></tr>
       <tr><td style="text-align:left;padding-left:16px">মোট সম্পদ</td><td>${fmtBn(totalAssetP)}</td></tr>
@@ -5667,6 +5690,7 @@ function pgDuesSheet() {
   const tableRows = members.map(m => {
     const memberPayments = payments.filter(p=>p.mid==m.id);
     const spMonths = specialMonths.filter(s=>s.mid==m.id);
+    const {coverage: monthCoverage} = getMemberMonthCoverage(m.id);
 
     let yearPaid = 0, yearExpected = 0;
 
@@ -5687,18 +5711,21 @@ function pgDuesSheet() {
       const paid = memberPayments.find(p=>p.month===mon.key);
       if(paid) yearPaid += paid.amount;
       const isPaid = !!paid;
+      const isAdvanceCovered = !isPaid && monthCoverage[mon.key] && monthCoverage[mon.key].status==="advance";
 
       if(isA()) {
-        return `<td style="text-align:center;background:${isPaid?"#f0fdf4":"#fff1f2"};padding:4px">
+        return `<td style="text-align:center;background:${isPaid?"#f0fdf4":isAdvanceCovered?"#eff6ff":"#fff1f2"};padding:4px">
           ${isPaid
             ? `<div style="font-size:11px;color:#16a34a;font-weight:700">${fmt(paid.amount)}</div>
                <button onclick="editDue(${m.id},'${mon.key}',${paid.id},${paid.amount})" style="font-size:9px;background:none;border:none;color:#94a3b8;cursor:pointer">✏️</button>`
+            : isAdvanceCovered
+            ? `<span style="font-size:10px;color:#2563eb;font-weight:700" title="সরাসরি এন্ট্রি নেই, তবে অগ্রিম/উদ্বৃত্ত জমা দিয়ে সমন্বিত">🔵 অগ্রিম</span>`
             : `<button onclick="addDue(${m.id},'${mon.key}',${cellRate})" style="font-size:10px;background:#fee2e2;border:none;border-radius:5px;padding:3px 6px;cursor:pointer;color:#dc2626;font-family:inherit">+ যোগ</button>`
           }
         </td>`;
       } else {
-        return `<td style="text-align:center;background:${isPaid?"#f0fdf4":"#fff1f2"}">
-          ${isPaid ? `<span style="font-size:11px;color:#16a34a;font-weight:700">✓</span>` : `<span style="font-size:11px;color:#dc2626">✗</span>`}
+        return `<td style="text-align:center;background:${isPaid?"#f0fdf4":isAdvanceCovered?"#eff6ff":"#fff1f2"}">
+          ${isPaid ? `<span style="font-size:11px;color:#16a34a;font-weight:700">✓</span>` : isAdvanceCovered ? `<span style="font-size:11px;color:#2563eb;font-weight:700" title="অগ্রিম দিয়ে সমন্বিত">🔵</span>` : `<span style="font-size:11px;color:#dc2626">✗</span>`}
         </td>`;
       }
     }).join("");
@@ -5709,8 +5736,8 @@ function pgDuesSheet() {
       <td style="position:sticky;left:0;background:var(--white);color:var(--ink);z-index:5;font-weight:700;font-size:13px;padding:8px 12px;border-right:2px solid #e2e8f0">${esc(m.name)}</td>
       ${cells}
       <td style="font-weight:700;color:#1a8a00;text-align:center;background:#f0fdf4">${fmt(yearPaid)}</td>
-      <td style="font-weight:700;color:${yearDue>0?"#dc2626":"#1a8a00"};text-align:center;background:${yearDue>0?"#fff1f2":"#f0fdf4"}">${yearDue>0?fmt(yearDue):"✅"}</td>
-      <td style="font-weight:800;color:${totalAllDue>0?"#dc2626":"#1a8a00"};text-align:center;background:${totalAllDue>0?"#fee2e2":"#f0fdf4"};border-left:2px solid #fca5a5">${totalAllDue>0?fmt(totalAllDue):"✅"}</td>
+      <td style="font-weight:700;color:${yearDue>0?"#dc2626":"#1a8a00"};text-align:center;background:${yearDue>0?"#fff1f2":"#f0fdf4"}">${yearDue>0?fmt(yearDue):(yearDue<0?`✅ অগ্রিম ${fmt(-yearDue)}`:"✅")}</td>
+      <td style="font-weight:800;color:${totalAllDue>0?"#dc2626":"#1a8a00"};text-align:center;background:${totalAllDue>0?"#fee2e2":"#f0fdf4"};border-left:2px solid #fca5a5">${totalAllDue>0?fmt(totalAllDue):(totalAllDue<0?`✅ অগ্রিম ${fmt(-totalAllDue)}`:"✅")}</td>
     </tr>`;
   }).join("");
 
@@ -5760,7 +5787,7 @@ function pgDuesSheet() {
       </div>
       <div class="kpi" style="background:${grandDue>0?"#fff1f2":"#f0fdf4"};text-align:center">
         <div class="ki">${grandDue>0?"⚠️":"🎉"}</div>
-        <div class="kv" style="color:${grandDue>0?"#dc2626":"#1a8a00"};font-size:18px">${grandDue>0?fmt(grandDue):"শূন্য"}</div>
+        <div class="kv" style="color:${grandDue>0?"#dc2626":"#1a8a00"};font-size:18px">${grandDue>0?fmt(grandDue):(grandDue<0?`অগ্রিম ${fmt(-grandDue)}`:"শূন্য")}</div>
         <div class="kl">${periodLabel} মোট বকেয়া</div>
       </div>
     </div>
@@ -5814,8 +5841,8 @@ function pgDuesSheet() {
               <td style="position:sticky;left:0;background:var(--white);color:var(--ink);padding:8px 12px;border-right:2px solid #e2e8f0">সর্বমোট</td>
               ${filtMonths.map(()=>'<td></td>').join("")}
               <td style="text-align:center;color:#1a8a00">${fmt(grandPaid)}</td>
-              <td style="text-align:center;color:${grandDue>0?"#dc2626":"#1a8a00"}">${grandDue>0?fmt(grandDue):"✅"}</td>
-              <td style="text-align:center;color:${grandTotalAllDue>0?"#dc2626":"#1a8a00"};background:${grandTotalAllDue>0?"#fee2e2":"#f0fdf4"};border-left:2px solid #fca5a5;font-weight:900">${grandTotalAllDue>0?fmt(grandTotalAllDue):"✅"}</td>
+              <td style="text-align:center;color:${grandDue>0?"#dc2626":"#1a8a00"}">${grandDue>0?fmt(grandDue):(grandDue<0?`✅ অগ্রিম ${fmt(-grandDue)}`:"✅")}</td>
+              <td style="text-align:center;color:${grandTotalAllDue>0?"#dc2626":"#1a8a00"};background:${grandTotalAllDue>0?"#fee2e2":"#f0fdf4"};border-left:2px solid #fca5a5;font-weight:900">${grandTotalAllDue>0?fmt(grandTotalAllDue):(grandTotalAllDue<0?`✅ অগ্রিম ${fmt(-grandTotalAllDue)}`:"✅")}</td>
             </tr>
           </tfoot>
         </table>
@@ -6030,6 +6057,63 @@ function getDuesList() {
 }
 
 // ══════════════════════════════════════════
+// সদস্যদের প্রকৃত ব্যালেন্স (বকেয়া বা অগ্রিম) — সব সদস্যসহ
+// getDuesList() শুধু পজিটিভ বকেয়া (আদায়যোগ্য) ফেরত দেয় ও অগ্রিম-সদস্যদের বাদ দেয়।
+// এই ফাংশনটি প্রতিটি সদস্যের প্রকৃত totalDue (ঋণাত্মক হলে = অগ্রিম) হিসাব করে —
+// কোনো নতুন পেমেন্ট রেকর্ড তৈরি করে না, শুধু বিদ্যমান পেমেন্ট থেকে ভার্চুয়াল হিসাব।
+// ব্যবহার: ব্যালেন্স শিট (অগ্রিম-দায় লাইন), চাঁদার শীট (অগ্রিম-সমন্বয় চিহ্ন), প্রোফাইল/সঞ্চয় পেজ।
+// ══════════════════════════════════════════
+function getMemberBalanceMap() {
+  const members = D.members||[];
+  const payments = D.payments||[];
+  const now2 = new Date();
+
+  function getMonthsForMember(m){
+    let startDate = ORG_START;
+    const jRaw = m.join||m.joinDate||"";
+    if(jRaw){
+      const parts = jRaw.split("-");
+      if(parts.length>=2){
+        const jDate = new Date(Number(parts[0]), Number(parts[1])-1, 1);
+        if(!isNaN(jDate.getTime()) && jDate > ORG_START) startDate = jDate;
+      }
+    }
+    const months = [];
+    let d = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    while(d <= now2){
+      months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+      d = new Date(d.getFullYear(), d.getMonth()+1, 1);
+    }
+    return months;
+  }
+
+  const map = {};
+  members.forEach(m=>{
+    const memberMonths = getMonthsForMember(m);
+    const specialMonths = (D.specialMonths||[]).filter(s=>s.mid==m.id);
+    let totalExpected = 0;
+    memberMonths.forEach(mon => {
+      const sp = specialMonths.find(s=>s.mid==m.id&&s.month===mon);
+      totalExpected += getApplicableRate(m.id, mon) + (sp ? sp.amount : 0);
+    });
+    const totalPaid = payments.filter(p=>p.mid==m.id).reduce((s,p)=>s+p.amount,0);
+    const totalDue = totalExpected - totalPaid; // ঋণাত্মক হলে = অগ্রিম
+    const lastMon = memberMonths[memberMonths.length-1] || `${now2.getFullYear()}-${String(now2.getMonth()+1).padStart(2,"0")}`;
+    const currentRate = getApplicableRate(m.id, lastMon) || 0;
+    const advance = totalDue < 0 ? -totalDue : 0;
+    const advanceMonths = (advance>0 && currentRate>0) ? Math.floor(advance/currentRate) : 0;
+    map[m.id] = { totalExpected, totalPaid, totalDue, advance, advanceMonths, currentRate, memberMonths };
+  });
+  return map;
+}
+
+// সব সদস্য মিলিয়ে মোট অগ্রিম চাঁদা (ব্যালেন্স শিটে "দায়" হিসেবে দেখানোর জন্য)
+function getTotalAdvanceChada() {
+  const map = getMemberBalanceMap();
+  return Object.values(map).reduce((s,v)=>s+v.advance,0);
+}
+
+// ══════════════════════════════════════════
 // বকেয়া সদস্যদের ঝুঁকি স্কোর (Risk Score)
 // একজন সদস্যের বকেয়ার ঝুঁকি নির্ণয় করে ৪টি বিষয় দেখে:
 // ১) মোট প্রত্যাশিত চাঁদার কত শতাংশ বকেয়া (দায়ের অনুপাত)
@@ -6107,6 +6191,49 @@ function getMemberMonthsList(m){
   while(d<=now5){months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d=new Date(d.getFullYear(),d.getMonth()+1,1);}
   return months;
 }
+// ══════════════════════════════════════════
+// মাস-ভিত্তিক কভারেজ (কোনো নতুন পেমেন্ট রেকর্ড তৈরি করে না — শুধু বিদ্যমান পেমেন্ট থেকে ভার্চুয়াল হিসাব)
+// যে মাসে সরাসরি পেমেন্ট রেকর্ড আছে সেটা অপরিবর্তিত থাকে (status:'direct')।
+// সেই রেকর্ডে প্রত্যাশিতের চেয়ে বেশি টাকা থাকলে (অতিরিক্ত/উদ্বৃত্ত) সেই উদ্বৃত্ত পুরনো-আগে
+// ক্রমে বাকি (সরাসরি রেকর্ড নেই এমন) মাসগুলোতে বণ্টন করা হয় (status:'advance')।
+// বণ্টনের পরও যদি টাকা বাকি থাকে, সেটাই সদস্যের ভবিষ্যতের জন্য অগ্রিম ব্যালেন্স (leftoverAdvance)।
+// ব্যবহার: চাঁদার শীট গ্রিড ও স্বয়ংক্রিয় লেট ফি — দুই জায়গায় একই ফলাফল যাতে ধারাবাহিক থাকে।
+// ══════════════════════════════════════════
+function getMemberMonthCoverage(mid){
+  const m=(D.members||[]).find(x=>x.id==mid);
+  if(!m) return {coverage:{}, leftoverAdvance:0};
+  const months=getMemberMonthsList(m);
+  const memberPayments=(D.payments||[]).filter(p=>p.mid==mid);
+  const specialMonths=(D.specialMonths||[]).filter(s=>s.mid==mid);
+
+  let surplus=0;
+  const coverage={};
+  const nonDirectMonths=[];
+
+  months.forEach(mon=>{
+    const sp=specialMonths.find(s=>s.month===mon);
+    const expected=getApplicableRate(mid,mon)+(sp?sp.amount:0);
+    const direct=memberPayments.find(p=>p.month===mon);
+    if(direct){
+      coverage[mon]={status:"direct", amount:direct.amount, expected};
+      if(direct.amount>expected) surplus+=(direct.amount-expected);
+    } else {
+      coverage[mon]={status:"due", amount:0, expected};
+      nonDirectMonths.push(mon);
+    }
+  });
+
+  // পুরনো মাস আগে — উদ্বৃত্ত টাকা দিয়ে বাকি (সরাসরি রেকর্ড নেই এমন) মাসগুলো ক্রমান্বয়ে সমন্বয়
+  nonDirectMonths.forEach(mon=>{
+    const expected=coverage[mon].expected;
+    if(expected>0 && surplus>=expected){
+      surplus-=expected;
+      coverage[mon].status="advance";
+    }
+  });
+
+  return {coverage, leftoverAdvance:surplus};
+}
 // একটি নির্দিষ্ট মাস কতদিন আগে "শেষ" হয়েছে (গ্রেস পিরিয়ড হিসাবের জন্য)
 function daysSinceMonthEnd(monthKey){
   const [y,mo]=monthKey.split("-").map(Number);
@@ -6122,11 +6249,18 @@ function syncAutoLateFees(){
   const payments=D.payments||[];
   let changed=false;
   members.forEach(m=>{
+    const {coverage}=getMemberMonthCoverage(m.id);
     const months=getMemberMonthsList(m);
-    const memberPayments=payments.filter(p=>p.mid==m.id);
     months.forEach(mon=>{
-      const paid=memberPayments.find(p=>p.month===mon);
-      if(paid) return; // পরিশোধ হয়ে গেলে জরিমানা প্রযোজ্য নয়
+      const cov=coverage[mon];
+      // পূর্বে (এই সিঙ্কের আগে) তৈরি হওয়া pending/অ-আদায়কৃত "auto" জরিমানা —
+      // যদি এখন দেখা যায় মাসটা আসলে সরাসরি/অগ্রিম দিয়ে সমন্বিত, তাহলে অন্যায্যভাবে বসানো জরিমানা মওকুফ করে দাও
+      // (ইতিমধ্যে আদায় হয়ে যাওয়া জরিমানা স্পর্শ করা হয় না)
+      if(cov.status!=="due"){
+        const wrong=D.lateFees.find(f=>f.mid==m.id&&f.month===mon&&f.type==="auto"&&!f.waived&&!f.collected);
+        if(wrong){ wrong.waived=true; wrong.waivedReason="স্বয়ংক্রিয়: চাঁদা সরাসরি/অগ্রিম দিয়ে সমন্বিত হয়েছে"; changed=true; }
+        return; // পরিশোধ/অগ্রিম দিয়ে সমন্বিত হলে নতুন জরিমানা প্রযোজ্য নয়
+      }
       if(daysSinceMonthEnd(mon)<cfg.graceDays) return; // এখনো গ্রেস পিরিয়ডের মধ্যে
       const exists=D.lateFees.find(f=>f.mid==m.id&&f.month===mon&&f.type==="auto");
       if(exists) return; // আগে থেকেই তৈরি আছে
@@ -6646,7 +6780,8 @@ function pgMemberStat(){
   const totalNetAsset2=Math.max(0,cashFund2)+totalLoanRecv2+totalInvestAll2+fixedA3+curA3+othA3+totalDueChadaMS;
   const totalManualLiab2=(D.liabilities||[]).reduce((s,l)=>s+l.amount,0);
   const totalFormerDue2=(D.formerMembers||[]).filter(x=>!x.refunded).reduce((s,x)=>s+(x.refundDue||0),0);
-  const netEquity=Math.max(0,totalNetAsset2-totalManualLiab2-totalFormerDue2);
+  const totalAdvanceChada2=getTotalAdvanceChada();
+  const netEquity=Math.max(0,totalNetAsset2-totalManualLiab2-totalFormerDue2-totalAdvanceChada2);
   const memberShare=Math.round(netEquity/totalMembers);
 
   let totalExp=0;
