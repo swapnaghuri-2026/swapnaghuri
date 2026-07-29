@@ -254,6 +254,10 @@ html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="da
   #tb-badge .badge{padding:2px 6px!important;font-size:9px!important}
 }
 @media(min-width:769px){.mobile-nav{display:none!important}}
+.act-row{transition:background .15s}
+.act-row:active{background:#f8fafc}
+@keyframes alertPulse{0%,100%{opacity:1}50%{opacity:.55}}
+.alert-dot{animation:alertPulse 1.6s ease-in-out infinite}
 </style>
 
 <script>
@@ -469,6 +473,8 @@ const SEED = {
 let role=(localStorage.getItem("sg_role")==="viewer"?"viewer":null), curTab="home", D=null;
 const LS={get:k=>{try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){console.error("storage save failed",e);return false;}}};
 const fmt=n=>"৳"+Number(n||0).toLocaleString("bn-BD");
+// যেকোনো সংখ্যাকে বাংলা অঙ্কে (০-৯) রূপান্তর — যেমন "58" → "৫৮"
+const bn=n=>String(n).replace(/[0-9]/g,d=>"০১২৩৪৫৬৭৮৯"[d]);
 // নাম/টেক্সটের মতো ব্যবহারকারীর টাইপ করা তথ্য পেজে দেখানোর আগে নিরাপদ করা হয় (XSS প্রতিরোধ) —
 // যাতে কারো নামে ভুলবশত/ইচ্ছাকৃতভাবে HTML কোড লেখা থাকলেও তা কোড হিসেবে না চলে, শুধু সাধারণ টেক্সট হিসেবে দেখায়
 const esc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
@@ -725,8 +731,24 @@ function delActivity(id){
   sv();
   toast("🗑 মুছে গেছে","#dc2626");
   // Inline refresh
-  const el=document.querySelector(`[onclick="delActivity(${id})"]`);
-  if(el) el.closest('div[style*="border-bottom"]').remove();
+  const el=document.querySelector(`[onclick="delActivity('${id}')"]`);
+  if(el) el.closest('.act-row').remove();
+}
+function toggleMoreActivities(){
+  const el=document.getElementById("moreAct"), btn=document.getElementById("moreActBtn");
+  if(!el||!btn) return;
+  const hidden=el.style.display==="none";
+  el.style.display=hidden?"block":"none";
+  btn.textContent=hidden?"কম দেখুন ▴":`আরো দেখুন (+${bn(btn.dataset.count)}) ▾`;
+}
+// পিন করা নোটিশে ক্লিক করলে নোটিশ পেজে গিয়ে সেটা খুলে দেখায়
+function goToNotice(id){
+  goTab("notice");
+  requestAnimationFrame(()=>{
+    toggleNoticeBody(id);
+    const el=document.getElementById("nb-"+id);
+    if(el) el.scrollIntoView({behavior:"smooth",block:"center"});
+  });
 }
 
 // ══════════════════════════════════════════
@@ -1910,19 +1932,73 @@ function pgHome(){
     </div>`;
 
   // ── Recent Activities (activityLog থেকে + পুরনো) ──
+  const actTypeMap={
+    payment:{icon:"💰",c:"#16a34a",bg:"#dcfce7"}, loan:{icon:"🤝",c:"#d97706",bg:"#fef3c7"},
+    member:{icon:"👤",c:"#2563eb",bg:"#dbeafe"}, expense:{icon:"💸",c:"#dc2626",bg:"#fee2e2"},
+    income:{icon:"📈",c:"#16a34a",bg:"#dcfce7"}, invest:{icon:"📊",c:"#0d9488",bg:"#ccfbf1"},
+    asset:{icon:"🏠",c:"#64748b",bg:"#f1f5f9"}, liability:{icon:"⚠️",c:"#dc2626",bg:"#fee2e2"},
+    goal:{icon:"🎯",c:"#7c3aed",bg:"#ede9fe"}, notice:{icon:"📢",c:"#d97706",bg:"#fef3c7"},
+    news:{icon:"📰",c:"#2563eb",bg:"#dbeafe"}, opinion:{icon:"💬",c:"#0d9488",bg:"#ccfbf1"},
+    gallery:{icon:"🖼️",c:"#db2777",bg:"#fce7f3"}, rule:{icon:"📜",c:"#64748b",bg:"#f1f5f9"},
+    rate:{icon:"💵",c:"#d97706",bg:"#fef3c7"}, vote:{icon:"🗳️",c:"#7c3aed",bg:"#ede9fe"},
+    meeting:{icon:"📅",c:"#4f46e5",bg:"#e0e7ff"}, complaint:{icon:"📋",c:"#dc2626",bg:"#fee2e2"},
+    msgTemplate:{icon:"✉️",c:"#2563eb",bg:"#dbeafe"}, massmsg:{icon:"📨",c:"#2563eb",bg:"#dbeafe"},
+    lateFee:{icon:"⏰",c:"#dc2626",bg:"#fee2e2"}, lateFeeConfig:{icon:"⏰",c:"#dc2626",bg:"#fee2e2"},
+    emiLateFeeConfig:{icon:"⏰",c:"#dc2626",bg:"#fee2e2"}, error:{icon:"❌",c:"#dc2626",bg:"#fee2e2"},
+  };
+  const actDefault={icon:"🕐",c:"#64748b",bg:"#f1f5f9"};
   const activities=[];
-  (D.activityLog||[]).forEach(a=>activities.push({t:new Date(a.at||0).getTime()||a.id||0,icon:"🕐",text:a.text,logId:a.id}));
+  (D.activityLog||[]).forEach(a=>activities.push({t:new Date(a.at||0).getTime()||0,type:a.type,text:a.text,logId:a.id}));
   if(!activities.length){
-    payments.forEach(p=>activities.push({t:p.id,icon:"💰",text:`${gn(p.mid)} ${fmt(p.amount)} টাকা চাঁদা জমা দিয়েছেন`}));
-    loans.forEach(l=>activities.push({t:l.id,icon:"🤝",text:`${gn(l.mid)} ${fmt(l.principal)} টাকা ঋণ নিয়েছেন`}));
+    payments.forEach(p=>activities.push({t:p.id,type:"payment",text:`${gn(p.mid)} ${fmt(p.amount)} টাকা চাঁদা জমা দিয়েছেন`}));
+    loans.forEach(l=>activities.push({t:l.id,type:"loan",text:`${gn(l.mid)} ${fmt(l.principal)} টাকা ঋণ নিয়েছেন`}));
   }
-  const recentHtml=activities.sort((a,b)=>b.t-a.t).slice(0,20).map(a=>
-    `<div style="display:flex;gap:10px;align-items:center;padding:9px 16px;border-bottom:1px solid #f1f5f9">
-      <span style="font-size:16px;flex-shrink:0">${a.icon}</span>
-      <span style="font-size:12.5px;line-height:1.5;flex:1">${a.text}</span>
-      ${isA()&&a.logId?`<button onclick="delActivity(${a.logId})" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:13px;flex-shrink:0;padding:2px 4px" title="মুছুন">🗑</button>`:""}
-    </div>`
-  ).join("")||`<div style="padding:16px;text-align:center;color:#94a3b8">কোনো কার্যক্রম নেই</div>`;
+  const sortedActs = activities.sort((a,b)=>b.t-a.t).slice(0,20);
+
+  const dayStart=x=>{const d=new Date(x);return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();};
+  const todayStart=dayStart(Date.now());
+  const groupOf=t=>{
+    const diffDays=Math.round((todayStart-dayStart(t))/86400000);
+    if(diffDays<=0) return "আজ";
+    if(diffDays===1) return "গতকাল";
+    if(diffDays<=7) return "এই সপ্তাহে";
+    return "আরও আগে";
+  };
+  const timeAgo=t=>{
+    const diff=Math.max(0,Date.now()-t), min=Math.floor(diff/60000);
+    if(min<1) return "এখনই";
+    if(min<60) return bn(min)+" মিনিট আগে";
+    const hr=Math.floor(min/60); if(hr<24) return bn(hr)+" ঘণ্টা আগে";
+    const day=Math.floor(hr/24); if(day<7) return bn(day)+" দিন আগে";
+    const wk=Math.floor(day/7); if(wk<5) return bn(wk)+" সপ্তাহ আগে";
+    const mo=Math.floor(day/30); if(mo<12) return bn(mo)+" মাস আগে";
+    return bn(Math.floor(day/365))+" বছর আগে";
+  };
+
+  let lastGroup=null;
+  const actRows = sortedActs.map(a=>{
+    const t=actTypeMap[a.type]||actDefault;
+    const g=groupOf(a.t);
+    const header = g!==lastGroup ? `<div style="padding:10px 16px 4px;font-size:10.5px;font-weight:800;color:#94a3b8;letter-spacing:.3px">${g}</div>` : "";
+    lastGroup=g;
+    const row = `<div class="act-row" style="display:flex;gap:11px;align-items:flex-start;padding:8px 16px;position:relative">
+      <div style="width:30px;height:30px;border-radius:50%;background:${t.bg};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${t.icon}</div>
+      <div style="flex:1;min-width:0;padding-top:2px">
+        <div style="font-size:12.5px;line-height:1.5;color:#1e293b">${a.text}</div>
+        <div style="font-size:10.5px;color:#94a3b8;margin-top:2px">${timeAgo(a.t)}</div>
+      </div>
+      ${isA()&&a.logId?`<button onclick="delActivity('${a.logId}')" style="background:none;border:none;color:#cbd5e1;cursor:pointer;font-size:12px;flex-shrink:0;padding:2px 4px;margin-top:4px" title="মুছুন">🗑</button>`:""}
+    </div>`;
+    return header+row;
+  });
+  const visibleCount = 5;
+  const recentHtml = sortedActs.length
+    ? actRows.slice(0,visibleCount).join("") +
+      (actRows.length>visibleCount ? `<div id="moreAct" style="display:none">${actRows.slice(visibleCount).join("")}</div>
+        <div style="padding:10px 16px;text-align:center;border-top:1px solid #f1f5f9">
+          <button id="moreActBtn" data-count="${actRows.length-visibleCount}" onclick="toggleMoreActivities()" style="background:none;border:none;color:#1a8a00;font-weight:700;font-size:12.5px;cursor:pointer">আরো দেখুন (+${bn(actRows.length-visibleCount)}) ▾</button>
+        </div>` : "")
+    : `<div style="padding:16px;text-align:center;color:#94a3b8">কোনো কার্যক্রম নেই</div>`;
 
   // ── Mini Health Score ──
   const hs=calcHealthScore();
@@ -1932,17 +2008,24 @@ function pgHome(){
       <div style="font-size:11px;opacity:.5;margin-bottom:3px">${BNM[now.getMonth()]} ${now.getFullYear()}</div>
       <div style="font-size:22px;font-weight:800;line-height:1.3;margin-bottom:3px">স্বাগতম, স্বপ্নঘুড়ি 🪁</div>
       <div style="font-size:12px;opacity:.6;margin-bottom:6px">আজকের তারিখ: ${ds(now.toISOString().slice(0,10))}</div>
-      <div style="font-size:12px;opacity:.7;margin-bottom:16px">📢 নতুন নোটিশ: ${(D.notices||[]).length} টি &nbsp;•&nbsp; ⚠️ বকেয়া সদস্য: ${duesList.filter(m=>m.totalDue>0).length} জন</div>
+      <div style="font-size:12px;opacity:.7;margin-bottom:16px">📢 নতুন নোটিশ: ${bn((D.notices||[]).length)} টি &nbsp;•&nbsp; ⚠️ বকেয়া সদস্য: ${bn(duesList.filter(m=>m.totalDue>0).length)} জন</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         ${[["মোট সম্পদ",fmt(totalNetAsset)],["নগদ তহবিল",fmt(cashFund)],["বকেয়া ঋণ",fmt(totalDue)],["বকেয়া চাঁদা",fmt(totalDueChada)],["মোট দায়",fmt(totalLiability)]].map(([l,v],i)=>`<div style="background:${i===4||(i===1&&cashFund<0)?"rgba(220,38,38,.25)":"rgba(255,255,255,.1)"};border-radius:9px;padding:9px 13px;border:1px solid ${i===4||(i===1&&cashFund<0)?"rgba(220,38,38,.4)":"rgba(255,255,255,.1)"}"><div style="color:rgba(255,255,255,.55);font-size:10px">${l}</div><div style="color:${i===4||(i===1&&cashFund<0)?"#fca5a5":"#fff"};font-weight:800;font-size:15px">${v}</div></div>`).join("")}
         <div style="background:var(--white);border-radius:9px;padding:9px 13px;border:1px solid rgba(255,255,255,.1);cursor:pointer" onclick="goTab('health')">
           <div style="color:#64748b;font-size:10px">স্বাস্থ্য স্কোর</div>
-          <div style="color:${hs.scoreColor};font-weight:800;font-size:15px">${hs.score}/১০০ ${hs.scoreLabel}</div>
+          <div style="color:${hs.scoreColor};font-weight:800;font-size:15px">${bn(hs.score)}/১০০ ${hs.scoreLabel}</div>
         </div>
       </div>
     </div>
-    ${hs.score<60?`<div style="background:#fff7ed;border:2px solid #fb923c;border-radius:13px;padding:13px 16px;margin-bottom:14px;display:flex;gap:11px;align-items:center"><span style="font-size:20px;flex-shrink:0">⚠️</span><div style="font-size:12.5px;color:#9a3412;font-weight:600">সংগঠনের স্বাস্থ্য স্কোর কম (${hs.score}/১০০) — বকেয়া চাঁদা/ঋণ আদায়ে গুরুত্ব দিন</div></div>`:""}
-    ${pinned?`<div style="background:#fffbeb;border:2px solid #fbbf24;border-radius:13px;padding:13px 16px;margin-bottom:14px;display:flex;gap:11px;align-items:flex-start"><span style="font-size:20px;flex-shrink:0">📌</span><div><div style="font-weight:700;font-size:14px;color:#92400e;margin-bottom:3px">${pinned.title}</div><div style="font-size:12px;color:#a16207;line-height:1.6">${pinned.body}</div></div></div>`:""}
+    ${hs.score<60?`<div style="background:linear-gradient(135deg,#fff7ed,#fff1f0);border:2px solid #fb923c;border-radius:14px;padding:14px 16px;margin-bottom:14px;display:flex;gap:12px;align-items:center;box-shadow:0 2px 8px rgba(251,146,60,.15)">
+        <span class="alert-dot" style="font-size:22px;flex-shrink:0">🚨</span>
+        <div style="flex:1">
+          <div style="font-size:13px;color:#9a3412;font-weight:800;margin-bottom:2px">সংগঠনের স্বাস্থ্য স্কোর কম — ${bn(hs.score)}/১০০</div>
+          <div style="font-size:11.5px;color:#c2410c;line-height:1.5">বকেয়া চাঁদা ও ঋণ আদায়ে অগ্রাধিকার দিন, নইলে তহবিলে চাপ পড়তে পারে</div>
+        </div>
+        <button onclick="goTab('duessheet')" style="background:#ea580c;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:11.5px;font-weight:700;cursor:pointer;flex-shrink:0;font-family:inherit">দেখুন →</button>
+      </div>`:""}
+    ${pinned?`<div onclick="goToNotice(${pinned.id})" style="background:#fffbeb;border:2px solid #fbbf24;border-radius:13px;padding:13px 16px;margin-bottom:14px;display:flex;gap:11px;align-items:flex-start;cursor:pointer"><span style="font-size:20px;flex-shrink:0">📌</span><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px;color:#92400e;margin-bottom:3px">${esc(pinned.title)}</div><div style="font-size:12px;color:#a16207;line-height:1.6;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${esc(pinned.body)}</div><div style="font-size:11px;color:#b45309;font-weight:700;margin-top:5px">বিস্তারিত পড়ুন →</div></div></div>`:""}
     <div class="grid4" style="margin-bottom:14px">
       ${kpis.map(([i,v,l,c,bg])=>`<div class="kpi" style="background:${bg}"><div class="ki">${i}</div><div class="kv" style="color:${c}">${v}</div><div class="kl">${l}</div></div>`).join("")}
     </div>
@@ -7532,7 +7615,7 @@ function pgHealth(){
             style="transition:stroke-dashoffset .6s ease"></circle>
         </svg>
         <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <div style="font-size:40px;font-weight:900;color:${scoreColor}">${score}</div>
+          <div style="font-size:40px;font-weight:900;color:${scoreColor}">${bn(score)}</div>
           <div style="font-size:11px;color:#64748b">/ ১০০</div>
         </div>
       </div>
