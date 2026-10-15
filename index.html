@@ -214,6 +214,16 @@ html[data-theme="dark"] [style*="border-right:2px solid #e2e8f0"]{border-color:v
 html[data-theme="dark"] [style*="border-bottom:1px solid #e2e8f0"]{border-color:var(--border)!important}
 html[data-theme="dark"] [style*="border-bottom:1px solid #f1f5f9"]{border-color:var(--border)!important}
 html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{color-scheme:dark}
+/* ডার্ক মোডে হালকা ব্যাকগ্রাউন্ডের বক্স (ইনলাইনে হালকা রঙ দেওয়া) — ভেতরের লেখা গাঢ় রাখা হয়,
+   নাহলে হালকা লেখা হালকা জমিনে মিশে হারিয়ে যায় (যেমন সদস্যের নাম, স্কোরের লেবেল) */
+html[data-theme="dark"] :is([style*="background:#bae6fd"],[style*="background:#bbf7d0"],[style*="background:#dbeafe"],[style*="background:#dcfce7"],[style*="background:#e2e8f0"],[style*="background:#ede9fe"],[style*="background:#eff6ff"],[style*="background:#f0f9ff"],[style*="background:#f0fdf4"],[style*="background:#f1f5f9"],[style*="background:#f3e8ff"],[style*="background:#f5f3ff"],[style*="background:#f9fff9"],[style*="background:#fed7aa"],[style*="background:#fee2e2"],[style*="background:#fef08a"],[style*="background:#fef2f2"],[style*="background:#fef3c7"],[style*="background:#fff"],[style*="background:#fff1f2"],[style*="background:#fff5f5"],[style*="background:#fff7ed"],[style*="background:#fffbeb"],[style*="background:#ffffff"],[style*="background:linear-gradient(135deg,#f0fdf4"]):not(#notif-pop *){color:#071a07}
+/* টেবিলের ঘর (td/th) নিজস্ব ক্লাস-রঙ নেয়, তাই হালকা সারি/বক্সের ভেতরেও গাঢ় রাখা হলো */
+html[data-theme="dark"] :is([style*="background:#bae6fd"],[style*="background:#bbf7d0"],[style*="background:#dbeafe"],[style*="background:#dcfce7"],[style*="background:#e2e8f0"],[style*="background:#ede9fe"],[style*="background:#eff6ff"],[style*="background:#f0f9ff"],[style*="background:#f0fdf4"],[style*="background:#f1f5f9"],[style*="background:#f3e8ff"],[style*="background:#f5f3ff"],[style*="background:#f9fff9"],[style*="background:#fed7aa"],[style*="background:#fee2e2"],[style*="background:#fef08a"],[style*="background:#fef2f2"],[style*="background:#fef3c7"],[style*="background:#fff"],[style*="background:#fff1f2"],[style*="background:#fff5f5"],[style*="background:#fff7ed"],[style*="background:#fffbeb"],[style*="background:#ffffff"],[style*="background:linear-gradient(135deg,#f0fdf4"]):not(#notif-pop *):is(td,th),
+html[data-theme="dark"] :is([style*="background:#bae6fd"],[style*="background:#bbf7d0"],[style*="background:#dbeafe"],[style*="background:#dcfce7"],[style*="background:#e2e8f0"],[style*="background:#ede9fe"],[style*="background:#eff6ff"],[style*="background:#f0f9ff"],[style*="background:#f0fdf4"],[style*="background:#f1f5f9"],[style*="background:#f3e8ff"],[style*="background:#f5f3ff"],[style*="background:#f9fff9"],[style*="background:#fed7aa"],[style*="background:#fee2e2"],[style*="background:#fef08a"],[style*="background:#fef2f2"],[style*="background:#fef3c7"],[style*="background:#fff"],[style*="background:#fff1f2"],[style*="background:#fff5f5"],[style*="background:#fff7ed"],[style*="background:#fffbeb"],[style*="background:#ffffff"],[style*="background:linear-gradient(135deg,#f0fdf4"]):not(#notif-pop *) :is(td,th){color:#071a07}
+html[data-theme="dark"] :is([style*="background:#bae6fd"],[style*="background:#bbf7d0"],[style*="background:#dbeafe"],[style*="background:#dcfce7"],[style*="background:#e2e8f0"],[style*="background:#ede9fe"],[style*="background:#eff6ff"],[style*="background:#f0f9ff"],[style*="background:#f0fdf4"],[style*="background:#f1f5f9"],[style*="background:#f3e8ff"],[style*="background:#f5f3ff"],[style*="background:#f9fff9"],[style*="background:#fed7aa"],[style*="background:#fee2e2"],[style*="background:#fef08a"],[style*="background:#fef2f2"],[style*="background:#fef3c7"],[style*="background:#fff"],[style*="background:#fff1f2"],[style*="background:#fff5f5"],[style*="background:#fff7ed"],[style*="background:#fffbeb"],[style*="background:#ffffff"],[style*="background:linear-gradient(135deg,#f0fdf4"]):not(#notif-pop *):is([style*="color:#071a07"],[style*="color:#334155"],[style*="color:#374151"],[style*="color:#1e293b"],[style*="color:#475569"],[style*="color:var(--ink)"]),
+html[data-theme="dark"] :is([style*="background:#bae6fd"],[style*="background:#bbf7d0"],[style*="background:#dbeafe"],[style*="background:#dcfce7"],[style*="background:#e2e8f0"],[style*="background:#ede9fe"],[style*="background:#eff6ff"],[style*="background:#f0f9ff"],[style*="background:#f0fdf4"],[style*="background:#f1f5f9"],[style*="background:#f3e8ff"],[style*="background:#f5f3ff"],[style*="background:#f9fff9"],[style*="background:#fed7aa"],[style*="background:#fee2e2"],[style*="background:#fef08a"],[style*="background:#fef2f2"],[style*="background:#fef3c7"],[style*="background:#fff"],[style*="background:#fff1f2"],[style*="background:#fff5f5"],[style*="background:#fff7ed"],[style*="background:#fffbeb"],[style*="background:#ffffff"],[style*="background:linear-gradient(135deg,#f0fdf4"]):not(#notif-pop *) :is([style*="color:#071a07"],[style*="color:#334155"],[style*="color:#374151"],[style*="color:#1e293b"],[style*="color:#475569"],[style*="color:var(--ink)"]){color:#071a07!important}
+html[data-theme="dark"] :is([style*="background:#bae6fd"],[style*="background:#bbf7d0"],[style*="background:#dbeafe"],[style*="background:#dcfce7"],[style*="background:#e2e8f0"],[style*="background:#ede9fe"],[style*="background:#eff6ff"],[style*="background:#f0f9ff"],[style*="background:#f0fdf4"],[style*="background:#f1f5f9"],[style*="background:#f3e8ff"],[style*="background:#f5f3ff"],[style*="background:#f9fff9"],[style*="background:#fed7aa"],[style*="background:#fee2e2"],[style*="background:#fef08a"],[style*="background:#fef2f2"],[style*="background:#fef3c7"],[style*="background:#fff"],[style*="background:#fff1f2"],[style*="background:#fff5f5"],[style*="background:#fff7ed"],[style*="background:#fffbeb"],[style*="background:#ffffff"],[style*="background:linear-gradient(135deg,#f0fdf4"]):not(#notif-pop *):is([style*="color:#64748b"],[style*="color:#94a3b8"],[style*="color:var(--muted)"]),
+html[data-theme="dark"] :is([style*="background:#bae6fd"],[style*="background:#bbf7d0"],[style*="background:#dbeafe"],[style*="background:#dcfce7"],[style*="background:#e2e8f0"],[style*="background:#ede9fe"],[style*="background:#eff6ff"],[style*="background:#f0f9ff"],[style*="background:#f0fdf4"],[style*="background:#f1f5f9"],[style*="background:#f3e8ff"],[style*="background:#f5f3ff"],[style*="background:#f9fff9"],[style*="background:#fed7aa"],[style*="background:#fee2e2"],[style*="background:#fef08a"],[style*="background:#fef2f2"],[style*="background:#fef3c7"],[style*="background:#fff"],[style*="background:#fff1f2"],[style*="background:#fff5f5"],[style*="background:#fff7ed"],[style*="background:#fffbeb"],[style*="background:#ffffff"],[style*="background:linear-gradient(135deg,#f0fdf4"]):not(#notif-pop *) :is([style*="color:#64748b"],[style*="color:#94a3b8"],[style*="color:var(--muted)"]){color:#64748b!important}
 
 /* AI Report modal */
 
@@ -880,7 +890,15 @@ function restoreFromTrash(tid){ if(!isA()) return;
   if(!t){toast("❌ পাওয়া যায়নি, হয়তো মেয়াদ শেষ হয়ে গেছে","#dc2626");return;}
   const meta=TRASH_META[t.entity];
   if(!meta){toast("❌ পুনরুদ্ধার সম্ভব নয়","#dc2626");return;}
-  trashSetArr(t.entity,[...trashGetArr(t.entity),t.data]);
+  let tdata=t.data;
+  if(t.entity==="income"&&tdata&&tdata._feeId!=null){ // জরিমানা-আদায়ের আয় ফেরত এলে জরিমানাটিও আবার "আদায়" করা অবস্থায় ফেরাও
+    const {_feeId,...rest}=tdata; tdata=rest;
+    const lf=(D.lateFees||[]).find(f=>String(f.id)===String(_feeId));
+    if(lf&&!lf.collected){ lf.collected=true; lf.collectedAt=new Date().toISOString(); lf.incomeId=rest.id; }
+  }
+  trashSetArr(t.entity,[...trashGetArr(t.entity),tdata]);
+  if(t.entity==="vote") mirrorVotesToFirebase();           // ফেরানো ভোট/অভিযোগ আলাদা নোডেও লিখতে হয়,
+  if(t.entity==="complaint") mirrorComplaintsToFirebase(); // নাহলে পরের লোডে আবার হারিয়ে যায়
   if(t.entity==="opinion"&&t.data&&t.data.id!=null){ try{ firebase.database().ref('sg_opinions/'+t.data.id).set(t.data).catch(function(){}); }catch(e){} }
   D.trash=(D.trash||[]).filter(x=>String(x.id)!==String(tid));
   logActivity(t.entity,`${meta.label} পুনরুদ্ধার করা হয়েছে (ট্র্যাশ থেকে): ${t.summary}`);
@@ -2056,11 +2074,11 @@ function pgHome(){
         ${[["মোট সম্পদ",fmt(totalNetAsset)],["নগদ তহবিল",fmt(cashFund)],["বকেয়া ঋণ",fmt(totalDue)],["বকেয়া চাঁদা",fmt(totalDueChada)],["মোট দায়",fmt(totalLiability)]].map(([l,v],i)=>`<div style="background:${i===4||(i===1&&cashFund<0)?"rgba(220,38,38,.25)":"rgba(255,255,255,.1)"};border-radius:9px;padding:9px 13px;border:1px solid ${i===4||(i===1&&cashFund<0)?"rgba(220,38,38,.4)":"rgba(255,255,255,.1)"}"><div style="color:rgba(255,255,255,.55);font-size:10px">${l}</div><div style="color:${i===4||(i===1&&cashFund<0)?"#fca5a5":"#fff"};font-weight:800;font-size:15px">${v}</div></div>`).join("")}
         <div style="background:var(--white);border-radius:9px;padding:9px 13px;border:1px solid rgba(255,255,255,.1);cursor:pointer" onclick="goTab('health')">
           <div style="color:#64748b;font-size:10px">স্বাস্থ্য স্কোর</div>
-          <div style="color:${hs.scoreColor};font-weight:800;font-size:15px">${hs.score}/১০০ ${hs.scoreLabel}</div>
+          <div style="color:${hs.scoreColor};font-weight:800;font-size:15px">${bnNum(hs.score)}/১০০ ${hs.scoreLabel}</div>
         </div>
       </div>
     </div>
-    ${hs.score<60?`<div style="background:#fff7ed;border:2px solid #fb923c;border-radius:13px;padding:13px 16px;margin-bottom:14px;display:flex;gap:11px;align-items:center"><span style="font-size:20px;flex-shrink:0">⚠️</span><div style="font-size:12.5px;color:#9a3412;font-weight:600">সংগঠনের স্বাস্থ্য স্কোর কম (${hs.score}/১০০) — বকেয়া চাঁদা/ঋণ আদায়ে গুরুত্ব দিন</div></div>`:""}
+    ${hs.score<60?`<div style="background:#fff7ed;border:2px solid #fb923c;border-radius:13px;padding:13px 16px;margin-bottom:14px;display:flex;gap:11px;align-items:center"><span style="font-size:20px;flex-shrink:0">⚠️</span><div style="font-size:12.5px;color:#9a3412;font-weight:600">সংগঠনের স্বাস্থ্য স্কোর কম (${bnNum(hs.score)}/১০০) — বকেয়া চাঁদা/ঋণ আদায়ে গুরুত্ব দিন</div></div>`:""}
     ${pinned?`<div style="background:#fffbeb;border:2px solid #fbbf24;border-radius:13px;padding:13px 16px;margin-bottom:14px;display:flex;gap:11px;align-items:flex-start"><span style="font-size:20px;flex-shrink:0">📌</span><div><div style="font-weight:700;font-size:14px;color:#92400e;margin-bottom:3px">${esc(pinned.title)}</div><div style="font-size:12px;color:#a16207;line-height:1.6">${esc(pinned.body)}</div></div></div>`:""}
     <div class="grid4" style="margin-bottom:14px">
       ${kpis.map(([i,v,l,c,bg])=>`<div class="kpi" style="background:${bg}"><div class="ki">${i}</div><div class="kv" style="color:${c}">${v}</div><div class="kl">${l}</div></div>`).join("")}
@@ -2387,10 +2405,12 @@ function addLoan(){
   sv();toast("✅ ঋণ যোগ হয়েছে");goTab("loans");
 }
 function delLoan(id){ if(!isA()) return;
-  if(!confirm("এই ঋণ মুছবেন?"))return;
+  const pendFees=(D.lateFees||[]).filter(f=>f.source==="emi"&&f.loanId===id&&!f.collected);
+  if(!confirm("এই ঋণ মুছবেন?"+(pendFees.length?"\n\nএই ঋণের "+bnNum(pendFees.length)+"টি অনাদায়ী স্বয়ংক্রিয় কিস্তি-জরিমানাও মুছে যাবে (ঋণ ট্র্যাশ থেকে ফেরালে প্রয়োজনে আবার তৈরি হবে)।":"")))return;
   const l=(D.loans||[]).find(x=>x.id===id);
   if(!l)return;
   D.loans=(D.loans||[]).filter(l=>l.id!==id);
+  if(pendFees.length) D.lateFees=(D.lateFees||[]).filter(f=>!(f.source==="emi"&&f.loanId===id&&!f.collected)); // ঋণ নেই অথচ তার জরিমানা পড়ে থাকবে না
   const tid=moveToTrash("loan",`${gnE(l.mid)} — ${fmt(l.principal)} টাকার ঋণ`,l);
   logActivity("loan",`${gnE(l.mid)} — ${fmt(l.principal)} টাকার ঋণ রেকর্ড মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে)`);
   sv();undoToast("🗑 ঋণ মুছে ফেলা হয়েছে",tid);goTab("loans");
@@ -2829,7 +2849,10 @@ function delIncome(id){ if(!isA()) return;
   const i=(D.income||[]).find(x=>x.id===id);
   if(!i)return;
   D.income=(D.income||[]).filter(i=>i.id!==id);
-  const tid=moveToTrash("income",`${esc(i.title)} — ${fmt(i.amount)}`,i);
+  // এই আয়টি কোনো জরিমানা আদায় থেকে তৈরি হলে জরিমানাটি আবার অনাদায়ী করো — নাহলে "আদায়" দেখাবে অথচ আয়ে টাকা নেই
+  const lf=(D.lateFees||[]).find(f=>f.incomeId!=null&&String(f.incomeId)===String(id));
+  if(lf){ lf.collected=false; lf.collectedAt=null; lf.incomeId=null; }
+  const tid=moveToTrash("income",`${esc(i.title)} — ${fmt(i.amount)}`,lf?{...i,_feeId:lf.id}:i);
   logActivity("income",`আয় মুছে ফেলা হয়েছে (ট্র্যাশে সরানো হয়েছে): ${esc(i.title)} — ${fmt(i.amount)}`);
   sv();undoToast("🗑 আয় মুছে ফেলা হয়েছে",tid);goTab("expenses");
 }
@@ -3341,7 +3364,7 @@ function buildMemberCard(m,payments,loans,duesListAll,allMeetings,totalFundAll,r
         ${dueChada>0?(function(){const rs=calcMemberRiskScore(m);return `<div style="margin-top:8px;background:${rs.levelColor}14;border:1px solid ${rs.levelColor}44;border-radius:8px;padding:7px 9px">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:11px;font-weight:700;color:${rs.levelColor}">${rs.levelLabel}</span>
-            <span style="font-size:11px;font-weight:800;color:${rs.levelColor}">স্কোর ${rs.score}</span>
+            <span style="font-size:11px;font-weight:800;color:${rs.levelColor}">স্কোর ${bnNum(rs.score)}</span>
           </div>
           <div style="font-size:10px;color:#64748b;margin-top:3px">${rs.missedStreak>0?`⏳ ${rs.missedStreak} মাস ধারাবাহিক বকেয়া`:"✅ ধারাবাহিক বকেয়া নেই"}${rs.hasLoanDue?" · 🤝 ঋণও বকেয়া":""}</div>
         </div>`;})():""}
@@ -4021,7 +4044,11 @@ function saveMemberEdit(){
 }
 
 function delMember(id){ if(!isA()) return;
-  if(!confirm("এই সদস্য মুছবেন?"))return;
+  const nP=(D.payments||[]).filter(x=>x.mid==id).length, nL=(D.loans||[]).filter(x=>x.mid==id).length, nF=(D.lateFees||[]).filter(x=>x.mid==id).length;
+  const msg=(nP+nL+nF)
+    ? "এই সদস্যের "+bnNum(nP)+"টি চাঁদা, "+bnNum(nL)+"টি ঋণ ও "+bnNum(nF)+"টি জরিমানার রেকর্ড আছে।\n\nমুছলে এগুলো \"অজানা\" নামে হিসাবে থেকে যাবে এবং সদস্যভিত্তিক রিপোর্ট মিলবে না। সদস্যকে সরাতে চাইলে সাধারণত \"পূর্ব সদস্য\" করাই ভালো।\n\nতবুও মুছবেন?"
+    : "এই সদস্য মুছবেন?";
+  if(!confirm(msg))return;
   const m=(D.members||[]).find(x=>x.id===id);
   if(!m)return;
   D.members=(D.members||[]).filter(m=>m.id!==id);
@@ -4654,6 +4681,7 @@ function xlsxColLetter(n){
 }
 function xlsxEscXML(v){
   return String(v==null?"":v)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]/g,"") // XML-এ অবৈধ অদৃশ্য অক্ষর ফাইল নষ্ট করে
     .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
     .replace(/"/g,"&quot;").replace(/'/g,"&apos;");
 }
@@ -6489,6 +6517,7 @@ function collectLateFee(id){
 function delLateFee(id){ if(!isA()) return;
   const f=(D.lateFees||[]).find(x=>String(x.id)===String(id));
   if(!f) return;
+  if(f.collected && !confirm("এই জরিমানা আদায় হয়ে ইতিমধ্যে আয় হিসেবে যোগ হয়েছে।\n\nজরিমানার রেকর্ড মুছলেও আয়ের এন্ট্রি থেকে যাবে (আয় পেজ থেকে আলাদা মুছতে হবে)।\n\nতবুও মুছবেন?")) return;
   D.lateFees=(D.lateFees||[]).filter(x=>String(x.id)!==String(id));
   if(f.type==="auto"){ // স্বয়ংক্রিয় ফি মুছলে চিহ্ন রাখো, যেন sync আবার তৈরি না করে
     if(!D.lateFeeSkips) D.lateFeeSkips=[];
@@ -7535,10 +7564,10 @@ function pgHealth(){
   const {score,scoreColor,scoreLabel,collectionRate,loanRecovery,goalProgress}=calcHealthScore();
 
   const indicators=[
-    {label:"চাঁদা আদায়ের হার",value:collectionRate+"%",score:collectionRate,color:"#1a8a00"},
-    {label:"ঋণ উদ্ধারের হার",value:loanRecovery+"%",score:loanRecovery,color:"#2563eb"},
-    {label:"লক্ষ্য পূরণ",value:goalProgress+"%",score:Math.min(goalProgress,100),color:"#d97706"},
-    {label:"মোট সদস্য",value:members.length+" জন",score:100,color:"#7c3aed"},
+    {label:"চাঁদা আদায়ের হার",value:bnNum(collectionRate)+"%",score:collectionRate,color:"#1a8a00"},
+    {label:"ঋণ উদ্ধারের হার",value:bnNum(loanRecovery)+"%",score:loanRecovery,color:"#2563eb"},
+    {label:"লক্ষ্য পূরণ",value:bnNum(goalProgress)+"%",score:Math.min(goalProgress,100),color:"#d97706"},
+    {label:"মোট সদস্য",value:bnNum(members.length)+" জন",score:100,color:"#7c3aed"},
   ];
 
   const allMonths2=[];let d2=new Date(ORG_START);const now3=new Date();
@@ -7561,7 +7590,7 @@ function pgHealth(){
             style="transition:stroke-dashoffset .6s ease"></circle>
         </svg>
         <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <div style="font-size:40px;font-weight:900;color:${scoreColor}">${score}</div>
+          <div style="font-size:40px;font-weight:900;color:${scoreColor}">${bnNum(score)}</div>
           <div style="font-size:11px;color:#64748b">/ ১০০</div>
         </div>
       </div>
@@ -7608,7 +7637,7 @@ function pgHealth(){
                 <td style="text-align:right;color:${mDue>0?"#dc2626":"#16a34a"};white-space:nowrap">${mDue>0?fmt(mDue):"✅"}</td>
                 <td style="text-align:right;color:${mLoan>0?"#dc2626":"#16a34a"};white-space:nowrap">${mLoan>0?fmt(mLoan):"✅"}</td>
                 <td style="text-align:center;white-space:nowrap">
-                  <span style="background:${sc};color:#fff;border-radius:6px;padding:3px 10px;font-weight:800;font-size:12px">${mScore}</span>
+                  <span style="background:${sc};color:#fff;border-radius:6px;padding:3px 10px;font-weight:800;font-size:12px">${bnNum(mScore)}</span>
                 </td>
               </tr>`;
             }).join("")}
