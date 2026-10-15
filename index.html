@@ -490,6 +490,71 @@ const gn=id=>((D.members||[]).find(m=>m.id==id)||{}).name||"অজানা";
 const gnE=id=>esc(gn(id)); // HTML/লগে বসানোর জন্য এস্কেপ করা সদস্যের নাম
 const csvCell=v=>{let s=String(v==null?"":v).replace(/[\r\n]+/g," ");if(/^[=+\-@\t]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';}; // CSV: কোটেশন ডাবল + সূত্র-ইনজেকশন (=,+,-,@) রোধ
 const safeUrl=u=>{u=String(u==null?"":u);return /^(data:(image|video|audio)\/|data:text\/(plain|csv)[;,]|data:application\/(?!x?html|xhtml|[\w.+-]*javascript|ecmascript|xml)[\w.+-]+[;,]|data:;|https?:\/\/|blob:)/i.test(u)?esc(u):"";}; // src/href-এ শুধু নিরাপদ স্কিম (javascript:, data:text/html ইত্যাদি বাদ) + এস্কেপ
+// ═══ সদস্যের ব্যক্তিগত পিন — ভোট/মতামত/অভিযোগ/'দেখেছি'-তে অন্যের নামে কাজ ঠেকাতে ═══
+// (ব্রাউজারেই যাচাই হয়, তাই সাধারণ অপব্যবহার আটকায়; দক্ষ কারও জন্য পূর্ণ নিরাপত্তা নয়)
+const _SHA_K=(()=>{const k=[];for(let n=2;k.length<64;n++){let p=true;for(let d=2;d*d<=n;d++)if(n%d===0){p=false;break;}if(p)k.push(Math.floor((Math.cbrt(n)%1)*4294967296));}return k;})();
+function _sha256(str){
+  const b=new TextEncoder().encode(String(str)), l=b.length, n=((l+9+63)>>6)<<6;
+  const m=new Uint8Array(n); m.set(b); m[l]=0x80;
+  const dv=new DataView(m.buffer); dv.setUint32(n-8,Math.floor(l*8/4294967296)); dv.setUint32(n-4,(l*8)>>>0);
+  let h=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const w=new Uint32Array(64), R=(x,k)=>(x>>>k)|(x<<(32-k));
+  for(let o=0;o<n;o+=64){
+    for(let i=0;i<16;i++) w[i]=dv.getUint32(o+i*4);
+    for(let i=16;i<64;i++){const s0=R(w[i-15],7)^R(w[i-15],18)^(w[i-15]>>>3), s1=R(w[i-2],17)^R(w[i-2],19)^(w[i-2]>>>10); w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0;}
+    let a=h[0],b2=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
+    for(let i=0;i<64;i++){
+      const S1=R(e,6)^R(e,11)^R(e,25), ch=(e&f)^(~e&g), t1=(hh+S1+ch+_SHA_K[i]+w[i])>>>0;
+      const S0=R(a,2)^R(a,13)^R(a,22), mj=(a&b2)^(a&c)^(b2&c), t2=(S0+mj)>>>0;
+      hh=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b2;b2=a;a=(t1+t2)>>>0;
+    }
+    h=[h[0]+a,h[1]+b2,h[2]+c,h[3]+d,h[4]+e,h[5]+f,h[6]+g,h[7]+hh].map(x=>x>>>0);
+  }
+  return h.map(x=>x.toString(16).padStart(8,"0")).join("");
+}
+function _pinHash(mid,pin){
+  const p=String(pin==null?"":pin).trim().replace(/[০-৯]/g,d=>"০১২৩৪৫৬৭৮৯".indexOf(d)); // বাংলা অঙ্কে লিখলেও চলবে
+  return _sha256("sg-pin|"+mid+"|"+p);
+}
+function isMemberVerified(mid){
+  if(isA()) return true;
+  const m=(D.members||[]).find(x=>x.id==mid);
+  if(!m||!m.pinHash) return true; // পিন সেট না থাকলে আগের মতোই চলে (অ্যাডমিন পিন তৈরি করলে চালু হয়)
+  try{ return localStorage.getItem("sg_pin_ok_"+mid)===m.pinHash; }catch(e){ return false; }
+}
+function requireMemberPin(mid){
+  if(isMemberVerified(mid)) return true;
+  const m=(D.members||[]).find(x=>x.id==mid); if(!m) return false;
+  const pin=prompt("🔑 "+m.name+"\n\nআপনার ৪ সংখ্যার পিন দিন।\n(পিন জানা না থাকলে অ্যাডমিনকে বলুন)");
+  if(pin===null) return false;
+  if(_pinHash(mid,pin)===m.pinHash){ try{localStorage.setItem("sg_pin_ok_"+mid,m.pinHash);}catch(e){} return true; }
+  toast("❌ পিন ঠিক নয়","#dc2626"); return false;
+}
+function getMyMemberId(){ const v=localStorage.getItem("sg_my_member_id")||""; return (v&&isMemberVerified(v))?v:""; }
+function _genPin(){ const a=new Uint32Array(1); crypto.getRandomValues(a); return String(1000+(a[0]%9000)); }
+function setMemberPin(id){
+  if(!isA()) return;
+  const m=(D.members||[]).find(x=>x.id===id); if(!m) return;
+  if(m.pinHash && !confirm(m.name+"-এর নতুন পিন তৈরি করলে পুরনো পিন আর চলবে না। তৈরি করবেন?")) return;
+  const pin=_genPin(); m.pinHash=_pinHash(m.id,pin);
+  logActivity("member",`পিন নতুন করে তৈরি হয়েছে: ${esc(m.name)}`);
+  sv();
+  alert("🔑 "+m.name+"\n\nনতুন পিন: "+pin+"\n\nএটা সদস্যকে জানিয়ে দিন। পিন আর দেখা যাবে না — ভুলে গেলে নতুন পিন তৈরি করতে হবে।");
+  goTab("members");
+}
+function genAllPins(){
+  if(!isA()) return;
+  const miss=(D.members||[]).filter(m=>!m.pinHash);
+  if(!miss.length){ toast("✅ সবার পিন আগেই তৈরি আছে"); return; }
+  if(!confirm(bnNum(miss.length)+" জন সদস্যের পিন নেই। সবার জন্য পিন তৈরি করবেন?")) return;
+  const lines=miss.map(m=>{ const pin=_genPin(); m.pinHash=_pinHash(m.id,pin); return m.name+" — "+pin; });
+  logActivity("member",`${bnNum(miss.length)} জন সদস্যের পিন তৈরি হয়েছে`);
+  sv();
+  const text=lines.join("\n");
+  try{ navigator.clipboard.writeText(text); }catch(e){}
+  alert("🔑 সদস্যদের পিন (কপি করা হয়েছে — এখনই সংরক্ষণ করুন, পরে আর দেখা যাবে না):\n\n"+text);
+  goTab("members");
+}
 const isA=()=>role==="admin";
 // ── সিঙ্ক ট্র্যাকিং ──
 // _dirty: true মানে local-এ unsaved পরিবর্তন আছে যা Firebase-এ যায়নি
@@ -3270,6 +3335,7 @@ function pgMembers(){
     </div>
     <div class="field"><label>মাসিক চাঁদার হার (৳)</label><input type="number" id="mRt" value="2000" placeholder="2000"></div>
     <button class="btn btn-g" onclick="addMember()">✅ যোগ করুন</button>
+    <button class="btn" onclick="genAllPins()" style="background:#fff7ed;color:#9a3412;border:1px solid #fdba74;margin-left:6px">🔑 সবার পিন তৈরি করুন</button>
   </div></div>`:"";
 
   const memView=computeMembersView();
@@ -3332,6 +3398,7 @@ function buildMemberCard(m,payments,loans,duesListAll,allMeetings,totalFundAll,r
           </div>
           ${isA()?`<div style="display:flex;gap:5px">
             <button onclick="editMember(${m.id})" style="background:#eff6ff;border:none;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px">✏️</button>
+            <button onclick="setMemberPin(${m.id})" style="background:${m.pinHash?"#dcfce7":"#ffedd5"};border:none;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px" title="${m.pinHash?"পিন আছে — নতুন পিন তৈরি করুন":"পিন নেই — তৈরি করুন"}">🔑</button>
             <button onclick="sendDueNotif(${m.id})" style="background:#fffbeb;border:none;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px" title="WhatsApp">📱</button>
             <button onclick="moveToFormerMember(${m.id})" style="background:#fef3c7;border:none;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px" title="পূর্ব সদস্যে স্থানান্তর">🚪</button>
             <button onclick="delMember(${m.id})" style="background:#fff1f2;border:none;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:12px;color:#dc2626">🗑</button>
@@ -4230,6 +4297,7 @@ function pgOpinion(){
 function addOp(){
   const m=document.getElementById("opM").value,t=document.getElementById("opT").value.trim();
   if(!m||!t)return;
+  if(!requireMemberPin(Number(m))) return;
   const entry={id:Date.now(),mid:Number(m),text:t,date:new Date().toISOString().slice(0,10),likes:0};
   D.opinions=[...(D.opinions||[]),entry];
   LS.set(SK,D);
@@ -4243,6 +4311,9 @@ function addOp(){
   goTab("opinion");
 }
 function likeOp(id){
+  let liked=[]; try{ liked=JSON.parse(localStorage.getItem("sg_liked_ops")||"[]"); }catch(e){}
+  if(liked.includes(id)){ toast("ℹ️ আপনি এই মতামতে আগেই লাইক দিয়েছেন","#d97706"); return; }
+  liked.push(id); try{ localStorage.setItem("sg_liked_ops",JSON.stringify(liked.slice(-500))); }catch(e){}
   D.opinions=(D.opinions||[]).map(o=>o.id===id?{...o,likes:(o.likes||0)+1}:o);
   LS.set(SK,D);
   try{ firebase.database().ref('sg_opinions/'+id+'/likes').transaction(function(n){ return (n||0)+1; }); }catch(e){}
@@ -4305,7 +4376,7 @@ function pgComplaint(){
   </div>`;
 
   const cards=list.map(c=>{
-    const submitter=c.anonymous?"🕵️ বেনামে":gnE(c.mid);
+    const submitter=c.anonymous?"🕵️ বেনামে":(isA()?gnE(c.mid):"👤 একজন সদস্য"); // নাম শুধু অ্যাডমিন দেখেন
     const typeColor=c.type==="অভিযোগ"?"#dc2626":"#2563eb";
     const typeBg=c.type==="অভিযোগ"?"#fee2e2":"#eff6ff";
     const sColor=complaintStatusColor(c.status);
@@ -4351,6 +4422,7 @@ function addComplaint(){
   const text=document.getElementById("cpText").value.trim();
   if(!text){toast("⚠️ বিস্তারিত লিখুন","#d97706");return;}
   if(!anon&&!mRaw){toast("⚠️ সদস্য বেছে নিন অথবা বেনামে জমা দিন","#d97706");return;}
+  if(!anon&&!requireMemberPin(Number(mRaw))) return;
   const entry={
     id:Date.now(),
     mid:anon?null:Number(mRaw),
@@ -7184,10 +7256,12 @@ function addVote(){
 }
 
 function getVotingIdentity(){
-  return localStorage.getItem("sg_voting_as")||"";
+  const v=localStorage.getItem("sg_voting_as")||"";
+  return (v&&isMemberVerified(v))?v:""; // পিন যাচাই না হলে নির্বাচিত নয় ধরা হয়
 }
 function setVotingIdentity(sel){
   const val=sel.value||"";
+  if(val && !requireMemberPin(val)){ goTab("voting"); return; } // ভুল/বাতিল পিন — আগের অবস্থায় ফিরে যাও
   if(val) localStorage.setItem("sg_voting_as",val);
   else localStorage.removeItem("sg_voting_as");
   goTab("voting");
@@ -7988,7 +8062,7 @@ function pgMassMsg(){
   const isAd=isA();
   const members=D.members||[];
   const dueMembers=getDuesList();
-  const myId=localStorage.getItem("sg_my_member_id")||"";
+  const myId=getMyMemberId();
 
   const stats=(()=>{
     const msgs=D.massMessages||[];
@@ -8108,13 +8182,14 @@ function addMassMsg(){
   sv();toast(`✅ ${recipientIds.length} জনকে বার্তা পাঠানো হয়েছে`);goTab("massmsg");
 }
 function setMyMemberId(v){
+  if(v && !requireMemberPin(v)){ goTab("massmsg"); return; }
   if(v) localStorage.setItem("sg_my_member_id",v);
   else localStorage.removeItem("sg_my_member_id");
   toast("✅ সংরক্ষিত হয়েছে");
   goTab("massmsg");
 }
 function markMMSeen(id){
-  const myId=localStorage.getItem("sg_my_member_id");
+  const myId=getMyMemberId();
   if(!myId){ toast("⚠️ প্রথমে 'আপনি কে' নির্বাচন করুন","#d97706"); return; }
   const m=(D.massMessages||[]).find(x=>x.id===id);
   if(!m) return;
