@@ -740,6 +740,7 @@ function renderSyncBadge(){
     offline:{icon:"📴",text:"অফলাইন (লোকাল সেভ)",color:"#64748b"},
     error:{icon:"⚠️",text:"ক্লাউড সিঙ্ক ব্যর্থ",color:"#dc2626"},
     conflict:{icon:"⚠️",text:"অন্যত্র ডেটা বদলেছে — আবার করুন",color:"#dc2626"},
+    authfail:{icon:"⚠️",text:"ভিউয়ার সংযোগ ব্যর্থ — অ্যাডমিনকে জানান",color:"#dc2626"},
     unknown:{icon:"❓",text:"যাচাই হয়নি",color:"#94a3b8"}
   };
   const s=map[status]||map.unknown;
@@ -1098,6 +1099,24 @@ function startSessionTimeout(){
   },60*1000); // প্রতি মিনিটে চেক
 }
 // ক্লাউড ডেটা সিঙ্ক — একবারই সাবস্ক্রাইব হবে (আগে login()-এর ভেতরে ও পেজের নিচে দুই জায়গায় ডুপ্লিকেট হতো)
+function _viewerSignInAndSubscribe(){
+  try{
+    if(typeof firebase==="undefined"||!firebase.auth) return;
+    firebase.auth().signInAnonymously().then(function(){
+      window._fbSubscribed=false; subscribeFirebaseData();
+    }).catch(function(e){
+      console.error("Anonymous sign-in failed:",e);
+      updateSyncStatus("authfail");
+      toast("⚠️ ডেটা আনা যায়নি — অ্যাডমিনকে জানান (ভিউয়ার-লগইন চালু নেই বা ইন্টারনেট সমস্যা)","#dc2626");
+    });
+  }catch(e){ updateSyncStatus("authfail"); }
+}
+function _viewerAuthReady(user){
+  if(user){ if(!window._fbSubscribed) subscribeFirebaseData(); return; }
+  if(window._anonTried) return;
+  window._anonTried=true;
+  _viewerSignInAndSubscribe();
+}
 function subscribeFirebaseData(){
   try{
     if(window._fbSubscribed) return;
@@ -1118,7 +1137,11 @@ function subscribeFirebaseData(){
         // নাহলে ভুলভাবে "সেভ হয়েছে" দেখিয়ে বিভ্রান্ত করা হবে
         if(!window._dirty && !window._saveInFlight) updateSyncStatus("synced");
       }catch(e){}
-    }).catch(function(){ updateSyncStatus("error"); });
+    }).catch(function(){
+      updateSyncStatus("error");
+      // ভিউয়ারের লগইন-সেশন না থাকলে ডেটা পড়া আটকে যায় — একবার Anonymous লগইন করে আবার চেষ্টা
+      if(role==="viewer" && !window._anonRetried){ window._anonRetried=true; window._fbSubscribed=false; _viewerSignInAndSubscribe(); }
+    });
     firebase.database().ref('sg_data').on('value',function(snap){
       try{
         if(snap.exists()&&role){
@@ -8483,12 +8506,15 @@ pdfDownload=function(type){
           if(!firebase.apps.length){
             firebase.initializeApp(firebaseConfig);
           }
-          if(role && D){
+          if(role && D && role!=="viewer"){
             if(!window._dirty && !window._saveInFlight) updateSyncStatus("synced");
             subscribeFirebaseData();
           }
+          // ভিউয়ার: আগে ঢোকা সদস্যের লগইন-সেশন (যেমন WhatsApp/ইন-অ্যাপ ব্রাউজারে) হারিয়ে যেতে পারে —
+          // তাই লগইন-অবস্থা জানার পর সেশন না থাকলে নিজে থেকে Anonymous লগইন করে তবেই ডেটা আনা হয়
           // ── প্রকৃত অ্যাডমিন সেশন পুনরুদ্ধার: Firebase নিজে টোকেন যাচাই করে, লোকাল স্টোরেজকে অন্ধভাবে বিশ্বাস করা হয় না ──
           firebase.auth().onAuthStateChanged(function(user){
+            if(role==="viewer"){ _viewerAuthReady(user); return; }
             if(role) return; // এই ট্যাবে ইতিমধ্যে লগইন করা আছে
             if(user && !user.isAnonymous){
               firebase.database().ref('roles/'+user.uid).once('value').then(function(snap){
